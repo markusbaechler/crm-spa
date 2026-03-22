@@ -3,45 +3,58 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>bbz CRM</title>
+    <title>bbz CRM Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
+    <style>
+        .prio-A { background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; } /* Gold/Gelb */
+        .prio-B { background: #f3f4f6; color: #374151; border: 1px solid #9ca3af; } /* Silber/Grau */
+        .prio-C { background: #ffedd5; color: #9a3412; border: 1px solid #f97316; } /* Bronze/Orange */
+    </style>
 </head>
-<body class="bg-gray-50 min-h-screen font-sans">
+<body class="bg-slate-50 min-h-screen font-sans">
 
-    <nav class="bg-slate-800 text-white shadow-md p-4">
+    <nav class="bg-slate-900 text-white shadow-xl p-4 sticky top-0 z-50">
         <div class="container mx-auto flex justify-between items-center">
-            <div class="flex items-center gap-4">
-                <h1 class="text-xl font-bold text-blue-400 tracking-tight">bbz CRM</h1>
-                <div id="nav-links" class="hidden flex gap-4 ml-6">
-                    <button onclick="fetchCompanies()" class="bg-slate-700 px-3 py-1 rounded text-sm hover:bg-slate-600 transition">Firmen</button>
-                </div>
+            <div class="flex items-center gap-6">
+                <h1 class="text-2xl font-black text-blue-400 tracking-tighter">bbz CRM</h1>
+                <nav id="nav-links" class="hidden flex gap-1">
+                    <button onclick="showListView()" class="hover:bg-slate-800 px-4 py-2 rounded-lg transition text-sm font-medium text-slate-300 hover:text-white">🏢 Firmen</button>
+                </nav>
             </div>
             <div id="auth-area">
-                <button id="login-btn" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm transition font-medium">Login mit M365</button>
-                <div id="user-info" class="hidden flex items-center gap-3">
-                    <span id="username" class="text-sm border-r pr-3 border-slate-600 text-slate-300"></span>
-                    <button id="logout-btn" class="text-xs text-slate-400 hover:text-white underline">Logout</button>
+                <button id="login-btn" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-full text-sm font-bold transition shadow-lg shadow-blue-900/20">Login mit M365</button>
+                <div id="user-info" class="hidden flex items-center gap-4">
+                    <span id="username" class="text-sm font-medium text-slate-400"></span>
+                    <button id="logout-btn" class="text-xs bg-slate-800 hover:bg-red-900/40 px-3 py-1.5 rounded-md transition border border-slate-700">Logout</button>
                 </div>
             </div>
         </div>
     </nav>
 
     <main class="container mx-auto mt-8 p-4">
-        <div id="dashboard" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 min-h-[500px]">
+        <div id="main-card" class="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
             
-            <div id="view-header" class="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <h2 id="view-title" class="text-2xl font-semibold text-gray-800 tracking-tight">Willkommen</h2>
+            <div class="p-6 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h2 id="view-title" class="text-2xl font-bold text-slate-800">Willkommen</h2>
+                    <p id="view-subtitle" class="text-slate-500 text-sm mt-1">Bitte melden Sie sich an.</p>
+                </div>
                 
                 <div id="search-container" class="hidden relative">
-                    <input type="text" id="company-search" placeholder="Firma suchen..." 
-                        class="w-full md:w-64 pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition shadow-sm">
-                    <span class="absolute left-3 top-2.5 text-gray-400">🔍</span>
+                    <input type="text" id="company-search" placeholder="Firma oder Ort suchen..." 
+                        class="w-full md:w-80 pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition shadow-sm text-sm">
+                    <span class="absolute left-4 top-3 text-slate-400">🔍</span>
                 </div>
             </div>
 
-            <div id="data-table" class="text-gray-600 py-4 overflow-x-auto">
-                Bitte loggen Sie sich ein.
+            <div id="data-area" class="p-0 min-h-[500px]">
+                <div id="loading-state" class="hidden flex flex-col items-center justify-center py-20">
+                    <div class="animate-spin h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full mb-4"></div>
+                    <p class="text-slate-500 font-medium">Daten werden synchronisiert...</p>
+                </div>
+                <div id="content-display" class="p-6">
+                    </div>
             </div>
         </div>
     </main>
@@ -57,7 +70,7 @@
         };
 
         const msalInstance = new msal.PublicClientApplication(msalConfig);
-        let allCompanies = []; // Hier speichern wir alle geladenen Firmen für die Suche
+        let allCompanies = [];
 
         async function init() {
             await msalInstance.initialize();
@@ -76,7 +89,7 @@
                 document.getElementById('login-btn').classList.add('hidden');
                 document.getElementById('user-info').classList.remove('hidden');
                 document.getElementById('nav-links').classList.remove('hidden');
-                document.getElementById('search-container').classList.remove('hidden'); // Suche zeigen
+                document.getElementById('search-container').classList.remove('hidden');
                 document.getElementById('username').innerText = account.name;
                 fetchCompanies();
             }
@@ -85,59 +98,80 @@
         document.getElementById('login-btn').onclick = () => msalInstance.loginRedirect({ scopes: ["User.Read", "Sites.Read.All"] });
         document.getElementById('logout-btn').onclick = () => msalInstance.logoutRedirect();
 
-        // LOGIK FÜR DIE SUCHE
         document.getElementById('company-search').oninput = (e) => {
             const term = e.target.value.toLowerCase();
             const filtered = allCompanies.filter(c => 
                 (c.fields.Title && c.fields.Title.toLowerCase().includes(term)) ||
                 (c.fields.Ort && c.fields.Ort.toLowerCase().includes(term))
             );
-            renderTable(filtered);
+            renderCompanyTable(filtered);
         };
 
         async function fetchCompanies() {
-            const tableDiv = document.getElementById('data-table');
-            tableDiv.innerHTML = "<div class='flex items-center gap-2 text-blue-600'><div class='animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full'></div> Lade Firmendaten...</div>";
+            const content = document.getElementById('content-display');
+            const loader = document.getElementById('loading-state');
+            loader.classList.remove('hidden');
+            content.innerHTML = "";
             
             try {
                 const account = msalInstance.getActiveAccount();
-                const tokenRes = await msalInstance.acquireTokenSilent({
-                    scopes: ["Sites.Read.All"],
-                    account: account
-                });
+                const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: account });
 
-                const graphUrl = "https://graph.microsoft.com/v1.0/sites/bbzsg.sharepoint.com:/sites/CRM:/lists/Firmen/items?expand=fields(select=Title,PLZ,Ort,Land)";
+                // Wir fragen jetzt auch Priorit_x00e4_t und TopKunde ab!
+                const graphUrl = "https://graph.microsoft.com/v1.0/sites/bbzsg.sharepoint.com:/sites/CRM:/lists/Firmen/items?expand=fields(select=id,Title,PLZ,Ort,Priorit_x00e4_t,TopKunde)";
                 const response = await fetch(graphUrl, { headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` } });
-
-                if (!response.ok) throw new Error("Kein Zugriff auf SharePoint.");
-
                 const data = await response.json();
-                allCompanies = data.value; // Speichern für Suche
-                renderTable(allCompanies);
+                
+                allCompanies = data.value;
+                renderCompanyTable(allCompanies);
             } catch (err) {
-                tableDiv.innerHTML = `<div class='bg-red-50 p-4 rounded text-red-600'>${err.message}</div>`;
+                content.innerHTML = `<div class='text-red-500'>${err.message}</div>`;
+            } finally {
+                loader.classList.add('hidden');
             }
         }
 
-        function renderTable(items) {
-            const tableDiv = document.getElementById('data-table');
-            if (!items || items.length === 0) {
-                tableDiv.innerHTML = "<div class='text-gray-400 italic py-10 text-center'>Keine passenden Firmen gefunden.</div>";
-                return;
-            }
-            let html = `<table class='w-full text-left'>
-                <tr class='border-b text-gray-400 text-xs uppercase'><th class='p-3'>Firma</th><th class='p-3'>PLZ</th><th class='p-3'>Ort</th></tr>`;
+        function renderCompanyTable(items) {
+            document.getElementById('view-title').innerText = "Firmenübersicht";
+            document.getElementById('view-subtitle').innerText = `${items.length} Unternehmen in der Datenbank`;
+            
+            let html = `<div class="overflow-x-auto"><table class='w-full text-left border-separate border-spacing-y-2'>
+                <thead><tr class='text-slate-400 text-xs uppercase px-4'><th class='p-4'>Firma</th><th class='p-4'>Prio</th><th class='p-4'>PLZ / Ort</th></tr></thead><tbody>`;
+            
             items.forEach(item => {
                 const f = item.fields;
-                html += `<tr class='border-b hover:bg-blue-50 cursor-pointer transition group'>
-                    <td class='p-3 font-bold text-slate-700 group-hover:text-blue-700'>${f.Title || '-'}</td>
-                    <td class='p-3 text-slate-600'>${f.PLZ || '-'}</td>
-                    <td class='p-3 text-slate-600'>${f.Ort || '-'}</td>
+                const isTopKunde = f.TopKunde === true;
+                const prio = f.Priorit_x00e4_t || '-';
+                
+                html += `
+                <tr onclick="fetchContactsForCompany('${item.id}', '${f.Title.replace(/'/g, "\\'")}')" 
+                    class='bg-white border border-slate-100 shadow-sm hover:shadow-md hover:border-blue-300 cursor-pointer transition-all group'>
+                    <td class='p-4 rounded-l-xl border-y border-l border-slate-100 group-hover:border-blue-100'>
+                        <div class="flex items-center gap-2">
+                            <span class="font-bold text-slate-800 group-hover:text-blue-700">${f.Title || '-'}</span>
+                            ${isTopKunde ? '<span title="Top Kunde" class="text-yellow-500 text-lg">★</span>' : ''}
+                        </div>
+                    </td>
+                    <td class='p-4 border-y border-slate-100 group-hover:border-blue-100'>
+                        <span class="prio-${prio} px-2.5 py-1 rounded-md text-xs font-bold">${prio}</span>
+                    </td>
+                    <td class='p-4 rounded-r-xl border-y border-r border-slate-100 group-hover:border-blue-100 text-slate-500 text-sm'>
+                        ${f.PLZ || ''} ${f.Ort || ''}
+                    </td>
                 </tr>`;
             });
-            html += "</table>";
-            document.getElementById('view-title').innerText = "Firmenübersicht";
-            tableDiv.innerHTML = html;
+            html += "</tbody></table></div>";
+            document.getElementById('content-display').innerHTML = html;
+        }
+
+        async function fetchContactsForCompany(companyId, companyName) {
+            alert("Lade Kontakte für: " + companyName + "\n(Hier bauen wir im nächsten Schritt die Kontaktliste ein!)");
+            // Hier kommt als nächstes die Graph-Abfrage für die Kontakte-Liste rein
+        }
+
+        function showListView() {
+            document.getElementById('company-search').value = "";
+            renderCompanyTable(allCompanies);
         }
 
         init();
