@@ -32,25 +32,25 @@
     </nav>
 
     <main class="container mx-auto mt-8 p-4 font-sans">
-        <div id="main-card" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden min-h-[600px] flex flex-col">
-            <div class="p-6 border-b border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div id="main-card" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden min-h-[600px] flex flex-col font-sans">
+            <div class="p-6 border-b border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-4 font-sans">
                 <div>
-                    <h2 id="view-title" class="text-2xl font-bold text-slate-800 tracking-tight">Firmenübersicht</h2>
-                    <p id="view-subtitle" class="text-slate-500 text-sm mt-0.5 italic">Synchronisierung...</p>
+                    <h2 id="view-title" class="text-2xl font-bold text-slate-800 tracking-tight font-sans">Firmenübersicht</h2>
+                    <p id="view-subtitle" class="text-slate-500 text-sm mt-0.5 italic font-sans">Lade Daten...</p>
                 </div>
-                <div id="search-container" class="hidden relative">
-                    <input type="text" id="company-search" placeholder="Firma oder Ort suchen..." 
-                        class="w-full md:w-80 pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm focus:ring-2 focus:ring-blue-500/20 transition-all font-bold">
+                <div id="search-container" class="hidden relative font-sans">
+                    <input type="text" id="company-search" placeholder="Suchen..." 
+                        class="w-full md:w-80 pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm focus:ring-2 focus:ring-blue-500/20 transition-all font-bold font-sans">
                     <span class="absolute left-4 top-3 text-slate-400 font-sans">🔍</span>
                 </div>
             </div>
 
-            <div id="data-area" class="flex-1 relative">
-                <div id="loading-state" class="hidden absolute inset-0 bg-white/80 z-20 flex flex-col items-center justify-center">
-                    <div class="animate-spin h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full mb-3"></div>
-                    <p class="text-slate-600 font-bold italic font-sans">Verarbeite Daten...</p>
+            <div id="data-area" class="flex-1 relative font-sans">
+                <div id="loading-state" class="hidden absolute inset-0 bg-white/80 z-20 flex flex-col items-center justify-center font-sans">
+                    <div class="animate-spin h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full mb-3 font-sans"></div>
+                    <p class="text-slate-600 font-bold italic font-sans">Verarbeitung...</p>
                 </div>
-                <div id="content-display" class="p-6"></div>
+                <div id="content-display" class="p-6 font-sans"></div>
             </div>
         </div>
     </main>
@@ -96,7 +96,7 @@
                 document.getElementById('username').innerText = account.name;
                 startDataLoad();
             } else {
-                document.getElementById('content-display').innerHTML = '<div class="py-20 text-center text-slate-400 italic font-bold">Bitte einloggen.</div>';
+                document.getElementById('content-display').innerHTML = '<div class="py-20 text-center text-slate-400 italic font-bold font-sans">Bitte einloggen.</div>';
             }
         }
 
@@ -126,11 +126,11 @@
 
         function renderCompanyTable(items) {
             document.getElementById('view-title').innerText = "Firmenübersicht";
-            document.getElementById('view-subtitle').innerText = `${items.length} Unternehmen`;
+            document.getElementById('view-subtitle').innerText = `${items.length} Unternehmen gefunden`;
             document.getElementById('search-container').classList.remove('hidden');
 
-            let html = `<div class="overflow-x-auto"><table class='w-full text-left border-separate border-spacing-y-2'>
-                <thead><tr class='text-slate-400 text-[10px] uppercase tracking-widest px-4 font-bold'><th class='p-4'>Firma</th><th class='p-4 text-center'>Prio</th><th class='p-4 text-right'>Ort</th></tr></thead><tbody>`;
+            let html = `<div class="overflow-x-auto font-sans"><table class='w-full text-left border-separate border-spacing-y-2'>
+                <thead><tr class='text-slate-400 text-[10px] uppercase tracking-widest px-4 font-bold font-sans'><th class='p-4'>Firma</th><th class='p-4 text-center'>Prio</th><th class='p-4 text-right'>Ort</th></tr></thead><tbody>`;
             
             items.forEach(item => {
                 const f = item.fields;
@@ -138,9 +138,9 @@
                 if(p == "1") p = "A"; else if(p == "2") p = "B"; else if(p == "3") p = "C";
 
                 html += `<tr onclick="loadContacts('${item.id}', '${(f.Title || 'Unbekannt').replace(/'/g, "\\'")}')" class='bg-white border border-slate-100 shadow-sm hover:shadow-md hover:border-blue-300 cursor-pointer transition-all group font-sans'>
-                    <td class='p-4 rounded-l-xl border-y border-l border-slate-100 font-bold text-slate-800'>${f.Title || 'N/A'} ${f.TopKunde ? '<span class="text-yellow-500 ml-1">★</span>' : ''}</td>
-                    <td class='p-4 border-y border-slate-100 text-center font-sans'><span class="prio-${p} px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter">${p}</span></td>
-                    <td class='p-4 rounded-r-xl border-y border-r border-slate-100 text-slate-500 text-sm text-right italic font-bold'>${f.Ort || ''}</td></tr>`;
+                    <td class='p-4 rounded-l-xl border-y border-l border-slate-100 font-bold text-slate-800 font-sans'>${f.Title || 'N/A'} ${f.TopKunde ? '<span class="text-yellow-500 ml-1 font-sans">★</span>' : ''}</td>
+                    <td class='p-4 border-y border-slate-100 text-center font-sans'><span class="prio-${p} px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter font-sans">${p}</span></td>
+                    <td class='p-4 rounded-r-xl border-y border-r border-slate-100 text-slate-500 text-sm text-right font-sans italic font-bold'>${f.Ort || ''}</td></tr>`;
             });
             document.getElementById('content-display').innerHTML = html + "</tbody></table></div>";
         }
@@ -167,18 +167,18 @@
             document.getElementById('view-title').innerText = companyName;
             document.getElementById('view-subtitle').innerText = `${contacts.length} Kontakte`;
             
-            let html = `<div class="mb-8"><button onclick="showListView()" class="flex items-center gap-2 text-sm font-bold text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-xl transition-all border border-blue-100 shadow-sm italic">← Zurück zur Firmenliste</button></div><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 font-sans">`;
+            let html = `<div class="mb-8 font-sans"><button onclick="showListView()" class="flex items-center gap-2 text-sm font-bold text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-xl transition-all border border-blue-100 shadow-sm italic font-sans">← Zurück zur Firmenliste</button></div><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 font-sans">`;
             
             contacts.forEach(c => {
                 const f = c.fields;
                 const init = `${(f.Vorname || '?').charAt(0)}${(f.Title || '?').charAt(0)}`;
                 html += `
-                <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-lg transition-all border-b-4 border-b-blue-500">
-                    <div class="flex items-center gap-4 mb-4">
-                        <div class="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center font-bold text-slate-400 text-sm italic font-sans font-bold italic">${init}</div>
+                <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-lg transition-all border-b-4 border-b-blue-500 font-sans">
+                    <div class="flex items-center gap-4 mb-4 font-sans italic">
+                        <div class="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center font-bold text-slate-400 text-sm font-sans italic font-bold">${init}</div>
                         <div>
-                            <h3 class="font-bold text-slate-800 leading-tight italic font-bold font-sans">${f.Vorname || ''} ${f.Title || ''}</h3>
-                            <p class="text-blue-600 text-[11px] font-bold uppercase tracking-wider font-black font-sans">${f.Funktion || '-'}</p>
+                            <h3 class="font-bold text-slate-800 leading-tight italic font-bold font-sans font-bold">${f.Vorname || ''} ${f.Title || ''}</h3>
+                            <p class="text-blue-600 text-[11px] font-bold uppercase tracking-wider font-black font-sans font-bold">${f.Funktion || '-'}</p>
                         </div>
                     </div>
                     <div class="space-y-2 pt-4 border-t border-slate-50 text-sm text-slate-600 font-bold italic font-sans font-bold">
@@ -186,29 +186,28 @@
                         <p>📱 ${f.TelefonMobil || '-'}</p>
                     </div>
                     
-                    <div class="mt-4 flex gap-2">
-                        <button onclick="loadHistory('${c.id}')" class="flex-1 bg-slate-50 hover:bg-slate-100 text-slate-600 text-[10px] font-bold py-2 rounded-lg transition border border-slate-200 italic font-bold">Historie</button>
-                        <button onclick="toggleNoteForm('${c.id}')" class="flex-1 bg-blue-50 hover:bg-blue-100 text-blue-600 text-[10px] font-bold py-2 rounded-lg transition border border-blue-100 italic">+ Notiz</button>
+                    <div class="mt-4 flex gap-2 font-sans font-bold">
+                        <button onclick="loadHistory('${c.id}')" class="flex-1 bg-slate-50 hover:bg-slate-100 text-slate-600 text-[10px] font-bold py-2 rounded-lg transition border border-slate-200 italic font-bold font-sans">Historie</button>
+                        <button onclick="toggleNoteForm('${c.id}')" class="flex-1 bg-blue-50 hover:bg-blue-100 text-blue-600 text-[10px] font-bold py-2 rounded-lg transition border border-blue-100 italic font-bold font-sans">+ Notiz</button>
                     </div>
 
-                    <div id="note-form-${c.id}" class="hidden mt-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
-                        <input type="text" id="title-${c.id}" placeholder="Betreff (z.B. Telefonat)" class="w-full text-xs p-2 mb-2 rounded border border-slate-300">
-                        <select id="status-${c.id}" class="w-full text-xs p-2 mb-2 rounded border border-slate-300 font-bold">
+                    <div id="note-form-${c.id}" class="hidden mt-4 p-3 bg-slate-50 rounded-xl border border-slate-200 font-sans">
+                        <input type="text" id="title-${c.id}" placeholder="Betreff" class="w-full text-xs p-2 mb-2 rounded border border-slate-300 font-sans">
+                        <select id="status-${c.id}" class="w-full text-xs p-2 mb-2 rounded border border-slate-300 font-sans font-bold">
                             <option>Erledigt</option><option>Offen</option><option>Wichtig</option>
                         </select>
-                        <textarea id="details-${c.id}" placeholder="Besprochene Details..." class="w-full text-xs p-2 mb-2 rounded border border-slate-300 h-20"></textarea>
-                        <button id="save-btn-${c.id}" onclick="saveNote('${c.id}')" class="w-full bg-blue-600 text-white text-xs font-bold py-2 rounded shadow-lg">Speichern</button>
+                        <textarea id="details-${c.id}" placeholder="Details..." class="w-full text-xs p-2 mb-2 rounded border border-slate-300 h-20 font-sans"></textarea>
+                        <button id="save-btn-${c.id}" onclick="saveNote('${c.id}')" class="w-full bg-blue-600 text-white text-xs font-bold py-2 rounded shadow-lg font-sans">Speichern</button>
                     </div>
 
-                    <div id="history-${c.id}" class="mt-4 hidden italic"></div>
+                    <div id="history-${c.id}" class="mt-4 hidden font-sans italic font-bold"></div>
                 </div>`;
             });
             document.getElementById('content-display').innerHTML = html + "</div>";
         }
 
         function toggleNoteForm(id) {
-            const f = document.getElementById(`note-form-${id}`);
-            f.classList.toggle('hidden');
+            document.getElementById(`note-form-${id}`).classList.toggle('hidden');
         }
 
         async function saveNote(contactId) {
@@ -218,9 +217,7 @@
             const saveBtn = document.getElementById(`save-btn-${contactId}`);
 
             if (!titleInput.value) return alert("Bitte einen Betreff eingeben!");
-
             saveBtn.disabled = true;
-            saveBtn.innerText = "Wird gespeichert...";
 
             try {
                 const account = msalInstance.getActiveAccount();
@@ -232,7 +229,6 @@
                         Status: statusInput.value,
                         Details_x002f_Kontext: detailsInput.value,
                         Datum: new Date().toISOString(),
-                        // WICHTIG: SharePoint Lookup-Feld Verknüpfung
                         KontaktpersonLookupId: contactId 
                     }
                 };
@@ -244,65 +240,54 @@
                 });
 
                 if (response.ok) {
-                    // Formular leeren und schließen
-                    titleInput.value = "";
-                    detailsInput.value = "";
+                    titleInput.value = ""; detailsInput.value = "";
                     document.getElementById(`note-form-${contactId}`).classList.add('hidden');
-                    
-                    // Kurze Pause, damit SharePoint die Daten indexiert
-                    setTimeout(() => loadHistory(contactId), 1000); 
-                } else {
-                    const err = await response.json();
-                    alert("Fehler: " + (err.error.message || "Unbekannter Fehler"));
+                    setTimeout(() => loadHistory(contactId), 1500); // 1.5 Sek Pause
                 }
-            } catch (err) { 
-                console.error(err); 
-                alert("Verbindungsfehler beim Speichern.");
-            } finally {
-                saveBtn.disabled = false;
-                saveBtn.innerText = "Speichern";
-            }
+            } catch (err) { alert("Fehler beim Speichern."); } finally { saveBtn.disabled = false; }
         }
 
         async function loadHistory(contactId) {
             const historyDiv = document.getElementById(`history-${contactId}`);
-            historyDiv.innerHTML = "<p class='text-[10px] animate-pulse py-2 text-blue-500 font-bold'>Synchronisiere...</p>";
+            historyDiv.innerHTML = "<p class='text-[10px] animate-pulse py-2 text-blue-500 font-bold font-sans'>Suche Notizen...</p>";
             historyDiv.classList.remove('hidden');
 
             try {
                 const account = msalInstance.getActiveAccount();
                 const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: account });
-                
-                // Wir laden alle Notizen und filtern manuell, um Lookup-Probleme zu umgehen
                 const url = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontaktnotizen/items?expand=fields`;
                 const response = await fetch(url, { headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` } });
                 const data = await response.json();
                 
-                // Wir filtern nach der Kontaktperson-ID
-                const notes = (data.value || []).filter(n => 
-                    n.fields.KontaktpersonLookupId == contactId || 
-                    n.fields.KontaktpersonId == contactId
-                ).sort((a, b) => new Date(b.fields.Datum) - new Date(a.fields.Datum)); // Neueste zuerst
+                console.log("ROHDATEN DER NOTIZEN:", data.value); // <--- HIER F12 PRÜFEN!
+
+                // Wir suchen die Notizen mit einer "Unscharfen" Suche (probiert verschiedene Feldnamen)
+                const notes = (data.value || []).filter(n => {
+                    const f = n.fields;
+                    return f.KontaktpersonLookupId == contactId || 
+                           f.KontaktpersonId == contactId || 
+                           (f.Kontaktperson && f.Kontaktperson.LookupId == contactId);
+                }).sort((a, b) => new Date(b.fields.Datum) - new Date(a.fields.Datum));
 
                 renderHistoryList(notes, contactId);
-            } catch (err) { historyDiv.innerHTML = "<p class='text-red-500 text-[10px] font-bold font-sans'>Ladefehler.</p>"; }
+            } catch (err) { historyDiv.innerHTML = "<p class='text-red-500 text-[10px] font-sans font-bold'>Fehler beim Laden.</p>"; }
         }
 
         function renderHistoryList(notes, contactId) {
             const historyDiv = document.getElementById(`history-${contactId}`);
             if (notes.length === 0) {
-                historyDiv.innerHTML = "<p class='text-[10px] text-slate-400 italic py-2 font-bold'>Noch keine Einträge vorhanden.</p>";
+                historyDiv.innerHTML = "<p class='text-[10px] text-slate-400 italic py-2 font-bold font-sans'>Keine Notizen gefunden.</p>";
                 return;
             }
-            let html = `<div class="timeline-line mt-2 space-y-4 italic">`;
+            let html = `<div class="timeline-line mt-2 space-y-4 font-sans">`;
             notes.forEach(n => {
                 const f = n.fields;
                 const d = f.Datum ? new Date(f.Datum).toLocaleDateString('de-DE') : '-';
                 html += `
-                <div class="relative pl-6 italic font-medium">
-                    <div class="absolute left-[-1.15rem] top-1 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-white shadow-sm font-sans italic font-bold italic"></div>
-                    <p class="text-[10px] font-bold text-slate-400 italic">${d} - ${f.Status || ''}</p>
-                    <p class="text-xs font-bold text-slate-800 mt-0.5 italic">${f.Title || 'Notiz'}</p>
+                <div class="relative pl-6 italic font-medium font-sans">
+                    <div class="absolute left-[-1.15rem] top-1 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-white shadow-sm font-sans"></div>
+                    <p class="text-[10px] font-bold text-slate-400 font-sans italic">${d} - ${f.Status || ''}</p>
+                    <p class="text-xs font-bold text-slate-800 mt-0.5 font-sans italic">${f.Title || 'Notiz'}</p>
                     <p class="text-xs text-slate-600 mt-1 leading-relaxed font-sans font-bold italic">${f.Details_x002f_Kontext || '-'}</p>
                 </div>`;
             });
