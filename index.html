@@ -22,7 +22,7 @@
                 <button id="login-btn" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-full text-sm font-bold transition shadow-lg">Login</button>
                 <div id="user-info" class="hidden flex items-center gap-4">
                     <span id="username" class="text-sm font-medium text-slate-400"></span>
-                    <button id="logout-btn" class="text-xs text-slate-400 hover:text-white underline">Logout</button>
+                    <button id="logout-btn" class="text-xs text-slate-400 hover:text-white underline font-sans">Logout</button>
                 </div>
             </div>
         </div>
@@ -30,10 +30,10 @@
 
     <main class="container mx-auto mt-8 p-4 font-sans">
         <div id="main-card" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden min-h-[600px] flex flex-col font-sans">
-            <div class="p-6 border-b border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-4 font-sans">
+            <div class="p-6 border-b border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h2 id="view-title" class="text-2xl font-bold text-slate-800 tracking-tight font-sans">Firmenübersicht</h2>
-                    <p id="view-subtitle" class="text-slate-500 text-sm mt-0.5 font-sans">Synchronisiere...</p>
+                    <p id="view-subtitle" class="text-slate-500 text-sm mt-0.5 font-sans font-sans italic">Daten werden geladen...</p>
                 </div>
                 <div id="search-container" class="hidden relative font-sans">
                     <input type="text" id="company-search" placeholder="Firma suchen..." class="w-full md:w-80 pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm focus:ring-2 focus:ring-blue-500/20 font-bold font-sans">
@@ -44,7 +44,7 @@
             <div id="data-area" class="flex-1 relative font-sans">
                 <div id="loading-state" class="hidden absolute inset-0 bg-white/80 z-20 flex flex-col items-center justify-center font-sans">
                     <div class="animate-spin h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full mb-3 font-sans"></div>
-                    <p class="text-slate-600 font-bold italic font-sans">Verarbeitung...</p>
+                    <p class="text-slate-600 font-bold italic font-sans font-sans">Wird verarbeitet...</p>
                 </div>
                 <div id="content-display" class="p-6 font-sans"></div>
             </div>
@@ -127,10 +127,10 @@
                 const f = item.fields;
                 let p = f.Priorit_x00e4_t || '-';
                 if(p == "1") p = "A"; else if(p == "2") p = "B"; else if(p == "3") p = "C";
-                html += `<tr onclick="loadContacts('${item.id}', '${(f.Title || 'Unbekannt').replace(/'/g, "\\'")}')" class='bg-white border border-slate-100 shadow-sm hover:shadow-md cursor-pointer transition-all font-sans'>
-                    <td class='p-4 rounded-l-xl border-y border-l border-slate-100 font-bold'>${f.Title || 'N/A'}</td>
-                    <td class='p-4 border-y border-slate-100 text-center'><span class="prio-${p} px-3 py-1 rounded-lg text-[10px] font-black uppercase">${p}</span></td>
-                    <td class='p-4 rounded-r-xl border-y border-r border-slate-100 text-slate-500 text-sm text-right'>${f.Ort || ''}</td></tr>`;
+                html += `<tr onclick="loadContacts('${item.id}', '${(f.Title || 'Unbekannt').replace(/'/g, "\\'")}')" class='bg-white border border-slate-100 shadow-sm hover:shadow-md cursor-pointer transition-all group font-sans'>
+                    <td class='p-4 rounded-l-xl border-y border-l border-slate-100 font-bold font-sans'>${f.Title || 'N/A'}</td>
+                    <td class='p-4 border-y border-slate-100 text-center font-sans font-bold'><span class="prio-${p} px-3 py-1 rounded-lg text-[10px] font-black uppercase font-sans">${p}</span></td>
+                    <td class='p-4 rounded-r-xl border-y border-r border-slate-100 text-slate-500 text-sm text-right font-sans italic'>${f.Ort || ''}</td></tr>`;
             });
             document.getElementById('content-display').innerHTML = html + "</tbody></table></div>";
         }
@@ -144,15 +144,17 @@
             try {
                 const account = msalInstance.getActiveAccount();
                 const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: account });
-                
-                // Wir nutzen jetzt 'FirmaId' als Filter (interner Name für Nachschlagen-Felder)
                 const url = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontakte/items?expand=fields`;
                 const response = await fetch(url, { headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` } });
                 const data = await response.json();
                 
+                // DIAGNOSE FÜR CREDIT EXCHANGE
+                console.log("ERSTER KONTAKT ROHDATEN:", data.value[0]?.fields);
+
                 const filtered = data.value.filter(item => {
                     const f = item.fields;
-                    return f.FirmaId == companyId || (f.Firma && f.Firma.LookupId == companyId);
+                    // Wir probieren ALLES: FirmaId, FirmaLookupId, oder das Objekt selbst
+                    return f.FirmaId == companyId || f.FirmaLookupId == companyId || (f.Firma && f.Firma.LookupId == companyId);
                 });
                 renderContactView(filtered, companyName);
             } catch (err) { console.error(err); } finally { loader.classList.add('hidden'); }
@@ -164,6 +166,10 @@
             document.getElementById('view-subtitle').innerText = `${contacts.length} Kontakte`;
             let html = `<div class="mb-8"><button onclick="showListView()" class="text-sm font-bold text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-xl transition-all border border-blue-100 italic">← Zurück</button></div><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 font-sans">`;
             
+            if (contacts.length === 0) {
+                html += `<div class="col-span-full py-20 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 italic">Keine Kontakte gefunden. Prüfe die Konsole (F12) für Feldnamen.</div>`;
+            }
+
             contacts.forEach(c => {
                 const f = c.fields;
                 html += `<div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm border-b-4 border-b-blue-500 font-sans">
@@ -171,20 +177,16 @@
                         <div class="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center font-bold text-slate-400 italic font-sans">${(f.Vorname || '?').charAt(0)}${(f.Title || '?').charAt(0)}</div>
                         <div><h3 class="font-bold text-slate-800 italic font-sans">${f.Vorname || ''} ${f.Title || ''}</h3><p class="text-blue-600 text-[11px] font-bold uppercase italic font-sans">${f.Funktion || '-'}</p></div>
                     </div>
-                    <div class="text-xs space-y-1 text-slate-500 mb-4 font-sans font-bold italic">
-                        <p>📧 ${f.E_x002d_Mail || f.E_x002d_Mail0 || '-'}</p>
-                        <p>📱 ${f.TelefonMobil || f.TelefonFestnetz || '-'}</p>
-                    </div>
-                    <div class="mt-4 flex gap-2 font-sans font-bold italic">
+                    <div class="mt-4 flex gap-2 font-sans font-bold">
                         <button onclick="loadHistory('${c.id}')" class="flex-1 bg-slate-50 text-[10px] font-bold py-2 rounded-lg border border-slate-200 italic font-sans">Historie</button>
                         <button onclick="toggleNoteForm('${c.id}')" class="flex-1 bg-blue-50 text-blue-600 text-[10px] font-bold py-2 rounded-lg border border-blue-100 italic font-sans">+ Notiz</button>
                     </div>
                     <div id="note-form-${c.id}" class="hidden mt-4 p-3 bg-slate-50 rounded-xl border border-slate-200 font-sans italic">
-                        <input type="text" id="title-${c.id}" placeholder="Betreff" class="w-full text-xs p-2 mb-2 rounded border border-slate-300 font-sans">
-                        <textarea id="details-${c.id}" placeholder="Details..." class="w-full text-xs p-2 mb-2 rounded border border-slate-300 h-20 font-sans"></textarea>
+                        <input type="text" id="title-${c.id}" placeholder="Betreff" class="w-full text-xs p-2 mb-2 rounded border border-slate-300">
+                        <textarea id="details-${c.id}" placeholder="Details..." class="w-full text-xs p-2 mb-2 rounded border border-slate-300 h-20"></textarea>
                         <button onclick="saveNote('${c.id}')" class="w-full bg-blue-600 text-white text-xs font-bold py-2 rounded italic font-sans">Speichern</button>
                     </div>
-                    <div id="history-${c.id}" class="mt-4 hidden italic font-sans font-bold"></div>
+                    <div id="history-${c.id}" class="mt-4 hidden italic font-sans"></div>
                 </div>`;
             });
             document.getElementById('content-display').innerHTML = html + "</div>";
@@ -200,9 +202,14 @@
                 const account = msalInstance.getActiveAccount();
                 const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.ReadWrite.All"], account: account });
                 
-                // Wir nutzen jetzt die Namen aus deinem Mapping: 'Details_x002f_Kontext' und 'KontaktpersonId'
-                const body = { fields: { Title: title, Details_x002f_Kontext: details, KontaktpersonId: contactId, Datum: new Date().toISOString() } };
-                
+                // Wir nutzen exakt die Namen aus deinem Bild
+                const body = { fields: { 
+                    Title: title, 
+                    Details_x002f_Kontext: details, 
+                    KontaktpersonId: contactId, // Name aus deinem Mapping
+                    Datum: new Date().toISOString() 
+                } };
+
                 const res = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontaktnotizen/items`, {
                     method: 'POST', headers: { 'Authorization': `Bearer ${tokenRes.accessToken}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify(body)
@@ -214,7 +221,7 @@
 
         async function loadHistory(contactId) {
             const historyDiv = document.getElementById(`history-${contactId}`);
-            historyDiv.innerHTML = "<p class='text-[10px] animate-pulse py-2 text-blue-500 font-bold italic font-sans'>Lade...</p>";
+            historyDiv.innerHTML = "<p class='text-[10px] animate-pulse py-2 text-blue-500 font-bold font-sans'>Lade...</p>";
             historyDiv.classList.remove('hidden');
             try {
                 const account = msalInstance.getActiveAccount();
@@ -223,8 +230,11 @@
                 const response = await fetch(url, { headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` } });
                 const data = await response.json();
                 
-                // Filterung basierend auf 'KontaktpersonId'
-                const notes = (data.value || []).filter(n => n.fields.KontaktpersonId == contactId);
+                // Filterung: Wir schauen in 'KontaktpersonId' (oder 'Kontaktperson.LookupId')
+                const notes = (data.value || []).filter(n => {
+                    const f = n.fields;
+                    return f.KontaktpersonId == contactId || (f.Kontaktperson && f.Kontaktperson.LookupId == contactId);
+                });
                 
                 let html = `<div class="timeline-line mt-2 space-y-3 font-sans">`;
                 notes.forEach(n => {
