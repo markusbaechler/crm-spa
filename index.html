@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>bbz CRM - No Bullshit Edition</title>
+    <title>bbz CRM - Final Name-Match</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
     <style>
@@ -18,12 +18,12 @@
 </head>
 <body class="min-h-screen italic">
 
-    <nav class="bg-slate-900 border-b border-slate-800 p-4 sticky top-0 z-50 font-sans">
+    <nav class="bg-slate-900 border-b border-slate-800 p-4 sticky top-0 z-50">
         <div class="container mx-auto flex justify-between items-center">
             <h1 class="text-xl font-black text-blue-400 tracking-tighter cursor-pointer" onclick="location.reload()">bbz CRM</h1>
             <div id="auth-area" class="flex items-center gap-4">
                 <span id="username" class="text-xs text-slate-400 font-bold"></span>
-                <button id="login-btn" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-lg text-sm font-bold transition">Login</button>
+                <button id="login-btn" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-lg text-sm font-bold">Login</button>
                 <button id="logout-btn" class="hidden text-xs text-slate-500 underline">Logout</button>
             </div>
         </div>
@@ -40,10 +40,10 @@
     <main class="container mx-auto mt-6 p-4 grid grid-cols-1 lg:grid-cols-12 gap-6 font-sans">
         <div class="lg:col-span-3 space-y-4">
             <input type="text" id="comp-search" placeholder="Suchen..." class="card-dark w-full rounded-xl px-4 py-2 text-sm outline-none text-white italic">
-            <div id="company-list" class="space-y-2 max-h-[600px] overflow-y-auto pr-2 text-sm font-bold"></div>
+            <div id="company-list" class="space-y-2 max-h-[600px] overflow-y-auto pr-2"></div>
         </div>
         <div id="detail-view" class="lg:col-span-9 space-y-6">
-            <div class="card-dark p-20 rounded-2xl text-center text-slate-500 italic">Datenabgleich bereit.</div>
+            <div class="card-dark p-20 rounded-2xl text-center text-slate-500 italic">Bitte einloggen.</div>
         </div>
     </main>
 
@@ -59,6 +59,7 @@
 
         const msalInstance = new msal.PublicClientApplication(msalConfig);
         let db = { firmen: [], kontakte: [], notizen: [], tasks: [], history: [] };
+        let siteId = "";
 
         async function init() {
             const res = await msalInstance.handleRedirectPromise();
@@ -73,16 +74,16 @@
                 document.getElementById('login-btn').classList.add('hidden');
                 document.getElementById('logout-btn').classList.remove('hidden');
                 document.getElementById('username').innerText = acc.name;
-                loadEverything();
+                loadData();
             }
         }
 
         document.getElementById('login-btn').onclick = () => msalInstance.loginRedirect({ scopes: ["Sites.Read.All"] });
         document.getElementById('logout-btn').onclick = () => { localStorage.clear(); location.reload(); };
 
-        async function loadEverything() {
+        async function loadData() {
             const pane = document.getElementById('detail-view');
-            pane.innerHTML = `<div class="p-20 text-center text-blue-400 font-bold italic">Lade alle Listen ($top=5000)...</div>`;
+            pane.innerHTML = `<div class="p-20 text-center text-blue-400 font-bold italic">Namens-Synchronisation läuft...</div>`;
 
             try {
                 const acc = msalInstance.getActiveAccount();
@@ -90,10 +91,10 @@
                 const token = tokenRes.accessToken;
 
                 const siteRes = await fetch("https://graph.microsoft.com/v1.0/sites/bbzsg.sharepoint.com:/sites/CRM", { headers: { 'Authorization': `Bearer ${token}` } });
-                const site = await siteRes.json();
-                const siteId = site.id;
+                const siteData = await siteRes.json();
+                siteId = siteData.id;
 
-                // WICHTIG: Wir laden 5000 Items, um sicherzustellen, dass keine Firma fehlt!
+                // Lade alle Listen (5000 Items damit nichts fehlt)
                 const endpoints = ["Firmen", "Kontakte", "Kontaktnotizen", "Tasks", "History"];
                 const results = await Promise.all(endpoints.map(ep => 
                     fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${ep}/items?expand=fields&$top=5000`, { 
@@ -109,7 +110,7 @@
 
                 renderStats();
                 renderList(db.firmen);
-                pane.innerHTML = `<div class="card-dark p-20 rounded-2xl text-center text-slate-500 italic">Bereit. Wähle eine Firma.</div>`;
+                pane.innerHTML = `<div class="card-dark p-20 rounded-2xl text-center text-slate-500 italic">Wähle eine Firma. Abgleich erfolgt über Namen.</div>`;
             } catch (err) { console.error(err); }
         }
 
@@ -118,13 +119,13 @@
             document.getElementById('stat-a').innerText = count('1') || count('A');
             document.getElementById('stat-b').innerText = count('2') || count('B');
             document.getElementById('stat-c').innerText = count('3') || count('C');
-            document.getElementById('stat-tasks').innerText = db.tasks.filter(t => t.fields.Status === "Offen").length;
+            document.getElementById('stat-tasks').innerText = db.tasks.filter(t => t.fields.Status !== "Erledigt").length;
             document.getElementById('stat-top').innerText = db.firmen.filter(f => f.fields.TopKunde).length;
         }
 
         function renderList(items) {
             document.getElementById('company-list').innerHTML = items.sort((a,b) => a.fields.Title.localeCompare(b.fields.Title)).map(item => `
-                <div onclick="showDetail('${item.id}')" class="card-dark p-3 rounded-xl cursor-pointer hover:bg-slate-800 transition prio-${item.fields.Priorit_x00e4_t}">
+                <div onclick="showDetail('${item.id}')" class="card-dark p-3 rounded-xl cursor-pointer hover:bg-slate-800 transition font-bold prio-${item.fields.Priorit_x00e4_t}">
                     ${item.fields.Title}
                 </div>
             `).join('');
@@ -132,28 +133,25 @@
 
         function showDetail(cId) {
             const firmaObj = db.firmen.find(f => String(f.id) === String(cId));
-            const firmenName = firmaObj.fields.Title;
+            const targetName = firmaObj.fields.Title.trim();
 
-            // DER ABSOLUTE FIX: Wir ignorieren die IDs in den Kontakten.
-            // Wir mappen die Kontakte über den Namen der Firma.
+            // DER ENTSCHEIDENDE FIX: ID IGNORIEREN - NUR TEXTVERGLEICH
             const contacts = db.kontakte.filter(c => {
                 const f = c.fields;
-                // Wir holen uns den Firmennamen aus dem Kontakt-Objekt (LookupValue)
-                // Falls das nicht da ist, suchen wir in unserer Firmen-Tabelle nach der ID, die im Kontakt steht
-                const linkedFirma = db.firmen.find(fir => String(fir.id) === String(f.FirmaId));
-                return linkedFirma && linkedFirma.fields.Title === firmenName;
+                // Wir nehmen den Textwert aus dem Nachschlagefeld "Firma"
+                const lookupValue = f.Firma && typeof f.Firma === 'object' ? f.Firma.LookupValue : f.Firma;
+                return String(lookupValue).trim() === targetName;
             });
 
             const contactIds = contacts.map(c => String(c.id));
-            const contactNames = contacts.map(c => (c.fields.Vorname + " " + c.fields.Title).trim());
 
-            // Timeline: History & Notizen (über Kontakt-IDs)
+            // Timeline: History & Notizen über die Kontakt-IDs (die Personen-IDs sind stabil)
             const timeline = [
                 ...db.history.filter(h => contactIds.includes(String(h.fields.ContactLookupId))),
                 ...db.notizen.filter(n => contactIds.includes(String(n.fields.KontaktpersonId)))
             ].sort((a,b) => new Date(b.fields.Datum || b.createdDateTime) - new Date(a.fields.Datum || a.createdDateTime));
 
-            // Tasks: Über Kontakt-ID ODER über den Namen der Firma im Task
+            // Tasks über Kontakt-ID
             const tasks = db.tasks.filter(t => contactIds.includes(String(t.fields.ContactID)));
 
             renderUI(firmaObj.fields, contacts, timeline, tasks);
@@ -164,8 +162,9 @@
                 <div class="grid grid-cols-1 md:grid-cols-12 gap-6 animate-in fade-in duration-300">
                     <div class="md:col-span-12 card-dark p-6 rounded-2xl border-l-4 border-l-blue-500">
                         <h2 class="text-3xl font-black text-blue-400 italic">${firma.Title}</h2>
-                        <p class="text-slate-400 text-xs font-bold mt-1 uppercase italic">${firma.Ort || ''}</p>
+                        <p class="text-slate-400 text-xs font-bold mt-1 uppercase italic">${firma.Ort || ''} | ${firma.Adresse || ''}</p>
                     </div>
+
                     <div class="md:col-span-5 space-y-6">
                         <section>
                             <h3 class="text-[10px] font-black uppercase text-slate-500 italic mb-3">Kontakte (${contacts.length})</h3>
@@ -174,19 +173,23 @@
                                     <div class="card-dark p-4 rounded-xl border-b-4 border-b-blue-600/50">
                                         <p class="text-white font-black italic">${c.fields.Vorname || ''} ${c.fields.Title || ''}</p>
                                         <p class="text-[10px] text-slate-500 uppercase italic">${c.fields.Funktion || '-'}</p>
+                                        <p class="text-[10px] text-slate-400 mt-2">📧 ${c.fields.E_x002d_Mail || '-'}</p>
                                     </div>
                                 `).join('')}
+                                ${contacts.length === 0 ? '<p class="text-red-400 text-xs italic">Kein Kontakt mit exaktem Firmennamen gefunden.</p>' : ''}
                             </div>
                         </section>
                         <section>
-                            <h3 class="text-[10px] font-black uppercase text-red-500 italic mb-3">Offene Tasks</h3>
+                            <h3 class="text-[10px] font-black uppercase text-red-500 italic mb-3">Offene Aufgaben</h3>
                             ${tasks.filter(t => t.fields.Status !== "Erledigt").map(t => `
                                 <div class="card-dark p-3 rounded-lg text-xs border-l-2 border-l-red-500 italic mb-2">
                                     <p class="font-bold text-white">${t.fields.Title}</p>
+                                    <p class="text-slate-500">Fällig: ${new Date(t.fields.F_x00e4_lligkeit).toLocaleDateString()}</p>
                                 </div>
                             `).join('')}
                         </section>
                     </div>
+
                     <div class="md:col-span-7 card-dark p-6 rounded-2xl">
                         <h3 class="text-[10px] font-black uppercase text-slate-500 italic mb-6">Timeline</h3>
                         <div class="timeline-line space-y-6">
