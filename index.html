@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>bbz CRM PRO</title>
+    <title>bbz CRM Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
     <style>
@@ -22,11 +22,10 @@
     <nav class="bg-slate-900 border-b border-slate-800 p-4 sticky top-0 z-50">
         <div class="container mx-auto flex justify-between items-center">
             <h1 class="text-xl font-black text-blue-400 tracking-tighter cursor-pointer" onclick="location.reload()">bbz CRM</h1>
-            <div id="auth-area" class="flex items-center gap-4">
-                <span id="user-status" class="text-[9px] font-bold text-green-500 uppercase tracking-widest hidden">Online</span>
+            <div id="auth-area" class="flex items-center gap-4 font-sans">
                 <button id="login-btn" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-lg text-sm font-bold transition">Login</button>
-                <div id="user-info" class="hidden flex items-center gap-3">
-                    <span id="username" class="text-xs text-slate-400 font-bold border-r pr-3 border-slate-700"></span>
+                <div id="user-info" class="hidden flex items-center gap-3 font-sans">
+                    <span id="username" class="text-xs text-slate-400 font-bold border-r pr-3 border-slate-700 font-sans"></span>
                     <button id="logout-btn" class="text-xs text-slate-500 hover:text-white underline font-sans">Logout</button>
                 </div>
             </div>
@@ -45,12 +44,12 @@
         <div class="lg:col-span-3 space-y-4">
             <input type="text" id="comp-search" placeholder="Suchen..." class="card-dark w-full rounded-xl px-4 py-2 text-sm outline-none text-white italic">
             <div id="company-list" class="space-y-2 max-h-[600px] overflow-y-auto pr-2 text-sm">
-                <p class="text-slate-600 text-center py-10">Lade Firmen...</p>
+                <p class="text-slate-600 text-center py-10 font-sans">Lade Firmen...</p>
             </div>
         </div>
 
         <div id="detail-view" class="lg:col-span-9 space-y-6">
-            <div id="placeholder" class="card-dark p-20 rounded-2xl text-center text-slate-500 italic">
+            <div class="card-dark p-20 rounded-2xl text-center text-slate-500 italic">
                 Wähle ein Unternehmen aus.
             </div>
         </div>
@@ -84,7 +83,6 @@
             if (account) {
                 document.getElementById('login-btn').classList.add('hidden');
                 document.getElementById('user-info').classList.remove('hidden');
-                document.getElementById('user-status').classList.remove('hidden');
                 document.getElementById('username').innerText = account.name;
                 loadInitialData();
             }
@@ -124,36 +122,42 @@
             const list = document.getElementById('company-list');
             list.innerHTML = items.sort((a,b) => a.fields.Title.localeCompare(b.fields.Title)).map(item => `
                 <div onclick="loadDetails('${item.id}', '${item.fields.Title.replace(/'/g, "\\'")}')" class="card-dark p-3 rounded-xl cursor-pointer hover:bg-slate-800 transition prio-${item.fields.Priorit_x00e4_t}">
-                    <p class="font-bold text-white">${item.fields.Title}</p>
+                    <p class="font-bold text-white font-sans italic">${item.fields.Title}</p>
                 </div>
             `).join('');
         }
 
         async function loadDetails(companyId, companyName) {
             const detailPane = document.getElementById('detail-view');
-            detailPane.innerHTML = `<div class="p-20 text-center text-blue-400 italic font-bold">Lade Kontakte für ${companyName}...</div>`;
+            detailPane.innerHTML = `<div class="p-20 text-center text-blue-400 italic font-bold">Synchronisiere Timeline...</div>`;
 
             try {
                 const account = msalInstance.getActiveAccount();
                 const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: account });
                 const token = tokenRes.accessToken;
 
-                // Kontakte laden
+                // 1. Kontakte laden
                 const contRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontakte/items?expand=fields`, { headers: { 'Authorization': `Bearer ${token}` } });
                 const contData = await contRes.json();
+                const contacts = contData.value.filter(c => c.fields.FirmaId == companyId || c.fields.FirmaLookupId == companyId || (c.fields.Firma && c.fields.Firma.LookupId == companyId));
+
+                // 2. History & Kontaktnotizen parallel laden
+                const [histRes, noteRes] = await Promise.all([
+                    fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/History/items?expand=fields`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontaktnotizen/items?expand=fields`, { headers: { 'Authorization': `Bearer ${token}` } })
+                ]);
+
+                const [histData, noteData] = await Promise.all([histRes.json(), noteRes.json()]);
+
+                // Filterung: Wir suchen in beiden Listen nach Einträgen, die zu unseren Kontakten gehören
+                const contactIds = contacts.map(c => c.id);
                 
-                // INCOGNITO FIX: Wir prüfen auf alle Varianten der Verknüpfung
-                const contacts = contData.value.filter(c => {
-                    const f = c.fields;
-                    return f.FirmaId == companyId || f.FirmaLookupId == companyId || (f.Firma && f.Firma.LookupId == companyId);
-                });
+                const combinedHistory = [
+                    ...(histData.value || []).filter(h => contactIds.includes(String(h.fields.ContactLookupId))),
+                    ...(noteData.value || []).filter(n => contactIds.includes(String(n.fields.KontaktpersonId)))
+                ].sort((a,b) => new Date(b.fields.Datum || b.createdDateTime) - new Date(a.fields.Datum || a.createdDateTime));
 
-                // History laden
-                const histRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/History/items?expand=fields`, { headers: { 'Authorization': `Bearer ${token}` } });
-                const histData = await histRes.json();
-                const history = histData.value.filter(h => contacts.some(c => c.id == h.fields.ContactLookupId));
-
-                renderDashboard(companyName, contacts, history);
+                renderDashboard(companyName, contacts, combinedHistory);
             } catch (err) { console.error(err); }
         }
 
@@ -164,20 +168,32 @@
                     <div class="md:col-span-12 card-dark p-6 rounded-2xl border-l-4 border-l-blue-500">
                         <h2 class="text-3xl font-black text-white italic tracking-tighter">${name}</h2>
                     </div>
+                    
                     <div class="md:col-span-5 space-y-4">
-                        <h3 class="text-[10px] font-black uppercase text-slate-500 italic">Kontakte (${contacts.length})</h3>
+                        <h3 class="text-[10px] font-black uppercase text-slate-500 italic">Ansprechpartner (${contacts.length})</h3>
                         ${contacts.map(c => `
                             <div class="card-dark p-4 rounded-xl border-b-4 border-b-blue-600/50">
-                                <p class="text-blue-400 font-black italic">${c.fields.Vorname || ''} ${c.fields.Title || ''}</p>
+                                <p class="text-blue-400 font-black italic font-sans">${c.fields.Vorname || ''} ${c.fields.Title || ''}</p>
                                 <p class="text-[10px] text-slate-500 mt-1 uppercase italic">${c.fields.Funktion || '-'}</p>
-                                <p class="text-[10px] text-slate-400 mt-2">📱 ${c.fields.Mobile || c.fields.TelefonMobil || '-'}</p>
                             </div>
                         `).join('')}
                     </div>
+
                     <div class="md:col-span-7 card-dark p-6 rounded-2xl">
-                        <h3 class="text-[10px] font-black uppercase text-slate-500 italic mb-6">History</h3>
+                        <h3 class="text-[10px] font-black uppercase text-slate-500 italic mb-6">History & Timeline</h3>
                         <div class="timeline-line space-y-6">
-                            ${history.map(h => `<div class="relative pl-6"><div class="absolute left-[-15px] top-1.5 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-slate-900 shadow-lg"></div><p class="text-[9px] text-slate-500 font-black font-sans">${new Date(h.fields.Datum).toLocaleDateString()}</p><p class="text-xs font-black text-white italic mt-0.5">${h.fields.TypEintrag || 'Eintrag'}: ${h.fields.Title || '-'}</p></div>`).join('')}
+                            ${history.map(h => {
+                                const f = h.fields;
+                                const date = new Date(f.Datum || h.createdDateTime).toLocaleDateString();
+                                return `
+                                    <div class="relative pl-6">
+                                        <div class="absolute left-[-15px] top-1.5 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-slate-900 shadow-lg"></div>
+                                        <p class="text-[9px] text-slate-500 font-black font-sans">${date}</p>
+                                        <p class="text-xs font-black text-white italic mt-0.5">${f.TypEintrag || f.Title || 'Notiz'}</p>
+                                        <p class="text-[11px] text-slate-400 italic mt-1 leading-relaxed">${f.Details_x002f_Kontext || f.Notizen || ''}</p>
+                                    </div>`;
+                            }).join('')}
+                            ${history.length === 0 ? '<p class="text-slate-600 text-xs italic">Keine Einträge gefunden.</p>' : ''}
                         </div>
                     </div>
                 </div>`;
