@@ -6,463 +6,1290 @@
   <title>CRM SPA</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script defer src="https://alcdn.msauth.net/browser/2.37.0/js/msal-browser.min.js"></script>
+  <style>
+    [hidden] { display: none !important; }
+    .scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: #475569; border-radius: 9999px; }
+    .scrollbar-thin::-webkit-scrollbar-track { background: #0f172a; }
+  </style>
 </head>
-<body class="min-h-screen bg-slate-100 text-slate-800">
-  <div class="max-w-7xl mx-auto p-6">
-    <div class="flex items-center justify-between mb-6">
-      <div>
-        <h1 class="text-3xl font-bold">CRM SPA</h1>
-        <p class="text-slate-600">GitHub Pages + Microsoft Login + SharePoint REST</p>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+  <div id="app" class="min-h-screen flex flex-col">
+    <header class="border-b border-slate-800 bg-slate-900/95 backdrop-blur sticky top-0 z-30">
+      <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div class="text-xs uppercase tracking-[0.25em] text-sky-400">CRM SPA</div>
+          <h1 class="text-2xl font-bold">Firmen, Kontakte, History & Planung</h1>
+          <div class="text-xs text-slate-400 mt-1" id="authStatus">Nicht angemeldet</div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-3 sm:items-center">
+          <input
+            id="globalSearch"
+            type="text"
+            placeholder="Suche Firma, Kontakt, Mail, Telefon, Tags..."
+            class="w-full sm:w-80 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 outline-none focus:border-sky-500"
+          />
+          <select id="abcFilter" class="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2">
+            <option value="">Alle ABC</option>
+            <option value="A">A</option>
+            <option value="B">B</option>
+            <option value="C">C</option>
+          </select>
+          <input
+            id="tagFilter"
+            type="text"
+            placeholder="Tag-Filter"
+            class="w-full sm:w-40 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 outline-none focus:border-sky-500"
+          />
+          <button id="reloadBtn" class="rounded-xl bg-sky-600 hover:bg-sky-500 px-4 py-2 font-medium hidden">
+            Neu laden
+          </button>
+          <button id="loginBtn" class="rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2 font-medium">
+            Login
+          </button>
+          <button id="logoutBtn" class="rounded-xl bg-slate-700 hover:bg-slate-600 px-4 py-2 font-medium hidden">
+            Logout
+          </button>
+        </div>
       </div>
-      <div class="flex gap-2">
-        <button id="btnLogin" class="px-4 py-2 rounded-xl bg-blue-600 text-white">Login</button>
-        <button id="btnLoadContacts" class="px-4 py-2 rounded-xl bg-emerald-600 text-white hidden">Kontakte laden</button>
-        <button id="btnLogout" class="px-4 py-2 rounded-xl bg-slate-700 text-white hidden">Logout</button>
+
+      <div class="max-w-7xl mx-auto px-4 pb-4 flex gap-2">
+        <button data-tab="dashboard" class="tabBtn rounded-xl px-4 py-2 bg-slate-800 hover:bg-slate-700">Dashboard</button>
+        <button data-tab="contacts" class="tabBtn rounded-xl px-4 py-2 bg-slate-800 hover:bg-slate-700">Kontakte</button>
+        <button data-tab="planning" class="tabBtn rounded-xl px-4 py-2 bg-slate-800 hover:bg-slate-700">Planung</button>
       </div>
-    </div>
+    </header>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <div class="bg-white rounded-2xl p-5 shadow">
-        <h2 class="text-xl font-semibold mb-4">Status</h2>
+    <main class="max-w-7xl mx-auto w-full px-4 py-6 flex-1">
+      <div id="alertBox" hidden class="mb-4 rounded-2xl border border-amber-700 bg-amber-950/60 px-4 py-3 text-amber-200"></div>
 
-        <p><b>Site:</b><br><span id="siteInfo"></span></p>
-        <p class="mt-3"><b>Benutzer:</b><br><span id="userInfo">nicht angemeldet</span></p>
-        <p class="mt-3"><b>Letzte Aktion:</b><br><span id="statusInfo">bereit</span></p>
+      <!-- DASHBOARD -->
+      <section id="tab-dashboard" class="tabPanel space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div class="rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow">
+            <div class="text-sm text-slate-400">Firmen gesamt</div>
+            <div id="metricCompanies" class="text-3xl font-bold mt-2">0</div>
+          </div>
+          <div class="rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow">
+            <div class="text-sm text-slate-400">Kontakte gesamt</div>
+            <div id="metricContacts" class="text-3xl font-bold mt-2">0</div>
+          </div>
+          <div class="rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow">
+            <div class="text-sm text-slate-400">Offene Tasks</div>
+            <div id="metricTasks" class="text-3xl font-bold mt-2">0</div>
+          </div>
+          <div class="rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow">
+            <div class="text-sm text-slate-400">Überfällig</div>
+            <div id="metricOverdue" class="text-3xl font-bold mt-2 text-rose-400">0</div>
+          </div>
+        </div>
 
-        <h3 class="mt-6 font-semibold">Debug Log</h3>
-        <div id="debug" class="mt-2 bg-slate-900 text-green-400 text-xs p-3 rounded-xl h-80 overflow-auto"></div>
-      </div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="rounded-3xl border border-slate-800 bg-slate-900 p-5 lg:col-span-1">
+            <h2 class="text-lg font-semibold mb-4">ABC-Verteilung Firmen</h2>
+            <div id="abcChart" class="space-y-4"></div>
+          </div>
 
-      <div class="lg:col-span-2 bg-white rounded-2xl p-5 shadow">
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div>
+          <div class="rounded-3xl border border-slate-800 bg-slate-900 p-5 lg:col-span-2">
             <div class="flex items-center justify-between mb-4">
-              <h2 class="text-xl font-semibold">Kontakte</h2>
-              <input id="searchInput" type="text" placeholder="Suche..." class="border px-3 py-2 rounded-lg text-sm w-40" />
+              <h2 class="text-lg font-semibold">Fällige Wiedervorlagen / Tasks</h2>
             </div>
+            <div id="dueTasksList" class="space-y-3"></div>
+          </div>
+        </div>
+      </section>
 
-            <div id="contactsMeta" class="text-sm text-slate-500 mb-3">Noch keine Daten geladen.</div>
-
-            <div class="overflow-auto border border-slate-200 rounded-xl">
-              <table class="w-full text-sm">
-                <thead class="bg-slate-100">
-                  <tr>
-                    <th class="p-2 text-left">Name</th>
-                    <th class="p-2 text-left">Firma</th>
-                  </tr>
-                </thead>
-                <tbody id="contactsTable">
-                  <tr>
-                    <td colspan="2" class="p-3 text-slate-500">Noch keine Daten geladen.</td>
-                  </tr>
-                </tbody>
-              </table>
+      <!-- CONTACTS / CRM MAIN -->
+      <section id="tab-contacts" class="tabPanel hidden">
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+          <!-- LEFT -->
+          <div class="xl:col-span-4 space-y-4">
+            <div class="rounded-3xl border border-slate-800 bg-slate-900 p-4">
+              <div class="flex items-center justify-between mb-3">
+                <h2 class="text-lg font-semibold">Firmen</h2>
+                <button id="newCompanyBtn" class="rounded-xl bg-sky-600 hover:bg-sky-500 px-3 py-2 text-sm font-medium hidden">
+                  + Firma
+                </button>
+              </div>
+              <div id="companyList" class="space-y-2 max-h-[70vh] overflow-auto scrollbar-thin"></div>
             </div>
           </div>
 
-          <div>
-            <h2 class="text-xl font-semibold mb-4">History</h2>
-            <div id="selectedContactInfo" class="text-sm text-slate-500 mb-3">
-              Kein Kontakt ausgewählt.
-            </div>
-            <div id="historyContainer" class="space-y-4">
-              <div class="text-slate-400 text-sm">Keine Einträge</div>
+          <!-- RIGHT -->
+          <div class="xl:col-span-8 space-y-4">
+            <div id="companyDetail" class="rounded-3xl border border-slate-800 bg-slate-900 p-5 min-h-[200px]">
+              <div class="text-slate-400">Bitte links eine Firma wählen.</div>
             </div>
           </div>
         </div>
+      </section>
+
+      <!-- PLANNING -->
+      <section id="tab-planning" class="tabPanel hidden">
+        <div class="rounded-3xl border border-slate-800 bg-slate-900 p-5">
+          <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+            <h2 class="text-lg font-semibold">Task-Planung</h2>
+            <button id="newTaskBtnGlobal" class="rounded-xl bg-sky-600 hover:bg-sky-500 px-4 py-2 font-medium hidden">
+              + Task
+            </button>
+          </div>
+          <div id="planningList" class="space-y-3"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- MODAL -->
+  <div id="modalBackdrop" hidden class="fixed inset-0 z-50 bg-black/60 p-4">
+    <div class="max-w-2xl mx-auto mt-10 rounded-3xl border border-slate-700 bg-slate-900 shadow-2xl">
+      <div class="flex items-center justify-between px-5 py-4 border-b border-slate-800">
+        <h3 id="modalTitle" class="text-lg font-semibold">Dialog</h3>
+        <button id="modalCloseBtn" class="text-slate-400 hover:text-white text-xl leading-none">&times;</button>
       </div>
+      <div id="modalBody" class="p-5"></div>
     </div>
   </div>
 
   <script>
+    // =========================
+    // CONFIG
+    // =========================
     const CONFIG = {
-      clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a",
       tenantId: "3643e7ab-d166-4e27-bd5f-c5bbfcd282d7",
-      siteUrl: "https://bbzsg.sharepoint.com/sites/CRM",
-      scopes: ["https://bbzsg.sharepoint.com/AllSites.Read"],
+      clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a",
+      sharePointSiteUrl: "https://bbzsg.sharepoint.com/sites/CRM",
+      sharePointHost: "https://bbzsg.sharepoint.com",
+      useSharePoint: true,
 
       lists: {
+        companies: "Companies",
         contacts: "Kontakte",
         history: "History",
         tasks: "Tasks"
       },
 
       fields: {
+        companies: {
+          title: "Title",
+          abc: "Priority",
+          tags: "Tags"
+        },
         contacts: {
-          id: "ID",
-          name: ["Title", "Name"],
-          company: ["Firma"],
-          email: ["E_x002d_Mail", "EMail", "Email"],
-          phone: ["Telefon", "Phone", "Telephone"],
-          abc: ["ABC_x002d_Segment", "ABCSegment", "ABC"],
-          tags: ["Tags"]
+          title: "Title",
+          companyLookup: "CompanyLookup",
+          email: "Email",
+          phone: "Phone"
         },
         history: {
-          id: "ID",
           contactId: "ContactID",
+          contactLookup: "ContactLookup",
           date: "Datum",
           type: "TypEintrag",
           notes: "Notizen",
-          projectRef: "Projektbezug",
-          contactLookup: "ContactLookup"
+          project: "Projektbezug"
+        },
+        tasks: {
+          title: "Title",
+          contactLookup: "ContactLookup",
+          dueDate: "DueDate",
+          status: "Status"
         }
       }
     };
 
-    let msalInstance = null;
-    let activeAccount = null;
-    let contactsCache = [];
+    // =========================
+    // STATE
+    // =========================
+    const state = {
+      tab: "dashboard",
+      search: "",
+      abcFilter: "",
+      tagFilter: "",
+      selectedCompanyId: null,
 
-    const $ = (id) => document.getElementById(id);
+      companies: [],
+      contacts: [],
+      history: [],
+      tasks: [],
 
-    function escapeHtml(value) {
-      return String(value ?? "")
+      loading: false,
+      activeAccount: null,
+      msal: null
+    };
+
+    // =========================
+    // HELPERS
+    // =========================
+    const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
+    function esc(v) {
+      return String(v ?? "")
         .replaceAll("&", "&amp;")
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;");
+        .replaceAll("'", "&#039;");
     }
 
-    function log(message, data = null) {
-      const time = new Date().toLocaleTimeString("de-CH");
-      let line = `[${time}] ${escapeHtml(message)}`;
-      if (data !== null) {
-        try {
-          line += `<br>${escapeHtml(JSON.stringify(data, null, 2))}`;
-        } catch {
-          line += `<br>${escapeHtml(String(data))}`;
-        }
+    function uid() {
+      return Math.random().toString(36).slice(2, 9);
+    }
+
+    function todayIsoDate() {
+      const d = new Date();
+      d.setHours(0,0,0,0);
+      return d.toISOString();
+    }
+
+    function formatDateTime(v) {
+      if (!v) return "-";
+      const d = new Date(v);
+      if (Number.isNaN(d.getTime())) return v;
+      return d.toLocaleString("de-CH");
+    }
+
+    function formatDate(v) {
+      if (!v) return "-";
+      const d = new Date(v);
+      if (Number.isNaN(d.getTime())) return v;
+      return d.toLocaleDateString("de-CH");
+    }
+
+    function normalizeText(v) {
+      return String(v ?? "").toLowerCase().trim();
+    }
+
+    function asArrayTags(value) {
+      if (!value) return [];
+      if (Array.isArray(value)) return value.filter(Boolean);
+      if (value?.results && Array.isArray(value.results)) return value.results.filter(Boolean);
+      return String(value)
+        .split(",")
+        .map(s => s.trim())
+        .filter(Boolean);
+    }
+
+    function showAlert(msg, kind = "warn") {
+      const box = $("#alertBox");
+      box.hidden = false;
+      box.textContent = msg;
+      box.className = "mb-4 rounded-2xl px-4 py-3";
+      if (kind === "error") {
+        box.classList.add("border", "border-rose-700", "bg-rose-950/60", "text-rose-200");
+      } else if (kind === "success") {
+        box.classList.add("border", "border-emerald-700", "bg-emerald-950/60", "text-emerald-200");
+      } else {
+        box.classList.add("border", "border-amber-700", "bg-amber-950/60", "text-amber-200");
       }
-      $("debug").innerHTML += line + "<br><br>";
-      $("debug").scrollTop = $("debug").scrollHeight;
-      console.log(message, data);
     }
 
-    function setStatus(text) {
-      $("statusInfo").innerText = text;
+    function clearAlert() {
+      $("#alertBox").hidden = true;
+      $("#alertBox").textContent = "";
     }
 
-    function getFirst(item, names) {
-      const arr = Array.isArray(names) ? names : [names];
-      for (const name of arr) {
-        const value = item?.[name];
-        if (value !== undefined && value !== null && value !== "") return value;
-      }
-      return "";
+    function debugLog(...args) {
+      console.log("[CRM]", ...args);
     }
 
-    function normalizeTags(value) {
-      if (Array.isArray(value)) return value.join(", ");
-      if (typeof value === "string") return value;
-      if (value && Array.isArray(value.results)) return value.results.join(", ");
-      return "";
+    function getCompanyById(id) {
+      return state.companies.find(x => Number(x.ID) === Number(id)) || null;
     }
 
-    function refreshAuthUi() {
-      const loggedIn = !!activeAccount;
-      $("btnLogin").classList.toggle("hidden", loggedIn);
-      $("btnLoadContacts").classList.toggle("hidden", !loggedIn);
-      $("btnLogout").classList.toggle("hidden", !loggedIn);
-      $("userInfo").innerText = loggedIn ? activeAccount.username : "nicht angemeldet";
+    function getContactById(id) {
+      return state.contacts.find(x => Number(x.ID) === Number(id)) || null;
     }
 
-    async function initMsal() {
+    function getContactsForCompany(companyId) {
+      return state.contacts.filter(c => Number(c._companyId) === Number(companyId));
+    }
+
+    function getHistoryForContact(contactId) {
+      return state.history
+        .filter(h => Number(h._contactId) === Number(contactId))
+        .sort((a, b) => new Date(b._date) - new Date(a._date));
+    }
+
+    function getTasksForContact(contactId) {
+      return state.tasks
+        .filter(t => Number(t._contactId) === Number(contactId))
+        .sort((a, b) => new Date(a._dueDate) - new Date(b._dueDate));
+    }
+
+    function getHistoryForCompany(companyId) {
+      const contactIds = new Set(getContactsForCompany(companyId).map(c => Number(c.ID)));
+      return state.history
+        .filter(h => contactIds.has(Number(h._contactId)))
+        .sort((a, b) => new Date(b._date) - new Date(a._date));
+    }
+
+    function getTasksForCompany(companyId) {
+      const contactIds = new Set(getContactsForCompany(companyId).map(c => Number(c.ID)));
+      return state.tasks
+        .filter(t => contactIds.has(Number(t._contactId)))
+        .sort((a, b) => new Date(a._dueDate) - new Date(b._dueDate));
+    }
+
+    function isTaskOpen(task) {
+      return !["Erledigt", "Done", "Closed", "Abgeschlossen"].includes(String(task._status || "").trim());
+    }
+
+    function isTaskOverdue(task) {
+      if (!task._dueDate || !isTaskOpen(task)) return false;
+      const due = new Date(task._dueDate);
+      due.setHours(0,0,0,0);
+      const now = new Date();
+      now.setHours(0,0,0,0);
+      return due < now;
+    }
+
+    function setAuthUi() {
+      const loggedIn = !!state.activeAccount;
+      $("#loginBtn").hidden = loggedIn;
+      $("#logoutBtn").hidden = !loggedIn;
+      $("#reloadBtn").hidden = !loggedIn;
+      $("#newCompanyBtn").hidden = !loggedIn;
+      $("#newTaskBtnGlobal").hidden = !loggedIn;
+      $("#authStatus").textContent = loggedIn
+        ? `Angemeldet als ${state.activeAccount.username || state.activeAccount.name || "-"}`
+        : "Nicht angemeldet";
+    }
+
+    // =========================
+    // MSAL
+    // =========================
+    async function initAuth() {
       if (typeof msal === "undefined") {
-        throw new Error("MSAL Library wurde nicht geladen.");
+        throw new Error("MSAL konnte nicht geladen werden.");
       }
 
-      msalInstance = new msal.PublicClientApplication({
+      state.msal = new msal.PublicClientApplication({
         auth: {
           clientId: CONFIG.clientId,
-          authority: `https://login.microsoftonline.com/${CONFIG.tenantId}`
+          authority: `https://login.microsoftonline.com/${CONFIG.tenantId}`,
+          redirectUri: window.location.origin + window.location.pathname,
+          postLogoutRedirectUri: window.location.origin + window.location.pathname,
+          navigateToLoginRequestUrl: false
         },
         cache: {
           cacheLocation: "localStorage"
         }
       });
+
+      const result = await state.msal.handleRedirectPromise();
+      if (result?.account) {
+        state.activeAccount = result.account;
+        state.msal.setActiveAccount(result.account);
+      } else {
+        const accounts = state.msal.getAllAccounts();
+        if (accounts.length) {
+          state.activeAccount = accounts[0];
+          state.msal.setActiveAccount(accounts[0]);
+        }
+      }
+
+      setAuthUi();
     }
 
     async function login() {
       try {
-        setStatus("Login läuft...");
-        const response = await msalInstance.loginPopup({
-          scopes: CONFIG.scopes
+        clearAlert();
+        const result = await state.msal.loginPopup({
+          scopes: ["openid", "profile", "offline_access"]
         });
-
-        activeAccount = response.account;
-        msalInstance.setActiveAccount(activeAccount);
-
-        refreshAuthUi();
-        log("Login erfolgreich", { user: activeAccount.username });
-        setStatus("eingeloggt");
-      } catch (error) {
-        log("Login Fehler", { message: error.message });
-        setStatus("Fehler");
+        state.activeAccount = result.account;
+        state.msal.setActiveAccount(result.account);
+        setAuthUi();
+        showAlert("Login erfolgreich.", "success");
+        await loadAllData();
+      } catch (err) {
+        console.error(err);
+        showAlert("Login fehlgeschlagen.", "error");
       }
     }
 
     async function logout() {
       try {
-        await msalInstance.logoutPopup({
-          account: activeAccount
+        await state.msal.logoutPopup({
+          account: state.activeAccount
         });
-      } catch (error) {
-        log("Logout Fehler", { message: error.message });
+      } catch (err) {
+        console.error(err);
       } finally {
-        activeAccount = null;
-        contactsCache = [];
-        renderContacts([]);
-        $("historyContainer").innerHTML = `<div class="text-slate-400 text-sm">Keine Einträge</div>`;
-        $("selectedContactInfo").innerText = "Kein Kontakt ausgewählt.";
-        refreshAuthUi();
-        setStatus("abgemeldet");
+        state.activeAccount = null;
+        setAuthUi();
       }
     }
 
-    async function getToken() {
-      try {
-        const response = await msalInstance.acquireTokenSilent({
-          scopes: CONFIG.scopes,
-          account: activeAccount
-        });
-        return response.accessToken;
-      } catch {
-        const response = await msalInstance.acquireTokenPopup({
-          scopes: CONFIG.scopes,
-          account: activeAccount
-        });
-        return response.accessToken;
-      }
-    }
-
-    async function spGet(relativeUrl) {
-      const token = await getToken();
-
-      const response = await fetch(`${CONFIG.siteUrl}${relativeUrl}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json;odata=nometadata"
-        }
-      });
-
-      const text = await response.text();
-      let data = null;
-
-      try {
-        data = text ? JSON.parse(text) : null;
-      } catch {
-        data = { rawText: text };
+    async function getAccessToken() {
+      if (!state.activeAccount) {
+        throw new Error("Nicht angemeldet.");
       }
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${JSON.stringify(data)}`);
-      }
-
-      return data;
-    }
-
-    function mapContact(item) {
-      const f = CONFIG.fields.contacts;
-      return {
-        id: getFirst(item, f.id),
-        name: getFirst(item, f.name),
-        company: getFirst(item, f.company),
-        email: getFirst(item, f.email),
-        phone: getFirst(item, f.phone),
-        abc: getFirst(item, f.abc),
-        tags: normalizeTags(getFirst(item, f.tags)),
-        raw: item
+      const request = {
+        account: state.activeAccount,
+        scopes: [`${CONFIG.sharePointHost}/AllSites.Read`]
       };
+
+      try {
+        const response = await state.msal.acquireTokenSilent(request);
+        return response.accessToken;
+      } catch {
+        const response = await state.msal.acquireTokenPopup(request);
+        return response.accessToken;
+      }
     }
 
-    function renderContacts(items) {
-      const tbody = $("contactsTable");
-      tbody.innerHTML = "";
+    // =========================
+    // SHAREPOINT REST CLIENT
+    // =========================
+    const SP = {
+      async request(path, options = {}) {
+        const token = await getAccessToken();
+        const url = `${CONFIG.sharePointSiteUrl}${path}`;
+        const headers = {
+          "Accept": "application/json;odata=nometadata",
+          "Authorization": `Bearer ${token}`,
+          ...(options.headers || {})
+        };
 
-      if (!items.length) {
-        tbody.innerHTML = `
-          <tr>
-            <td colspan="2" class="p-3 text-slate-500">Keine Kontakte gefunden.</td>
-          </tr>
-        `;
-        return;
-      }
-
-      for (const item of items) {
-        const c = mapContact(item);
-
-        tbody.innerHTML += `
-          <tr class="border-t border-slate-200 cursor-pointer hover:bg-slate-50" data-contact-id="${escapeHtml(c.id)}">
-            <td class="p-2">
-              <div class="font-medium">${escapeHtml(c.name)}</div>
-              <div class="text-xs text-slate-500">${escapeHtml(c.email)}</div>
-            </td>
-            <td class="p-2">
-              <div>${escapeHtml(c.company)}</div>
-              <div class="text-xs text-slate-500">${escapeHtml(c.phone)}</div>
-            </td>
-          </tr>
-        `;
-      }
-
-      [...tbody.querySelectorAll("tr[data-contact-id]")].forEach((row) => {
-        row.addEventListener("click", () => {
-          const id = row.getAttribute("data-contact-id");
-          const source = items.find((x) => String(getFirst(x, CONFIG.fields.contacts.id)) === String(id));
-          const c = source ? mapContact(source) : null;
-          loadHistory(id, c);
+        const res = await fetch(url, {
+          ...options,
+          headers
         });
+
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          throw new Error(`REST ${res.status}: ${text || res.statusText}`);
+        }
+
+        if (res.status === 204) return null;
+        const contentType = res.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) return res.json();
+        return res.text();
+      },
+
+      async getListEntityType(listTitle) {
+        const data = await this.request(`/_api/web/lists/getbytitle('${encodeURIComponent(listTitle)}')?$select=ListItemEntityTypeFullName`);
+        return data.ListItemEntityTypeFullName;
+      },
+
+      async getItems(listTitle, select, expand = "", filter = "", orderby = "", top = 5000) {
+        let path = `/_api/web/lists/getbytitle('${encodeURIComponent(listTitle)}')/items?$top=${top}`;
+        if (select) path += `&$select=${encodeURIComponent(select)}`;
+        if (expand) path += `&$expand=${encodeURIComponent(expand)}`;
+        if (filter) path += `&$filter=${encodeURIComponent(filter)}`;
+        if (orderby) path += `&$orderby=${encodeURIComponent(orderby)}`;
+
+        const data = await this.request(path);
+        return data.value || [];
+      },
+
+      async createItem(listTitle, payload) {
+        const entityType = await this.getListEntityType(listTitle);
+
+        return this.request(`/_api/web/lists/getbytitle('${encodeURIComponent(listTitle)}')/items`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json;odata=verbose"
+          },
+          body: JSON.stringify({
+            __metadata: { type: entityType },
+            ...payload
+          })
+        });
+      },
+
+      async updateItem(listTitle, itemId, payload) {
+        const entityType = await this.getListEntityType(listTitle);
+
+        return this.request(`/_api/web/lists/getbytitle('${encodeURIComponent(listTitle)}')/items(${itemId})`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json;odata=verbose",
+            "IF-MATCH": "*",
+            "X-HTTP-Method": "MERGE"
+          },
+          body: JSON.stringify({
+            __metadata: { type: entityType },
+            ...payload
+          })
+        });
+      }
+    };
+
+    // =========================
+    // DATA LOAD / MAP
+    // =========================
+    async function loadAllData() {
+      if (!state.activeAccount) return;
+
+      clearAlert();
+      state.loading = true;
+
+      try {
+        const f = CONFIG.fields;
+
+        const companySelect = [
+          "ID",
+          f.companies.title,
+          f.companies.abc,
+          f.companies.tags
+        ].join(",");
+
+        const contactSelect = [
+          "ID",
+          f.contacts.title,
+          f.contacts.email,
+          f.contacts.phone,
+          `${f.contacts.companyLookup}/Id`,
+          `${f.contacts.companyLookup}/Title`
+        ].join(",");
+
+        const historySelect = [
+          "ID",
+          f.history.contactId,
+          f.history.date,
+          f.history.type,
+          f.history.notes,
+          f.history.project,
+          `${f.history.contactLookup}/Id`,
+          `${f.history.contactLookup}/Title`
+        ].join(",");
+
+        const taskSelect = [
+          "ID",
+          f.tasks.title,
+          f.tasks.dueDate,
+          f.tasks.status,
+          `${f.tasks.contactLookup}/Id`,
+          `${f.tasks.contactLookup}/Title`
+        ].join(",");
+
+        debugLog("Loading lists...", CONFIG.lists);
+
+        const [companies, contacts, history, tasks] = await Promise.all([
+          SP.getItems(CONFIG.lists.companies, companySelect),
+          SP.getItems(CONFIG.lists.contacts, contactSelect, f.contacts.companyLookup),
+          SP.getItems(CONFIG.lists.history, historySelect, f.history.contactLookup, "", `${f.history.date} desc`),
+          SP.getItems(CONFIG.lists.tasks, taskSelect, f.tasks.contactLookup, "", `${f.tasks.dueDate} asc`)
+        ]);
+
+        state.companies = companies.map(item => ({
+          ...item,
+          _title: item[f.companies.title],
+          _abc: item[f.companies.abc] || "",
+          _tags: asArrayTags(item[f.companies.tags])
+        }));
+
+        state.contacts = contacts.map(item => ({
+          ...item,
+          _title: item[f.contacts.title],
+          _email: item[f.contacts.email] || "",
+          _phone: item[f.contacts.phone] || "",
+          _companyId: item[f.contacts.companyLookup]?.Id || null,
+          _companyTitle: item[f.contacts.companyLookup]?.Title || ""
+        }));
+
+        state.history = history.map(item => ({
+          ...item,
+          _date: item[f.history.date],
+          _type: item[f.history.type],
+          _notes: item[f.history.notes] || "",
+          _project: !!item[f.history.project],
+          _contactId: item[f.history.contactId] || item[f.history.contactLookup]?.Id || null,
+          _contactTitle: item[f.history.contactLookup]?.Title || ""
+        }));
+
+        state.tasks = tasks.map(item => ({
+          ...item,
+          _title: item[f.tasks.title],
+          _dueDate: item[f.tasks.dueDate],
+          _status: item[f.tasks.status] || "",
+          _contactId: item[f.tasks.contactLookup]?.Id || null,
+          _contactTitle: item[f.tasks.contactLookup]?.Title || ""
+        }));
+
+        if (!state.selectedCompanyId && state.companies.length) {
+          state.selectedCompanyId = state.companies[0].ID;
+        }
+
+        renderAll();
+      } catch (err) {
+        console.error(err);
+        showAlert(`Daten konnten nicht geladen werden. ${err.message}`, "error");
+      } finally {
+        state.loading = false;
+      }
+    }
+
+    // =========================
+    // FILTERED DATA
+    // =========================
+    function getFilteredCompanies() {
+      const q = normalizeText(state.search);
+      const abc = normalizeText(state.abcFilter);
+      const tag = normalizeText(state.tagFilter);
+
+      return state.companies.filter(company => {
+        const contacts = getContactsForCompany(company.ID);
+        const haystack = [
+          company._title,
+          company._abc,
+          (company._tags || []).join(" "),
+          ...contacts.flatMap(c => [c._title, c._email, c._phone])
+        ].join(" ").toLowerCase();
+
+        const matchesSearch = !q || haystack.includes(q);
+        const matchesAbc = !abc || normalizeText(company._abc) === abc;
+        const matchesTag = !tag || (company._tags || []).some(t => normalizeText(t).includes(tag));
+
+        return matchesSearch && matchesAbc && matchesTag;
       });
     }
 
-    function formatDate(value) {
-      if (!value) return "";
-      const d = new Date(value);
-      if (Number.isNaN(d.getTime())) return String(value);
-      return d.toLocaleString("de-CH");
+    // =========================
+    // RENDER
+    // =========================
+    function renderAll() {
+      renderTabs();
+      renderDashboard();
+      renderCompanyList();
+      renderCompanyDetail();
+      renderPlanning();
     }
 
-    function renderHistory(items) {
-      const container = $("historyContainer");
-      container.innerHTML = "";
+    function renderTabs() {
+      $$(".tabPanel").forEach(p => p.hidden = true);
+      $(`#tab-${state.tab}`).hidden = false;
 
-      if (!items.length) {
-        container.innerHTML = `<div class="text-slate-400 text-sm">Keine Einträge</div>`;
-        return;
-      }
+      $$(".tabBtn").forEach(btn => {
+        const active = btn.dataset.tab === state.tab;
+        btn.className = `tabBtn rounded-xl px-4 py-2 ${active ? "bg-sky-600 text-white" : "bg-slate-800 hover:bg-slate-700"}`;
+      });
+    }
 
-      const f = CONFIG.fields.history;
+    function renderDashboard() {
+      const companies = state.companies;
+      const contacts = state.contacts;
+      const openTasks = state.tasks.filter(isTaskOpen);
+      const overdueTasks = state.tasks.filter(isTaskOverdue);
 
-      const projectItems = items.filter(item => !!item[f.projectRef]);
-      const generalItems = items.filter(item => !item[f.projectRef]);
+      $("#metricCompanies").textContent = companies.length;
+      $("#metricContacts").textContent = contacts.length;
+      $("#metricTasks").textContent = openTasks.length;
+      $("#metricOverdue").textContent = overdueTasks.length;
 
-      function block(title, arr) {
-        if (!arr.length) return "";
+      const counts = {
+        A: companies.filter(c => String(c._abc).trim().toUpperCase() === "A").length,
+        B: companies.filter(c => String(c._abc).trim().toUpperCase() === "B").length,
+        C: companies.filter(c => String(c._abc).trim().toUpperCase() === "C").length
+      };
+
+      const total = Math.max(companies.length, 1);
+      $("#abcChart").innerHTML = ["A","B","C"].map(letter => {
+        const value = counts[letter];
+        const pct = Math.round((value / total) * 100);
+        const barClass = letter === "A" ? "bg-emerald-500" : letter === "B" ? "bg-amber-500" : "bg-slate-500";
 
         return `
-          <div class="mb-5">
-            <h3 class="font-semibold mb-2">${escapeHtml(title)}</h3>
-            <div class="space-y-2">
-              ${arr.map(item => `
-                <div class="border rounded-xl p-3 bg-slate-50">
-                  <div class="text-xs text-slate-500 mb-1">${escapeHtml(formatDate(item[f.date]))}</div>
-                  <div class="font-medium mb-1">${escapeHtml(item[f.type] ?? "")}</div>
-                  <div class="text-sm whitespace-pre-wrap">${escapeHtml(item[f.notes] ?? "")}</div>
-                </div>
-              `).join("")}
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <span class="font-medium">${letter}-Firmen</span>
+              <span class="text-slate-400 text-sm">${value} (${pct}%)</span>
+            </div>
+            <div class="h-3 rounded-full bg-slate-800 overflow-hidden">
+              <div class="h-full ${barClass}" style="width:${pct}%"></div>
             </div>
           </div>
         `;
-      }
+      }).join("");
 
-      container.innerHTML =
-        block("📁 Projektbezogen", projectItems) +
-        block("📝 Allgemein", generalItems);
+      const dueTasks = [...state.tasks]
+        .filter(t => isTaskOpen(t))
+        .sort((a, b) => new Date(a._dueDate || "9999-12-31") - new Date(b._dueDate || "9999-12-31"))
+        .slice(0, 12);
+
+      $("#dueTasksList").innerHTML = dueTasks.length ? dueTasks.map(task => {
+        const contact = getContactById(task._contactId);
+        const company = contact ? getCompanyById(contact._companyId) : null;
+        return `
+          <div class="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+              <div>
+                <div class="font-semibold">${esc(task._title || "(ohne Titel)")}</div>
+                <div class="text-sm text-slate-400">
+                  ${esc(company?._title || "-")} · ${esc(contact?._title || "-")}
+                </div>
+              </div>
+              <div class="text-sm ${isTaskOverdue(task) ? "text-rose-400" : "text-slate-300"}">
+                ${formatDate(task._dueDate)} · ${esc(task._status || "-")}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("") : `<div class="text-slate-400">Keine offenen Tasks.</div>`;
     }
 
-    async function loadContacts() {
-      try {
-        setStatus("Kontakte laden...");
-        log("Liste prüfen", {
-          listName: CONFIG.lists.contacts,
-          siteUrl: CONFIG.siteUrl
-        });
+    function renderCompanyList() {
+      const companies = getFilteredCompanies();
 
-        const listName = encodeURIComponent(CONFIG.lists.contacts);
-        const data = await spGet(`/_api/web/lists/getbytitle('${listName}')/items?$top=200&$orderby=ID desc`);
-        const items = data?.value || data?.d?.results || [];
+      $("#companyList").innerHTML = companies.length ? companies.map(company => {
+        const contacts = getContactsForCompany(company.ID);
+        const selected = Number(state.selectedCompanyId) === Number(company.ID);
 
-        contactsCache = items;
-        renderContacts(items);
-        $("contactsMeta").innerText = `${items.length} Kontakte geladen`;
-
-        log("Kontakte geladen", { count: items.length });
-        setStatus("fertig");
-      } catch (error) {
-        log("Fehler Kontakte", { message: error.message });
-        setStatus("Fehler");
-      }
+        return `
+          <button
+            class="w-full text-left rounded-2xl border px-4 py-3 transition ${selected ? "border-sky-500 bg-sky-950/40" : "border-slate-800 bg-slate-950/40 hover:bg-slate-800/70"}"
+            onclick="selectCompany(${company.ID})"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <div class="font-semibold">${esc(company._title)}</div>
+                <div class="text-sm text-slate-400">${contacts.length} Kontakte</div>
+              </div>
+              <div class="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold ${
+                company._abc === "A" ? "bg-emerald-950 text-emerald-300" :
+                company._abc === "B" ? "bg-amber-950 text-amber-300" :
+                "bg-slate-800 text-slate-300"
+              }">
+                ${esc(company._abc || "-")}
+              </div>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-1">
+              ${(company._tags || []).map(tag => `
+                <span class="rounded-full bg-slate-800 px-2 py-1 text-xs text-slate-300">${esc(tag)}</span>
+              `).join("")}
+            </div>
+          </button>
+        `;
+      }).join("") : `<div class="text-slate-400">Keine Firmen gefunden.</div>`;
     }
 
-    async function loadHistory(contactId, contact = null) {
-      try {
-        setStatus("History laden...");
-        const listName = encodeURIComponent(CONFIG.lists.history);
-        const f = CONFIG.fields.history;
-
-        if (contact) {
-          $("selectedContactInfo").innerText =
-            `${contact.name || "(ohne Name)"}${contact.company ? " · " + contact.company : ""}`;
-        } else {
-          $("selectedContactInfo").innerText = `Kontakt-ID: ${contactId}`;
-        }
-
-        log("History laden", {
-          listName: CONFIG.lists.history,
-          contactId
-        });
-
-        const data = await spGet(
-          `/_api/web/lists/getbytitle('${listName}')/items?$filter=${f.contactId} eq ${contactId}&$orderby=${f.date} desc&$top=200`
-        );
-
-        const items = data?.value || data?.d?.results || [];
-        renderHistory(items);
-
-        log("History geladen", { count: items.length, contactId });
-        setStatus("fertig");
-      } catch (error) {
-        log("Fehler History", { message: error.message });
-        $("historyContainer").innerHTML = `<div class="text-red-600 text-sm">History konnte nicht geladen werden.</div>`;
-        setStatus("Fehler");
-      }
-    }
-
-    function filterContacts(term) {
-      const q = term.trim().toLowerCase();
-
-      if (!q) {
-        renderContacts(contactsCache);
-        $("contactsMeta").innerText = `${contactsCache.length} Kontakte geladen`;
+    function renderCompanyDetail() {
+      const company = getCompanyById(state.selectedCompanyId);
+      if (!company) {
+        $("#companyDetail").innerHTML = `<div class="text-slate-400">Bitte links eine Firma wählen.</div>`;
         return;
       }
 
-      const filtered = contactsCache.filter((item) => {
-        const c = mapContact(item);
-        return [
-          c.id,
-          c.name,
-          c.company,
-          c.email,
-          c.phone,
-          c.abc,
-          c.tags
-        ].join(" ").toLowerCase().includes(q);
-      });
+      const contacts = getContactsForCompany(company.ID);
+      const history = getHistoryForCompany(company.ID);
+      const tasks = getTasksForCompany(company.ID);
 
-      renderContacts(filtered);
-      $("contactsMeta").innerText = `${filtered.length} / ${contactsCache.length} Kontakte sichtbar`;
+      $("#companyDetail").innerHTML = `
+        <div class="space-y-6">
+          <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+            <div>
+              <div class="flex items-center gap-3 flex-wrap">
+                <h2 class="text-2xl font-bold">${esc(company._title)}</h2>
+                <span class="rounded-lg px-2 py-1 text-xs font-semibold ${
+                  company._abc === "A" ? "bg-emerald-950 text-emerald-300" :
+                  company._abc === "B" ? "bg-amber-950 text-amber-300" :
+                  "bg-slate-800 text-slate-300"
+                }">${esc(company._abc || "-")}</span>
+              </div>
+              <div class="mt-2 flex flex-wrap gap-2">
+                ${(company._tags || []).map(tag => `<span class="rounded-full bg-slate-800 px-2 py-1 text-xs">${esc(tag)}</span>`).join("")}
+              </div>
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+              <button onclick="openCompanyModal(${company.ID})" class="rounded-xl bg-slate-800 hover:bg-slate-700 px-4 py-2 text-sm">Firma bearbeiten</button>
+              <button onclick="openContactModal(null, ${company.ID})" class="rounded-xl bg-sky-600 hover:bg-sky-500 px-4 py-2 text-sm font-medium">+ Kontakt</button>
+              <button onclick="openTaskModal(null, null, ${company.ID})" class="rounded-xl bg-violet-600 hover:bg-violet-500 px-4 py-2 text-sm font-medium">+ Task</button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 2xl:grid-cols-12 gap-6">
+            <div class="2xl:col-span-5 rounded-3xl border border-slate-800 bg-slate-950/50 p-4">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold">Kontakte der Firma</h3>
+              </div>
+              <div class="space-y-3">
+                ${contacts.length ? contacts.map(contact => `
+                  <div class="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+                    <div class="flex items-start justify-between gap-4">
+                      <div>
+                        <div class="font-semibold">${esc(contact._title)}</div>
+                        <div class="text-sm text-slate-400">${esc(contact._email || "-")}</div>
+                        <div class="text-sm text-slate-400">${esc(contact._phone || "-")}</div>
+                      </div>
+                      <div class="flex flex-wrap gap-2 justify-end">
+                        <button onclick="openContactModal(${contact.ID})" class="rounded-lg bg-slate-800 hover:bg-slate-700 px-3 py-2 text-xs">Bearbeiten</button>
+                        <button onclick="quickAddHistory('Call', ${contact.ID})" class="rounded-lg bg-sky-600 hover:bg-sky-500 px-3 py-2 text-xs">📞 Call</button>
+                        <button onclick="quickAddHistory('Meeting', ${contact.ID})" class="rounded-lg bg-emerald-600 hover:bg-emerald-500 px-3 py-2 text-xs">📅 Meeting</button>
+                        <button onclick="quickAddHistory('Mail', ${contact.ID})" class="rounded-lg bg-purple-600 hover:bg-purple-500 px-3 py-2 text-xs">✉️ Mail</button>
+                      </div>
+                    </div>
+
+                    <div class="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
+                      <div class="rounded-xl bg-slate-950/70 p-3">
+                        <div class="text-xs uppercase tracking-wide text-slate-400 mb-2">Allgemeine History</div>
+                        ${renderTimeline(getHistoryForContact(contact.ID).filter(x => !x._project).slice(0, 5))}
+                      </div>
+                      <div class="rounded-xl bg-slate-950/70 p-3">
+                        <div class="text-xs uppercase tracking-wide text-slate-400 mb-2">Projektbezogene History</div>
+                        ${renderTimeline(getHistoryForContact(contact.ID).filter(x => x._project).slice(0, 5))}
+                      </div>
+                    </div>
+                  </div>
+                `).join("") : `<div class="text-slate-400">Keine Kontakte vorhanden.</div>`}
+              </div>
+            </div>
+
+            <div class="2xl:col-span-7 space-y-6">
+              <div class="rounded-3xl border border-slate-800 bg-slate-950/50 p-4">
+                <div class="flex items-center justify-between mb-4">
+                  <h3 class="text-lg font-semibold">Timeline der Firma</h3>
+                </div>
+                ${renderTimeline(history.slice(0, 20), true)}
+              </div>
+
+              <div class="rounded-3xl border border-slate-800 bg-slate-950/50 p-4">
+                <div class="flex items-center justify-between mb-4">
+                  <h3 class="text-lg font-semibold">Tasks der Firma</h3>
+                </div>
+                ${renderTaskList(tasks)}
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
     }
 
-    window.addEventListener("load", async () => {
+    function renderTimeline(items, showContact = false) {
+      if (!items.length) return `<div class="text-slate-500 text-sm">Keine Einträge.</div>`;
+
+      return items.map(item => {
+        const border = item._project ? "border-sky-500" : "border-slate-600";
+        const labelColor = item._project ? "text-sky-300" : "text-slate-400";
+        const contact = getContactById(item._contactId);
+
+        return `
+          <div class="border-l-4 ${border} pl-4 py-2 mb-3 bg-slate-900 rounded-r-2xl">
+            <div class="text-xs text-slate-400">${formatDateTime(item._date)}</div>
+            <div class="mt-1 flex items-center gap-2 flex-wrap">
+              <span class="font-semibold">${esc(item._type || "-")}</span>
+              <span class="text-xs ${labelColor}">${item._project ? "Projektbezogen" : "Allgemein"}</span>
+              ${showContact && contact ? `<span class="text-xs text-slate-500">· ${esc(contact._title)}</span>` : ""}
+            </div>
+            <div class="mt-1 text-sm text-slate-200 whitespace-pre-wrap">${esc(item._notes || "-")}</div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function renderTaskList(items) {
+      if (!items.length) return `<div class="text-slate-500 text-sm">Keine Tasks vorhanden.</div>`;
+
+      return `
+        <div class="space-y-3">
+          ${items.map(task => {
+            const contact = getContactById(task._contactId);
+            return `
+              <div class="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                  <div>
+                    <div class="font-semibold">${esc(task._title || "(ohne Titel)")}</div>
+                    <div class="text-sm text-slate-400">${esc(contact?._title || "-")}</div>
+                  </div>
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-sm ${isTaskOverdue(task) ? "text-rose-400" : "text-slate-300"}">
+                      ${formatDate(task._dueDate)}
+                    </span>
+                    <span class="rounded-full bg-slate-800 px-2 py-1 text-xs">${esc(task._status || "-")}</span>
+                    <button onclick="openTaskModal(${task.ID})" class="rounded-lg bg-slate-800 hover:bg-slate-700 px-3 py-2 text-xs">Bearbeiten</button>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      `;
+    }
+
+    function renderPlanning() {
+      const items = [...state.tasks]
+        .sort((a, b) => new Date(a._dueDate || "9999-12-31") - new Date(b._dueDate || "9999-12-31"));
+
+      $("#planningList").innerHTML = items.length ? items.map(task => {
+        const contact = getContactById(task._contactId);
+        const company = contact ? getCompanyById(contact._companyId) : null;
+
+        return `
+          <div class="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+              <div>
+                <div class="font-semibold">${esc(task._title || "(ohne Titel)")}</div>
+                <div class="text-sm text-slate-400">
+                  ${esc(company?._title || "-")} · ${esc(contact?._title || "-")}
+                </div>
+              </div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-sm ${isTaskOverdue(task) ? "text-rose-400" : "text-slate-300"}">${formatDate(task._dueDate)}</span>
+                <span class="rounded-full bg-slate-800 px-2 py-1 text-xs">${esc(task._status || "-")}</span>
+                <button onclick="openTaskModal(${task.ID})" class="rounded-lg bg-slate-800 hover:bg-slate-700 px-3 py-2 text-xs">Bearbeiten</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("") : `<div class="text-slate-400">Keine Tasks vorhanden.</div>`;
+    }
+
+    // =========================
+    // MODALS
+    // =========================
+    function openModal(title, bodyHtml) {
+      $("#modalTitle").textContent = title;
+      $("#modalBody").innerHTML = bodyHtml;
+      $("#modalBackdrop").hidden = false;
+    }
+
+    function closeModal() {
+      $("#modalBackdrop").hidden = true;
+      $("#modalBody").innerHTML = "";
+    }
+
+    function openCompanyModal(companyId = null) {
+      const company = companyId ? getCompanyById(companyId) : null;
+
+      openModal(company ? "Firma bearbeiten" : "Neue Firma", `
+        <form id="companyForm" class="space-y-4">
+          <input type="hidden" name="id" value="${company ? company.ID : ""}" />
+
+          <div>
+            <label class="block text-sm text-slate-300 mb-1">Firmenname</label>
+            <input name="title" required value="${esc(company?._title || "")}" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2" />
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm text-slate-300 mb-1">ABC / Priorität</label>
+              <select name="abc" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2">
+                <option value="">Bitte wählen</option>
+                <option value="A" ${company?._abc === "A" ? "selected" : ""}>A</option>
+                <option value="B" ${company?._abc === "B" ? "selected" : ""}>B</option>
+                <option value="C" ${company?._abc === "C" ? "selected" : ""}>C</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm text-slate-300 mb-1">Tags (Komma getrennt)</label>
+              <input name="tags" value="${esc((company?._tags || []).join(", "))}" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2" />
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-2 pt-2">
+            <button type="button" onclick="closeModal()" class="rounded-xl bg-slate-800 hover:bg-slate-700 px-4 py-2">Abbrechen</button>
+            <button type="submit" class="rounded-xl bg-sky-600 hover:bg-sky-500 px-4 py-2 font-medium">Speichern</button>
+          </div>
+        </form>
+      `);
+
+      $("#companyForm").addEventListener("submit", onSubmitCompanyForm);
+    }
+
+    async function onSubmitCompanyForm(e) {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const id = fd.get("id");
+      const payload = {
+        [CONFIG.fields.companies.title]: fd.get("title"),
+        [CONFIG.fields.companies.abc]: fd.get("abc"),
+        [CONFIG.fields.companies.tags]: fd.get("tags")
+      };
+
       try {
-        $("siteInfo").innerText = CONFIG.siteUrl;
-
-        await initMsal();
-
-        $("btnLogin").addEventListener("click", login);
-        $("btnLoadContacts").addEventListener("click", loadContacts);
-        $("btnLogout").addEventListener("click", logout);
-        $("searchInput").addEventListener("input", (e) => filterContacts(e.target.value));
-
-        log("App gestartet");
-        refreshAuthUi();
-      } catch (error) {
-        log("Init Fehler", { message: error.message });
-        setStatus("Fehler");
+        if (id) {
+          await SP.updateItem(CONFIG.lists.companies, id, payload);
+          showAlert("Firma aktualisiert.", "success");
+        } else {
+          await SP.createItem(CONFIG.lists.companies, payload);
+          showAlert("Firma erstellt.", "success");
+        }
+        closeModal();
+        await loadAllData();
+      } catch (err) {
+        console.error(err);
+        showAlert(`Firma konnte nicht gespeichert werden. ${err.message}`, "error");
       }
-    });
+    }
+
+    function openContactModal(contactId = null, preselectedCompanyId = null) {
+      const contact = contactId ? getContactById(contactId) : null;
+      const selectedCompanyId = contact?._companyId || preselectedCompanyId || state.selectedCompanyId || "";
+
+      openModal(contact ? "Kontakt bearbeiten" : "Neuer Kontakt", `
+        <form id="contactForm" class="space-y-4">
+          <input type="hidden" name="id" value="${contact ? contact.ID : ""}" />
+
+          <div>
+            <label class="block text-sm text-slate-300 mb-1">Kontaktname</label>
+            <input name="title" required value="${esc(contact?._title || "")}" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2" />
+          </div>
+
+          <div>
+            <label class="block text-sm text-slate-300 mb-1">Firma</label>
+            <select name="companyId" required class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2">
+              <option value="">Bitte wählen</option>
+              ${state.companies.map(c => `
+                <option value="${c.ID}" ${Number(selectedCompanyId) === Number(c.ID) ? "selected" : ""}>${esc(c._title)}</option>
+              `).join("")}
+            </select>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm text-slate-300 mb-1">E-Mail</label>
+              <input name="email" value="${esc(contact?._email || "")}" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2" />
+            </div>
+            <div>
+              <label class="block text-sm text-slate-300 mb-1">Telefon</label>
+              <input name="phone" value="${esc(contact?._phone || "")}" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2" />
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-2 pt-2">
+            <button type="button" onclick="closeModal()" class="rounded-xl bg-slate-800 hover:bg-slate-700 px-4 py-2">Abbrechen</button>
+            <button type="submit" class="rounded-xl bg-sky-600 hover:bg-sky-500 px-4 py-2 font-medium">Speichern</button>
+          </div>
+        </form>
+      `);
+
+      $("#contactForm").addEventListener("submit", onSubmitContactForm);
+    }
+
+    async function onSubmitContactForm(e) {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const id = fd.get("id");
+      const payload = {
+        [CONFIG.fields.contacts.title]: fd.get("title"),
+        [`${CONFIG.fields.contacts.companyLookup}Id`]: Number(fd.get("companyId")),
+        [CONFIG.fields.contacts.email]: fd.get("email"),
+        [CONFIG.fields.contacts.phone]: fd.get("phone")
+      };
+
+      try {
+        if (id) {
+          await SP.updateItem(CONFIG.lists.contacts, id, payload);
+          showAlert("Kontakt aktualisiert.", "success");
+        } else {
+          await SP.createItem(CONFIG.lists.contacts, payload);
+          showAlert("Kontakt erstellt.", "success");
+        }
+        closeModal();
+        await loadAllData();
+      } catch (err) {
+        console.error(err);
+        showAlert(`Kontakt konnte nicht gespeichert werden. ${err.message}`, "error");
+      }
+    }
+
+    function openTaskModal(taskId = null, preselectedContactId = null, companyId = null) {
+      const task = taskId ? state.tasks.find(t => Number(t.ID) === Number(taskId)) : null;
+      const possibleContacts = companyId ? getContactsForCompany(companyId) : state.contacts;
+      const selectedContactId = task?._contactId || preselectedContactId || possibleContacts[0]?.ID || "";
+
+      openModal(task ? "Task bearbeiten" : "Neuer Task", `
+        <form id="taskForm" class="space-y-4">
+          <input type="hidden" name="id" value="${task ? task.ID : ""}" />
+
+          <div>
+            <label class="block text-sm text-slate-300 mb-1">Titel</label>
+            <input name="title" required value="${esc(task?._title || "")}" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2" />
+          </div>
+
+          <div>
+            <label class="block text-sm text-slate-300 mb-1">Kontakt</label>
+            <select name="contactId" required class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2">
+              <option value="">Bitte wählen</option>
+              ${possibleContacts.map(c => `
+                <option value="${c.ID}" ${Number(selectedContactId) === Number(c.ID) ? "selected" : ""}>
+                  ${esc(c._title)}${c._companyTitle ? " · " + esc(c._companyTitle) : ""}
+                </option>
+              `).join("")}
+            </select>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm text-slate-300 mb-1">Fälligkeit</label>
+              <input name="dueDate" type="date" value="${task?._dueDate ? new Date(task._dueDate).toISOString().slice(0,10) : ""}" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2" />
+            </div>
+            <div>
+              <label class="block text-sm text-slate-300 mb-1">Status</label>
+              <select name="status" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2">
+                ${["Offen","In Arbeit","Wartet","Erledigt"].map(s => `
+                  <option value="${s}" ${task?._status === s ? "selected" : ""}>${s}</option>
+                `).join("")}
+              </select>
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-2 pt-2">
+            <button type="button" onclick="closeModal()" class="rounded-xl bg-slate-800 hover:bg-slate-700 px-4 py-2">Abbrechen</button>
+            <button type="submit" class="rounded-xl bg-violet-600 hover:bg-violet-500 px-4 py-2 font-medium">Speichern</button>
+          </div>
+        </form>
+      `);
+
+      $("#taskForm").addEventListener("submit", onSubmitTaskForm);
+    }
+
+    async function onSubmitTaskForm(e) {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const id = fd.get("id");
+      const payload = {
+        [CONFIG.fields.tasks.title]: fd.get("title"),
+        [`${CONFIG.fields.tasks.contactLookup}Id`]: Number(fd.get("contactId")),
+        [CONFIG.fields.tasks.dueDate]: fd.get("dueDate") ? new Date(fd.get("dueDate")).toISOString() : null,
+        [CONFIG.fields.tasks.status]: fd.get("status")
+      };
+
+      try {
+        if (id) {
+          await SP.updateItem(CONFIG.lists.tasks, id, payload);
+          showAlert("Task aktualisiert.", "success");
+        } else {
+          await SP.createItem(CONFIG.lists.tasks, payload);
+          showAlert("Task erstellt.", "success");
+        }
+        closeModal();
+        await loadAllData();
+      } catch (err) {
+        console.error(err);
+        showAlert(`Task konnte nicht gespeichert werden. ${err.message}`, "error");
+      }
+    }
+
+    // =========================
+    // HISTORY QUICK ADD
+    // =========================
+    async function quickAddHistory(type, contactId) {
+      const contact = getContactById(contactId);
+      openModal(`${type} erfassen`, `
+        <form id="historyForm" class="space-y-4">
+          <input type="hidden" name="contactId" value="${contactId}" />
+          <input type="hidden" name="type" value="${esc(type)}" />
+
+          <div class="rounded-2xl bg-slate-950 p-3 text-sm text-slate-300">
+            ${esc(contact?._title || "-")} ${contact?._companyTitle ? "· " + esc(contact._companyTitle) : ""}
+          </div>
+
+          <div>
+            <label class="block text-sm text-slate-300 mb-1">Notizen</label>
+            <textarea name="notes" rows="5" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2"></textarea>
+          </div>
+
+          <label class="flex items-center gap-2 text-sm text-slate-300">
+            <input name="project" type="checkbox" class="rounded" />
+            Projektbezogen
+          </label>
+
+          <div class="flex justify-end gap-2 pt-2">
+            <button type="button" onclick="closeModal()" class="rounded-xl bg-slate-800 hover:bg-slate-700 px-4 py-2">Abbrechen</button>
+            <button type="submit" class="rounded-xl bg-sky-600 hover:bg-sky-500 px-4 py-2 font-medium">Speichern</button>
+          </div>
+        </form>
+      `);
+
+      $("#historyForm").addEventListener("submit", onSubmitHistoryForm);
+    }
+
+    async function onSubmitHistoryForm(e) {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+
+      const payload = {
+        [`${CONFIG.fields.history.contactLookup}Id`]: Number(fd.get("contactId")),
+        [CONFIG.fields.history.contactId]: Number(fd.get("contactId")),
+        [CONFIG.fields.history.date]: new Date().toISOString(),
+        [CONFIG.fields.history.type]: fd.get("type"),
+        [CONFIG.fields.history.notes]: fd.get("notes"),
+        [CONFIG.fields.history.project]: fd.get("project") === "on"
+      };
+
+      try {
+        await SP.createItem(CONFIG.lists.history, payload);
+        closeModal();
+        showAlert("History-Eintrag erstellt.", "success");
+        await loadAllData();
+      } catch (err) {
+        console.error(err);
+        showAlert(`History-Eintrag konnte nicht erstellt werden. ${err.message}`, "error");
+      }
+    }
+
+    // =========================
+    // EVENTS / ACTIONS
+    // =========================
+    function selectCompany(companyId) {
+      state.selectedCompanyId = Number(companyId);
+      renderCompanyList();
+      renderCompanyDetail();
+    }
+
+    window.selectCompany = selectCompany;
+    window.openCompanyModal = openCompanyModal;
+    window.openContactModal = openContactModal;
+    window.openTaskModal = openTaskModal;
+    window.quickAddHistory = quickAddHistory;
+    window.closeModal = closeModal;
+
+    function bindUi() {
+      $$(".tabBtn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          state.tab = btn.dataset.tab;
+          renderTabs();
+        });
+      });
+
+      $("#globalSearch").addEventListener("input", e => {
+        state.search = e.target.value;
+        renderCompanyList();
+      });
+
+      $("#abcFilter").addEventListener("change", e => {
+        state.abcFilter = e.target.value;
+        renderCompanyList();
+      });
+
+      $("#tagFilter").addEventListener("input", e => {
+        state.tagFilter = e.target.value;
+        renderCompanyList();
+      });
+
+      $("#reloadBtn").addEventListener("click", loadAllData);
+      $("#loginBtn").addEventListener("click", login);
+      $("#logoutBtn").addEventListener("click", logout);
+      $("#newCompanyBtn").addEventListener("click", () => openCompanyModal());
+      $("#newTaskBtnGlobal").addEventListener("click", () => openTaskModal());
+      $("#modalCloseBtn").addEventListener("click", closeModal);
+
+      $("#modalBackdrop").addEventListener("click", e => {
+        if (e.target === $("#modalBackdrop")) closeModal();
+      });
+    }
+
+    // =========================
+    // START
+    // =========================
+    (async function start() {
+      bindUi();
+      try {
+        await initAuth();
+        if (state.activeAccount) {
+          await loadAllData();
+        }
+      } catch (err) {
+        console.error(err);
+        showAlert(`Initialisierung fehlgeschlagen. ${err.message}`, "error");
+      }
+    })();
   </script>
 </body>
 </html>
