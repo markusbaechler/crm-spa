@@ -3,50 +3,53 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>bbz CRM Pro</title>
+    <title>bbz CRM Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
     <style>
-        .prio-A, .prio-1 { background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; }
-        .prio-B, .prio-2 { background: #f3f4f6; color: #374151; border: 1px solid #9ca3af; }
-        .prio-C, .prio-3 { background: #ffedd5; color: #9a3412; border: 1px solid #f97316; }
-        .timeline-line { border-left: 2px solid #e2e8f0; margin-left: 0.75rem; }
+        body { background-color: #0f172a; color: #f1f5f9; }
+        .card-dark { background-color: #1e293b; border: 1px solid #334155; }
+        .prio-B { background: #1e40af; color: #white; } /* Beispiel für ABC-Segment */
+        .timeline-line { border-left: 2px solid #334155; margin-left: 10px; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
     </style>
 </head>
-<body class="bg-slate-50 min-h-screen font-sans text-slate-900">
+<body class="min-h-screen font-sans">
 
-    <nav class="bg-slate-900 text-white shadow-xl p-4 sticky top-0 z-50">
+    <nav class="bg-[#0f172a] border-b border-slate-800 p-4 sticky top-0 z-50">
         <div class="container mx-auto flex justify-between items-center">
-            <h1 class="text-2xl font-black text-blue-400 tracking-tighter cursor-pointer hover:text-blue-300 transition" onclick="showListView()">bbz CRM</h1>
-            <div id="auth-area">
-                <button id="login-btn" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-full text-sm font-bold transition shadow-lg">Login</button>
-                <div id="user-info" class="hidden flex items-center gap-4">
-                    <span id="username" class="text-sm font-medium text-slate-400 border-r pr-4 border-slate-700"></span>
-                    <button id="logout-btn" class="text-xs text-slate-400 hover:text-white underline">Logout</button>
+            <h1 class="text-xl font-black text-blue-400 tracking-tighter cursor-pointer" onclick="showListView()">bbz CRM</h1>
+            <div id="auth-area" class="flex items-center gap-4">
+                <button id="login-btn" class="bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded-lg text-sm font-bold transition">Login</button>
+                <div id="user-info" class="hidden flex items-center gap-3">
+                    <span id="username" class="text-sm text-slate-400"></span>
+                    <button id="logout-btn" class="text-xs text-slate-500 hover:text-white underline">Logout</button>
                 </div>
             </div>
         </div>
     </nav>
 
-    <main class="container mx-auto mt-8 p-4">
-        <div id="main-card" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden min-h-[600px] flex flex-col">
-            <div class="p-6 border-b border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-4 font-sans">
-                <div>
-                    <h2 id="view-title" class="text-2xl font-bold text-slate-800 tracking-tight">Firmenübersicht</h2>
-                    <p id="view-subtitle" class="text-slate-500 text-sm mt-0.5 italic">Synchronisierung...</p>
-                </div>
-                <div id="search-container" class="hidden relative">
-                    <input type="text" id="company-search" placeholder="Firma suchen..." class="w-full md:w-80 pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm focus:ring-2 focus:ring-blue-500/20 font-bold">
-                    <span class="absolute left-4 top-3 text-slate-400 font-bold italic">🔍</span>
-                </div>
-            </div>
+    <div class="container mx-auto mt-6 px-4 grid grid-cols-2 md:grid-cols-6 gap-4" id="stats-bar">
+        <div class="card-dark p-4 rounded-xl text-center"><p class="text-xs text-slate-400 uppercase">A-Firmen</p><p class="text-2xl font-bold" id="stat-a">-</p></div>
+        <div class="card-dark p-4 rounded-xl text-center"><p class="text-xs text-slate-400 uppercase">B-Firmen</p><p class="text-2xl font-bold" id="stat-b">-</p></div>
+        <div class="card-dark p-4 rounded-xl text-center"><p class="text-xs text-slate-400 uppercase">C-Firmen</p><p class="text-2xl font-bold" id="stat-c">-</p></div>
+        <div class="card-dark p-4 rounded-xl text-center border-l-4 border-l-red-500"><p class="text-xs text-slate-400 uppercase">Offene Tasks</p><p class="text-2xl font-bold" id="stat-tasks">-</p></div>
+    </div>
 
-            <div id="data-area" class="flex-1 relative">
-                <div id="loading-state" class="hidden absolute inset-0 bg-white/80 z-20 flex flex-col items-center justify-center">
-                    <div class="animate-spin h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full mb-3"></div>
-                    <p class="text-slate-600 font-bold italic font-sans">Verarbeitung...</p>
+    <main class="container mx-auto mt-6 p-4 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <div class="lg:col-span-3 space-y-4">
+            <div class="card-dark p-4 rounded-xl">
+                <input type="text" id="company-search" placeholder="Firma suchen..." class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+            </div>
+            <div id="company-list" class="space-y-2 max-h-[600px] overflow-y-auto pr-2">
                 </div>
-                <div id="content-display" class="p-6 font-sans text-slate-700"></div>
+        </div>
+
+        <div id="detail-view" class="lg:col-span-9 space-y-6">
+            <div class="card-dark p-12 rounded-2xl text-center text-slate-500 italic">
+                Wähle eine Firma aus der Liste aus, um Details anzuzeigen.
             </div>
         </div>
     </main>
@@ -57,21 +60,12 @@
                 clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a",
                 authority: "https://login.microsoftonline.com/3643e7ab-d166-4e27-bd5f-c5bbfcd282d7",
                 redirectUri: "https://markusbaechler.github.io/crm-spa/"
-            },
-            cache: { cacheLocation: "localStorage", storeAuthStateInCookie: true }
+            }
         };
 
         const msalInstance = new msal.PublicClientApplication(msalConfig);
+        let siteId = "";
         let allCompanies = [];
-        let siteId = ""; 
-
-        window.onpopstate = () => showListView(false);
-
-        document.getElementById('company-search').addEventListener('input', (e) => {
-            const term = e.target.value.toLowerCase().trim();
-            const filtered = allCompanies.filter(c => (c.fields.Title || "").toLowerCase().includes(term));
-            renderCompanyTable(filtered);
-        });
 
         async function init() {
             await msalInstance.initialize();
@@ -90,161 +84,128 @@
                 document.getElementById('login-btn').classList.add('hidden');
                 document.getElementById('user-info').classList.remove('hidden');
                 document.getElementById('username').innerText = account.name;
-                startDataLoad();
+                loadInitialData();
             }
         }
 
-        document.getElementById('login-btn').onclick = () => msalInstance.loginRedirect({ scopes: ["Sites.ReadWrite.All"], prompt: "select_account" });
+        document.getElementById('login-btn').onclick = () => msalInstance.loginRedirect({ scopes: ["Sites.ReadWrite.All"] });
         document.getElementById('logout-btn').onclick = () => msalInstance.logoutRedirect();
 
-        async function startDataLoad() {
-            const loader = document.getElementById('loading-state');
-            loader.classList.remove('hidden');
+        async function loadInitialData() {
             try {
                 const account = msalInstance.getActiveAccount();
                 const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: account });
+                const token = tokenRes.accessToken;
+
+                // 1. Get Site ID
                 const siteRes = await fetch("https://graph.microsoft.com/v1.0/sites/bbzsg.sharepoint.com:/sites/CRM", {
-                    headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` }
+                    headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const siteData = await siteRes.json();
                 siteId = siteData.id;
 
-                const response = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Firmen/items?expand=fields(select=id,Title,PLZ,Ort,Priorit_x00e4_t)`, {
-                    headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` }
+                // 2. Load Companies
+                const compRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Firmen/items?expand=fields`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
                 });
-                const data = await response.json();
-                allCompanies = data.value || [];
-                renderCompanyTable(allCompanies);
-            } catch (err) { console.error(err); } finally { loader.classList.add('hidden'); }
+                const compData = await compRes.json();
+                allCompanies = compData.value || [];
+                
+                renderCompanyList(allCompanies);
+                updateStats(allCompanies);
+            } catch (err) { console.error(err); }
         }
 
-        function renderCompanyTable(items) {
-            document.getElementById('view-title').innerText = "Firmenübersicht";
-            document.getElementById('view-subtitle').innerText = `${items.length} Unternehmen`;
-            document.getElementById('search-container').classList.remove('hidden');
-            let html = `<div class="overflow-x-auto"><table class='w-full text-left border-separate border-spacing-y-2'><thead><tr class='text-slate-400 text-[10px] uppercase font-bold'><th class='p-4 font-sans'>Firma</th><th class='p-4 text-center font-sans'>Prio</th><th class='p-4 text-right font-sans'>Ort</th></tr></thead><tbody>`;
-            items.forEach(item => {
-                const f = item.fields;
-                let p = f.Priorit_x00e4_t || '-';
-                if(p == "1") p = "A"; else if(p == "2") p = "B"; else if(p == "3") p = "C";
-                html += `<tr onclick="loadContacts('${item.id}', '${(f.Title || 'Unbekannt').replace(/'/g, "\\'")}')" class='bg-white border border-slate-100 shadow-sm hover:shadow-md cursor-pointer transition-all group font-sans'>
-                    <td class='p-4 rounded-l-xl border-y border-l border-slate-100 font-bold'>${f.Title || 'N/A'}</td>
-                    <td class='p-4 border-y border-slate-100 text-center'><span class="prio-${p} px-3 py-1 rounded-lg text-[10px] font-black uppercase font-sans">${p}</span></td>
-                    <td class='p-4 rounded-r-xl border-y border-r border-slate-100 text-slate-500 text-sm text-right italic font-bold font-sans'>${f.Ort || ''}</td></tr>`;
-            });
-            document.getElementById('content-display').innerHTML = html + "</tbody></table></div>";
+        function updateStats(companies) {
+            const count = (prio) => companies.filter(c => c.fields.Priorit_x00e4_t === prio).length;
+            document.getElementById('stat-a').innerText = count('1') || count('A');
+            document.getElementById('stat-b').innerText = count('2') || count('B');
+            document.getElementById('stat-c').innerText = count('3') || count('C');
         }
 
-        async function loadContacts(companyId, companyName) {
-            history.pushState({view: 'contacts'}, companyName, "#contacts");
-            const loader = document.getElementById('loading-state');
-            loader.classList.remove('hidden');
-            document.getElementById('search-container').classList.add('hidden');
+        function renderCompanyList(items) {
+            const list = document.getElementById('company-list');
+            list.innerHTML = items.map(item => `
+                <div onclick="loadDetails('${item.id}')" class="card-dark p-3 rounded-xl cursor-pointer hover:bg-slate-700 transition">
+                    <p class="font-bold text-sm text-blue-300">${item.fields.Title}</p>
+                    <p class="text-[10px] text-slate-500">${item.fields.Ort || ''}</p>
+                </div>
+            `).join('');
+        }
+
+        async function loadDetails(companyId) {
+            const detailArea = document.getElementById('detail-view');
+            detailArea.innerHTML = `<div class="animate-pulse text-center p-10">Lade Firmendaten...</div>`;
             
             try {
                 const account = msalInstance.getActiveAccount();
                 const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: account });
-                const url = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontakte/items?expand=fields`;
-                const response = await fetch(url, { headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` } });
-                const data = await response.json();
-                
-                // FILTER FIX: Wir nutzen FirmaId (Lookup)
-                const filtered = (data.value || []).filter(item => {
-                    const f = item.fields;
-                    return f.FirmaId == companyId || (f.Firma && f.Firma.LookupId == companyId);
+                const token = tokenRes.accessToken;
+
+                // Firma finden
+                const company = allCompanies.find(c => c.id === companyId);
+                const f = company.fields;
+
+                // Kontakte laden
+                const contRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontakte/items?expand=fields`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
                 });
-                renderContactView(filtered, companyName);
-            } catch (err) { console.error(err); } finally { loader.classList.add('hidden'); }
-        }
+                const contData = await contRes.json();
+                const contacts = contData.value.filter(c => c.fields.FirmaId == companyId || c.fields.FirmaLookupId == companyId);
 
-        function renderContactView(contacts, companyName) {
-            window.scrollTo(0,0);
-            document.getElementById('view-title').innerText = companyName;
-            document.getElementById('view-subtitle').innerText = `${contacts.length} Kontakte`;
-            let html = `<div class="mb-8"><button onclick="showListView()" class="text-sm font-bold text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-xl transition-all border border-blue-100 italic">← Zurück zur Firmenliste</button></div><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 font-sans">`;
-            
-            if(contacts.length === 0) html += `<p class="col-span-full text-center py-10 text-slate-400 italic font-sans font-bold">Keine Kontakte für dieses Unternehmen gefunden.</p>`;
-
-            contacts.forEach(c => {
-                const f = c.fields;
-                const init = `${(f.Vorname || '?').charAt(0)}${(f.Title || '?').charAt(0)}`;
-                html += `<div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm border-b-4 border-b-blue-500 font-sans">
-                    <div class="flex items-center gap-4 mb-4">
-                        <div class="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center font-bold text-slate-400 italic font-sans">${init}</div>
-                        <div><h3 class="font-bold text-slate-800 italic font-sans">${f.Vorname || ''} ${f.Title || ''}</h3><p class="text-blue-600 text-[11px] font-bold uppercase italic font-sans">${f.Funktion || '-'}</p></div>
-                    </div>
-                    <div class="text-xs space-y-1 text-slate-500 mb-4 font-sans font-bold italic">
-                        <p>📧 ${f.E_x002d_Mail || f.E_x002d_Mail0 || '-'}</p>
-                        <p>📱 ${f.TelefonMobil || f.TelefonFestnetz || '-'}</p>
-                    </div>
-                    <div class="mt-4 flex gap-2 font-sans font-bold">
-                        <button onclick="loadHistory('${c.id}')" class="flex-1 bg-slate-50 text-[10px] font-bold py-2 rounded-lg border border-slate-200 italic font-sans">Historie</button>
-                        <button onclick="toggleNoteForm('${c.id}')" class="flex-1 bg-blue-50 hover:bg-blue-100 text-blue-600 text-[10px] font-bold py-2 rounded-lg border border-blue-100 italic font-sans">+ Notiz</button>
-                    </div>
-                    <div id="note-form-${c.id}" class="hidden mt-4 p-3 bg-slate-50 rounded-xl border border-slate-200 font-sans italic">
-                        <input type="text" id="title-${c.id}" placeholder="Betreff" class="w-full text-xs p-2 mb-2 rounded border border-slate-300 font-sans font-bold">
-                        <textarea id="details-${c.id}" placeholder="Details..." class="w-full text-xs p-2 mb-2 rounded border border-slate-300 h-20 font-sans font-bold"></textarea>
-                        <button onclick="saveNote('${c.id}')" class="w-full bg-blue-600 text-white text-xs font-bold py-2 rounded italic font-sans font-bold">Speichern</button>
-                    </div>
-                    <div id="history-${c.id}" class="mt-4 hidden italic font-sans font-bold"></div>
-                </div>`;
-            });
-            document.getElementById('content-display').innerHTML = html + "</div>";
-        }
-
-        function toggleNoteForm(id) { document.getElementById(`note-form-${id}`).classList.toggle('hidden'); }
-
-        async function saveNote(contactId) {
-            const title = document.getElementById(`title-${contactId}`).value;
-            const details = document.getElementById(`details-${contactId}`).value;
-            if (!title) return alert("Betreff fehlt!");
-            try {
-                const account = msalInstance.getActiveAccount();
-                const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.ReadWrite.All"], account: account });
-                
-                // Wir nutzen exakt KontaktpersonId und Details_x002f_Kontext
-                const body = { fields: { Title: title, Details_x002f_Kontext: details, KontaktpersonId: contactId, Datum: new Date().toISOString() } };
-                
-                const res = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontaktnotizen/items`, {
-                    method: 'POST', headers: { 'Authorization': `Bearer ${tokenRes.accessToken}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
+                // Notizen laden
+                const noteRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontaktnotizen/items?expand=fields`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
                 });
-                if (res.ok) { alert("Gespeichert!"); toggleNoteForm(contactId); loadHistory(contactId); }
-            } catch (err) { alert("Fehler."); }
+                const noteData = await noteRes.json();
+                const notes = noteData.value.filter(n => contacts.some(c => c.id == n.fields.KontaktpersonId));
+
+                renderDetailView(f, contacts, notes);
+
+            } catch (err) { console.error(err); }
         }
 
-        async function loadHistory(contactId) {
-            const historyDiv = document.getElementById(`history-${contactId}`);
-            historyDiv.innerHTML = "<p class='text-[10px] animate-pulse py-2 text-blue-500 font-bold italic font-sans'>Suche...</p>";
-            historyDiv.classList.remove('hidden');
-            try {
-                const account = msalInstance.getActiveAccount();
-                const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: account });
-                const url = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontaktnotizen/items?expand=fields`;
-                const response = await fetch(url, { headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` } });
-                const data = await response.json();
-                
-                const notes = (data.value || []).filter(n => n.fields.KontaktpersonId == contactId || (n.fields.Kontaktperson && n.fields.Kontaktperson.LookupId == contactId));
-                
-                let html = `<div class="timeline-line mt-2 space-y-3 font-sans">`;
-                notes.forEach(n => {
-                    const f = n.fields;
-                    html += `<div class="relative pl-6 italic font-bold font-sans"><div class="absolute left-[-1.15rem] top-1 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-white shadow-sm font-sans"></div>
-                        <p class="text-[9px] font-bold text-slate-400 font-sans">${new Date(n.createdDateTime).toLocaleDateString('de-DE')}</p>
-                        <p class="text-[11px] font-bold text-slate-800 font-sans">${f.Title || 'Notiz'}</p>
-                        <p class="text-[11px] text-slate-600 italic font-sans">${f.Details_x002f_Kontext || '-'}</p></div>`;
-                });
-                historyDiv.innerHTML = notes.length ? html + "</div>" : "<p class='text-[10px] text-slate-400 py-2 font-sans italic font-bold'>Noch keine Notizen.</p>";
-            } catch (err) { historyDiv.innerHTML = "Fehler."; }
+        function renderDetailView(firma, contacts, notes) {
+            const detailArea = document.getElementById('detail-view');
+            detailArea.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 font-sans">
+                    <div class="card-dark p-6 rounded-2xl">
+                        <h2 class="text-2xl font-bold text-blue-400 mb-4">${firma.Title}</h2>
+                        <div class="space-y-2 text-sm text-slate-300">
+                            <p>📍 ${firma.Ort || '-'}</p>
+                            <p>📞 ${firma.Telefon_x0028_Zentrale_x0029_ || '-'}</p>
+                        </div>
+                    </div>
+
+                    <div class="card-dark p-6 rounded-2xl">
+                        <h3 class="text-lg font-bold mb-4">Ansprechpartner</h3>
+                        <div class="flex flex-wrap gap-2">
+                            ${contacts.map(c => `<span class="bg-blue-900/40 text-blue-300 px-3 py-1 rounded-full text-xs border border-blue-800">${c.fields.Vorname} ${c.fields.Title}</span>`).join('')}
+                        </div>
+                    </div>
+
+                    <div class="card-dark p-6 rounded-2xl md:col-span-2">
+                        <h3 class="text-lg font-bold mb-4">Timeline / Ereignisse</h3>
+                        <div class="timeline-line space-y-6">
+                            ${notes.map(n => `
+                                <div class="relative pl-6">
+                                    <div class="absolute left-[-15px] top-1 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-slate-900"></div>
+                                    <p class="text-[10px] text-slate-500 font-bold">${new Date(n.fields.Datum).toLocaleDateString('de-DE')}</p>
+                                    <p class="text-sm font-bold">${n.fields.Title || 'Notiz'}</p>
+                                    <p class="text-xs text-slate-400 mt-1">${n.fields.Details_x002f_Kontext || '-'}</p>
+                                </div>
+                            `).join('')}
+                            ${notes.length === 0 ? '<p class="text-slate-500 italic text-sm pl-6">Noch keine Timeline-Einträge.</p>' : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
         }
 
-        function showListView(addToHistory = true) { 
-            if (addToHistory) history.pushState({view: 'list'}, "Firmenübersicht", "#list");
-            document.getElementById('loading-state').classList.add('hidden');
-            document.getElementById('search-container').classList.remove('hidden');
-            document.getElementById('view-title').innerText = "Firmenübersicht";
-            renderCompanyTable(allCompanies); 
+        function showListView() { 
+            document.getElementById('detail-view').innerHTML = `<div class="card-dark p-12 rounded-2xl text-center text-slate-500 italic">Wähle eine Firma aus der Liste aus.</div>`;
         }
+
         init();
     </script>
 </body>
