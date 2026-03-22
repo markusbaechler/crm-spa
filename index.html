@@ -164,7 +164,7 @@
             );
 
             const data = await response.json();
-            const items = data.d.results;
+            const items = data.value || data.d?.results || [];
 
             renderContacts(items);
 
