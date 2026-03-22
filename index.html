@@ -2,46 +2,24 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>bbz CRM - Ultra Stable</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>bbz CRM - DEBUGER</title>
     <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
     <style>
-        body { background-color: #0f172a; color: #f1f5f9; font-family: sans-serif; }
-        .card-dark { background-color: #1e293b; border: 1px solid #334155; transition: 0.2s; }
-        .card-dark:hover { border-color: #475569; }
-        .prio-A, .prio-1 { border-left: 4px solid #f59e0b; }
-        .prio-B, .prio-2 { border-left: 4px solid #3b82f6; }
-        .timeline-line { border-left: 2px solid #334155; margin-left: 10px; }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
+        body { background: #020617; color: #38bdf8; font-family: monospace; padding: 40px; }
+        .status-box { border: 1px solid #1e293b; padding: 20px; border-radius: 12px; background: #0f172a; }
+        button { background: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; }
+        .error { color: #ef4444; }
+        .success { color: #22c55e; }
     </style>
 </head>
-<body class="min-h-screen italic">
+<body>
 
-    <nav class="bg-slate-900 border-b border-slate-800 p-4 sticky top-0 z-50">
-        <div class="container mx-auto flex justify-between items-center">
-            <h1 class="text-xl font-black text-blue-400 tracking-tighter cursor-pointer" onclick="location.reload()">bbz CRM</h1>
-            <div id="user-info" class="hidden flex items-center gap-3">
-                <span id="username" class="text-xs text-slate-400 font-bold border-r pr-3 border-slate-700"></span>
-                <button id="logout-btn" class="text-xs text-slate-500 hover:text-white underline">Logout</button>
-            </div>
-            <button id="login-btn" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-lg text-sm font-bold transition">Login</button>
-        </div>
-    </nav>
-
-    <main class="container mx-auto mt-6 p-4 grid grid-cols-1 lg:grid-cols-12 gap-6 font-sans">
-        <div class="lg:col-span-3 space-y-4">
-            <input type="text" id="comp-search" placeholder="Firma suchen..." class="card-dark w-full rounded-xl px-4 py-2 text-sm outline-none text-white italic">
-            <div id="company-list" class="space-y-2 max-h-[650px] overflow-y-auto pr-2">
-                <p class="text-slate-600 text-center py-10 font-bold">Warte auf Login...</p>
-            </div>
-        </div>
-
-        <div id="detail-view" class="lg:col-span-9 space-y-6">
-            <div class="card-dark p-20 rounded-2xl text-center text-slate-500 italic">Bereit für Daten-Abgleich.</div>
-        </div>
-    </main>
+    <div class="status-box">
+        <h1 style="color: white;">bbz CRM Diagnose-Modus</h1>
+        <p>Dieses Tool analysiert die SharePoint-Struktur und loggt alles in die Konsole.</p>
+        <button id="start-btn">Analyse starten (Login erforderlich)</button>
+        <div id="log" style="margin-top: 20px; line-height: 1.6;"></div>
+    </div>
 
     <script>
         const msalConfig = {
@@ -49,136 +27,87 @@
                 clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a",
                 authority: "https://login.microsoftonline.com/3643e7ab-d166-4e27-bd5f-c5bbfcd282d7",
                 redirectUri: "https://markusbaechler.github.io/crm-spa/"
-            },
-            cache: { cacheLocation: "localStorage", storeAuthStateInCookie: true }
+            }
         };
 
         const msalInstance = new msal.PublicClientApplication(msalConfig);
-        let siteId = "";
-        let allCompanies = [];
 
-        async function init() {
-            const res = await msalInstance.handleRedirectPromise();
-            if (res) msalInstance.setActiveAccount(res.account);
-            else if (msalInstance.getAllAccounts().length > 0) msalInstance.setActiveAccount(msalInstance.getAllAccounts()[0]);
-            updateUI();
-        }
+        const logUI = (msg, type = '') => {
+            const div = document.getElementById('log');
+            div.innerHTML += `<p class="${type}">> ${msg}</p>`;
+        };
 
-        function updateUI() {
-            const acc = msalInstance.getActiveAccount();
-            if (acc) {
-                document.getElementById('login-btn').classList.add('hidden');
-                document.getElementById('user-info').classList.remove('hidden');
-                document.getElementById('username').innerText = acc.name;
-                loadInitialData();
+        document.getElementById('start-btn').onclick = async () => {
+            document.getElementById('log').innerHTML = "";
+            logUI("Starte Login...");
+
+            try {
+                const loginRes = await msalInstance.loginPopup({ scopes: ["Sites.Read.All"] });
+                logUI("Login erfolgreich: " + loginRes.account.username, "success");
+
+                const tokenRes = await msalInstance.acquireTokenSilent({ 
+                    scopes: ["Sites.Read.All"], 
+                    account: loginRes.account 
+                });
+                const token = tokenRes.accessToken;
+
+                // 1. Site Info
+                logUI("Hole Site-ID...");
+                const siteRes = await fetch("https://graph.microsoft.com/v1.0/sites/bbzsg.sharepoint.com:/sites/CRM", {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const site = await siteRes.json();
+                const siteId = site.id;
+                console.log("SITE INFO:", site);
+
+                // 2. Firma "Compendio" finden
+                logUI("Suche Firma 'Compendio'...");
+                const compRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Firmen/items?expand=fields`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const compData = await compRes.json();
+                const compendio = compData.value.find(f => f.fields.Title.includes("Compendio"));
+                
+                console.log("--- FIRMA GEFUNDEN (ROHDATEN) ---");
+                console.dir(compendio.fields);
+                logUI(`Firma gefunden: ${compendio.fields.Title} (ID: ${compendio.id})`, "success");
+
+                // 3. Kontakte laden (Alle)
+                logUI("Lade Kontakte-Liste zur Analyse...");
+                const contRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontakte/items?expand=fields`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const contData = await contRes.json();
+                
+                console.log("--- ERSTER KONTAKT AUS DER LISTE ---");
+                console.dir(contData.value[0].fields);
+
+                // 4. Teste den Filter
+                const searchId = compendio.id;
+                const matches = contData.value.filter(c => {
+                    // Wir checken hier manuell alle möglichen Felder
+                    const f = c.fields;
+                    return f.FirmaId == searchId || f.FirmaLookupId == searchId || (f.Firma && f.Firma.LookupId == searchId);
+                });
+
+                logUI(`Filtertest: Suche nach ID ${searchId}...`, "");
+                logUI(`Ergebnis: ${matches.length} Kontakte gefunden.`, matches.length > 0 ? "success" : "error");
+
+                console.log("--- ALLE KONTAKTE (ÜBERSICHT) ---");
+                console.table(contData.value.map(c => ({
+                    Name: c.fields.Title,
+                    FirmaId: c.fields.FirmaId,
+                    FirmaLookupId: c.fields.FirmaLookupId,
+                    FirmaObject: c.fields.Firma ? "JA" : "NEIN"
+                })));
+
+                logUI("Analyse beendet. Bitte F12 drücken und Konsole prüfen!", "success");
+
+            } catch (err) {
+                logUI("FEHLER: " + err.message, "error");
+                console.error(err);
             }
-        }
-
-        document.getElementById('login-btn').onclick = () => msalInstance.loginRedirect({ scopes: ["Sites.Read.All"] });
-        document.getElementById('logout-btn').onclick = () => { localStorage.clear(); location.reload(); };
-
-        async function loadInitialData() {
-            const acc = msalInstance.getActiveAccount();
-            const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: acc });
-            const token = tokenRes.accessToken;
-
-            const siteRes = await fetch("https://graph.microsoft.com/v1.0/sites/bbzsg.sharepoint.com:/sites/CRM", { headers: { 'Authorization': `Bearer ${token}` } });
-            const siteData = await siteRes.json();
-            siteId = siteData.id;
-
-            const compRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Firmen/items?expand=fields`, { headers: { 'Authorization': `Bearer ${token}` } });
-            const compData = await compRes.json();
-            allCompanies = compData.value || [];
-            
-            renderCompanyList(allCompanies);
-        }
-
-        function renderCompanyList(items) {
-            document.getElementById('company-list').innerHTML = items.sort((a,b) => a.fields.Title.localeCompare(b.fields.Title)).map(item => `
-                <div onclick="loadDetails('${item.id}')" class="card-dark p-3 rounded-xl cursor-pointer hover:bg-slate-800 transition italic text-sm font-bold prio-${item.fields.Priorit_x00e4_t}">
-                    ${item.fields.Title}
-                </div>
-            `).join('');
-        }
-
-        async function loadDetails(companyId) {
-            const pane = document.getElementById('detail-view');
-            pane.innerHTML = `<div class="p-20 text-center text-blue-400 italic font-bold">Deep Scan: Kontakte & Timeline...</div>`;
-
-            const acc = msalInstance.getActiveAccount();
-            const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: acc });
-            const token = tokenRes.accessToken;
-
-            // 1. Kontakte mit flexiblem ID-Abgleich
-            const contRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontakte/items?expand=fields`, { headers: { 'Authorization': `Bearer ${token}` } });
-            const contData = await contRes.json();
-            
-            const contacts = contData.value.filter(c => {
-                const f = c.fields;
-                // Prüft alle Eventualitäten der ID-Speicherung
-                return String(f.FirmaId) === String(companyId) || 
-                       String(f.FirmaLookupId) === String(companyId) ||
-                       (f.Firma && String(f.Firma.LookupId) === String(companyId));
-            });
-
-            // 2. Timeline-Listen abrufen
-            const [histRes, noteRes] = await Promise.all([
-                fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/History/items?expand=fields`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontaktnotizen/items?expand=fields`, { headers: { 'Authorization': `Bearer ${token}` } })
-            ]);
-            const histData = await histRes.json();
-            const noteData = await noteRes.json();
-
-            const cIds = contacts.map(c => String(c.id));
-            
-            // Mapping der Timeline-Daten
-            const combined = [
-                ...(histData.value || []).filter(h => cIds.includes(String(h.fields.ContactLookupId))),
-                ...(noteData.value || []).filter(n => cIds.includes(String(n.fields.KontaktpersonId)))
-            ].sort((a,b) => new Date(b.fields.Datum || b.createdDateTime) - new Date(a.fields.Datum || a.createdDateTime));
-
-            renderDashboard(companyId, contacts, combined);
-        }
-
-        function renderDashboard(cId, contacts, history) {
-            const firma = allCompanies.find(c => c.id == cId).fields;
-            document.getElementById('detail-view').innerHTML = `
-                <div class="grid grid-cols-1 md:grid-cols-12 gap-6 animate-in fade-in duration-500">
-                    <div class="md:col-span-12 card-dark p-6 rounded-2xl border-l-4 border-l-blue-500 font-sans">
-                        <h2 class="text-3xl font-black italic tracking-tighter text-blue-400">${firma.Title}</h2>
-                        <p class="text-slate-400 text-xs font-bold uppercase mt-1 italic">${firma.Ort || ''} | Lead: ${firma.Leadbbz || '-'}</p>
-                    </div>
-                    
-                    <div class="md:col-span-5 space-y-4">
-                        <h3 class="text-[10px] font-black uppercase text-slate-500 italic">Kontakte (${contacts.length})</h3>
-                        ${contacts.map(c => `
-                            <div class="card-dark p-4 rounded-xl border-b-4 border-b-blue-600/50">
-                                <p class="text-white font-black italic">${c.fields.Vorname || ''} ${c.fields.Title || ''}</p>
-                                <p class="text-[10px] text-slate-500 mt-1 uppercase italic">${c.fields.Funktion || '-'}</p>
-                                <div class="mt-3 text-[10px] text-slate-400 font-bold border-t border-slate-700 pt-2 italic">
-                                    📧 ${c.fields.E_x002d_Mail || '-'} <br>
-                                    📱 ${c.fields.Mobile || '-'}
-                                </div>
-                            </div>
-                        `).join('')}
-                    </div>
-
-                    <div class="md:col-span-7 card-dark p-6 rounded-2xl">
-                        <h3 class="text-[10px] font-black uppercase text-slate-500 italic mb-6">Timeline</h3>
-                        <div class="timeline-line space-y-6">
-                            ${history.map(h => `
-                                <div class="relative pl-6">
-                                    <div class="absolute left-[-15px] top-1.5 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-slate-900 shadow-lg"></div>
-                                    <p class="text-[9px] text-slate-500 font-black">${new Date(h.fields.Datum || h.createdDateTime).toLocaleDateString()}</p>
-                                    <p class="text-xs font-black text-white italic mt-0.5">${h.fields.TypEintrag || h.fields.Title || 'Notiz'}</p>
-                                    <p class="text-[11px] text-slate-400 italic mt-1 leading-relaxed">${h.fields.Details_x002f_Kontext || h.fields.Notizen || ''}</p>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                </div>`;
-        }
-        init();
+        };
     </script>
 </body>
 </html>
