@@ -7,18 +7,18 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
 </head>
-<body class="bg-gray-50 min-h-screen">
+<body class="bg-gray-50 min-h-screen font-sans">
 
     <nav class="bg-slate-800 text-white shadow-md p-4">
         <div class="container mx-auto flex justify-between items-center">
             <div class="flex items-center gap-4">
-                <h1 class="text-xl font-bold text-blue-400">bbz CRM</h1>
+                <h1 class="text-xl font-bold text-blue-400 tracking-tight">bbz CRM</h1>
                 <div id="nav-links" class="hidden flex gap-4 ml-6">
                     <button onclick="fetchCompanies()" class="bg-slate-700 px-3 py-1 rounded text-sm hover:bg-slate-600 transition">Firmen</button>
                 </div>
             </div>
             <div id="auth-area">
-                <button id="login-btn" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm transition">Login mit M365</button>
+                <button id="login-btn" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm transition font-medium">Login mit M365</button>
                 <div id="user-info" class="hidden flex items-center gap-3">
                     <span id="username" class="text-sm border-r pr-3 border-slate-600 text-slate-300"></span>
                     <button id="logout-btn" class="text-xs text-slate-400 hover:text-white underline">Logout</button>
@@ -28,12 +28,20 @@
     </nav>
 
     <main class="container mx-auto mt-8 p-4">
-        <div id="dashboard" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 min-h-[400px]">
-            <div id="view-header" class="mb-6">
-                <h2 id="view-title" class="text-2xl font-semibold text-gray-800">Willkommen</h2>
+        <div id="dashboard" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 min-h-[500px]">
+            
+            <div id="view-header" class="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <h2 id="view-title" class="text-2xl font-semibold text-gray-800 tracking-tight">Willkommen</h2>
+                
+                <div id="search-container" class="hidden relative">
+                    <input type="text" id="company-search" placeholder="Firma suchen..." 
+                        class="w-full md:w-64 pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition shadow-sm">
+                    <span class="absolute left-3 top-2.5 text-gray-400">🔍</span>
+                </div>
             </div>
-            <div id="data-table" class="text-gray-600 py-4">
-                Warte auf Daten...
+
+            <div id="data-table" class="text-gray-600 py-4 overflow-x-auto">
+                Bitte loggen Sie sich ein.
             </div>
         </div>
     </main>
@@ -49,6 +57,7 @@
         };
 
         const msalInstance = new msal.PublicClientApplication(msalConfig);
+        let allCompanies = []; // Hier speichern wir alle geladenen Firmen für die Suche
 
         async function init() {
             await msalInstance.initialize();
@@ -67,6 +76,7 @@
                 document.getElementById('login-btn').classList.add('hidden');
                 document.getElementById('user-info').classList.remove('hidden');
                 document.getElementById('nav-links').classList.remove('hidden');
+                document.getElementById('search-container').classList.remove('hidden'); // Suche zeigen
                 document.getElementById('username').innerText = account.name;
                 fetchCompanies();
             }
@@ -75,9 +85,19 @@
         document.getElementById('login-btn').onclick = () => msalInstance.loginRedirect({ scopes: ["User.Read", "Sites.Read.All"] });
         document.getElementById('logout-btn').onclick = () => msalInstance.logoutRedirect();
 
+        // LOGIK FÜR DIE SUCHE
+        document.getElementById('company-search').oninput = (e) => {
+            const term = e.target.value.toLowerCase();
+            const filtered = allCompanies.filter(c => 
+                (c.fields.Title && c.fields.Title.toLowerCase().includes(term)) ||
+                (c.fields.Ort && c.fields.Ort.toLowerCase().includes(term))
+            );
+            renderTable(filtered);
+        };
+
         async function fetchCompanies() {
             const tableDiv = document.getElementById('data-table');
-            tableDiv.innerHTML = "<p class='animate-pulse text-blue-500'>Lade Firmendaten...</p>";
+            tableDiv.innerHTML = "<div class='flex items-center gap-2 text-blue-600'><div class='animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full'></div> Lade Firmendaten...</div>";
             
             try {
                 const account = msalInstance.getActiveAccount();
@@ -86,37 +106,38 @@
                     account: account
                 });
 
-                // DIESE URL IST DER FIX: Wir sprechen bbzsg.sharepoint.com an und navigieren direkt zur Site 'CRM'
                 const graphUrl = "https://graph.microsoft.com/v1.0/sites/bbzsg.sharepoint.com:/sites/CRM:/lists/Firmen/items?expand=fields(select=Title,PLZ,Ort,Land)";
+                const response = await fetch(graphUrl, { headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` } });
 
-                const response = await fetch(graphUrl, {
-                    headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` }
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Fehler: ${response.status} (Die Liste 'Firmen' wurde nicht gefunden)`);
-                }
+                if (!response.ok) throw new Error("Kein Zugriff auf SharePoint.");
 
                 const data = await response.json();
-                renderTable(data.value);
+                allCompanies = data.value; // Speichern für Suche
+                renderTable(allCompanies);
             } catch (err) {
                 tableDiv.innerHTML = `<div class='bg-red-50 p-4 rounded text-red-600'>${err.message}</div>`;
             }
         }
 
         function renderTable(items) {
+            const tableDiv = document.getElementById('data-table');
             if (!items || items.length === 0) {
-                document.getElementById('data-table').innerText = "Keine Firmen gefunden.";
+                tableDiv.innerHTML = "<div class='text-gray-400 italic py-10 text-center'>Keine passenden Firmen gefunden.</div>";
                 return;
             }
-            let html = `<table class='w-full text-left'><tr class='border-b text-gray-400 text-xs uppercase'><th class='p-3'>Firma</th><th class='p-3'>PLZ</th><th class='p-3'>Ort</th></tr>`;
+            let html = `<table class='w-full text-left'>
+                <tr class='border-b text-gray-400 text-xs uppercase'><th class='p-3'>Firma</th><th class='p-3'>PLZ</th><th class='p-3'>Ort</th></tr>`;
             items.forEach(item => {
                 const f = item.fields;
-                html += `<tr class='border-b hover:bg-gray-50'><td class='p-3 font-bold'>${f.Title || '-'}</td><td class='p-3'>${f.PLZ || '-'}</td><td class='p-3'>${f.Ort || '-'}</td></tr>`;
+                html += `<tr class='border-b hover:bg-blue-50 cursor-pointer transition group'>
+                    <td class='p-3 font-bold text-slate-700 group-hover:text-blue-700'>${f.Title || '-'}</td>
+                    <td class='p-3 text-slate-600'>${f.PLZ || '-'}</td>
+                    <td class='p-3 text-slate-600'>${f.Ort || '-'}</td>
+                </tr>`;
             });
             html += "</table>";
             document.getElementById('view-title').innerText = "Firmenübersicht";
-            document.getElementById('data-table').innerHTML = html;
+            tableDiv.innerHTML = html;
         }
 
         init();
