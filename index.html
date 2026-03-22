@@ -20,7 +20,7 @@
 
     <nav class="bg-slate-900 text-white shadow-xl p-4 sticky top-0 z-50">
         <div class="container mx-auto flex justify-between items-center">
-            <h1 class="text-2xl font-black text-blue-400 tracking-tighter cursor-pointer" onclick="showListView()">bbz CRM</h1>
+            <h1 class="text-2xl font-black text-blue-400 tracking-tighter cursor-pointer hover:text-blue-300 transition" onclick="showListView()">bbz CRM</h1>
             <div id="auth-area">
                 <button id="login-btn" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-full text-sm font-bold transition">Login</button>
                 <div id="user-info" class="hidden flex items-center gap-4">
@@ -41,17 +41,18 @@
                 </div>
                 <div id="search-container" class="hidden relative">
                     <input type="text" id="company-search" placeholder="Firma oder Ort suchen..." 
-                        class="w-full md:w-80 pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm focus:ring-2 focus:ring-blue-500/20 transition-all">
+                        class="w-full md:w-80 pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm focus:ring-2 focus:ring-blue-500/20 transition-all font-sans">
                     <span class="absolute left-4 top-3 text-slate-400 font-bold">🔍</span>
                 </div>
             </div>
 
             <div id="data-area" class="flex-1 relative font-sans text-slate-700">
-                <div id="loading-state" class="hidden absolute inset-0 bg-white/80 z-10 flex flex-col items-center justify-center font-sans">
+                <div id="loading-state" class="hidden absolute inset-0 bg-white/80 z-20 flex flex-col items-center justify-center">
                     <div class="animate-spin h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full mb-3"></div>
-                    <p class="text-slate-600 font-semibold font-sans italic">Daten werden synchronisiert...</p>
+                    <p class="text-slate-600 font-semibold italic">Synchronisierung...</p>
                 </div>
-                <div id="content-display" class="p-6 font-sans"></div>
+                <div id="content-display" class="p-6 font-sans">
+                    </div>
             </div>
         </div>
     </main>
@@ -73,7 +74,7 @@
         // Such-Event
         document.getElementById('company-search').addEventListener('input', (e) => {
             const term = e.target.value.toLowerCase().trim();
-            if (!allCompanies) return;
+            if (!allCompanies || allCompanies.length === 0) return;
             const filtered = allCompanies.filter(c => 
                 (c.fields.Title || "").toLowerCase().includes(term) || 
                 (c.fields.Ort || "").toLowerCase().includes(term)
@@ -127,7 +128,10 @@
                 const data = await response.json();
                 allCompanies = data.value || [];
                 renderCompanyTable(allCompanies);
-            } catch (err) { console.error(err); } finally { loader.classList.add('hidden'); }
+            } catch (err) { 
+                console.error(err); 
+                document.getElementById('content-display').innerHTML = `<p class="text-red-500 font-bold p-10 text-center">Fehler beim Laden: ${err.message}</p>`;
+            } finally { loader.classList.add('hidden'); }
         }
 
         function renderCompanyTable(items) {
@@ -135,7 +139,7 @@
             document.getElementById('view-subtitle').innerText = `${items.length} Unternehmen gefunden`;
             document.getElementById('search-container').classList.remove('hidden');
 
-            let html = `<div class="overflow-x-auto"><table class='w-full text-left border-separate border-spacing-y-2'>
+            let html = `<div class="overflow-x-auto"><table class='w-full text-left border-separate border-spacing-y-2 font-sans'>
                 <thead><tr class='text-slate-400 text-[10px] uppercase tracking-widest px-4 font-sans'><th class='p-4'>Firma</th><th class='p-4 text-center'>Prio</th><th class='p-4 text-right'>Ort</th></tr></thead><tbody>`;
             
             items.forEach(item => {
@@ -144,8 +148,8 @@
                 if(p == "1") p = "A"; else if(p == "2") p = "B"; else if(p == "3") p = "C";
 
                 html += `<tr onclick="loadContacts('${item.id}', '${(f.Title || 'Unbekannt').replace(/'/g, "\\'")}')" class='bg-white border border-slate-100 shadow-sm hover:shadow-md hover:border-blue-300 cursor-pointer transition-all group font-sans'>
-                    <td class='p-4 rounded-l-xl border-y border-l border-slate-100 font-bold text-slate-800 font-sans'>${f.Title} ${f.TopKunde ? '<span class="text-yellow-500 ml-1">★</span>' : ''}</td>
-                    <td class='p-4 border-y border-slate-100 text-center font-sans font-black italic'><span class="prio-${p} px-3 py-1 rounded-lg text-[10px] uppercase tracking-tighter">${p}</span></td>
+                    <td class='p-4 rounded-l-xl border-y border-l border-slate-100 font-bold text-slate-800 font-sans'>${f.Title || 'N/A'} ${f.TopKunde ? '<span class="text-yellow-500 ml-1 font-sans">★</span>' : ''}</td>
+                    <td class='p-4 border-y border-slate-100 text-center font-sans'><span class="prio-${p} px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter font-sans">${p}</span></td>
                     <td class='p-4 rounded-r-xl border-y border-r border-slate-100 text-slate-500 text-sm text-right font-sans italic'>${f.Ort || ''}</td></tr>`;
             });
             document.getElementById('content-display').innerHTML = html + "</tbody></table></div>";
@@ -171,15 +175,22 @@
 
                 renderContactView(filtered, companyName);
             } catch (err) { 
-                document.getElementById('content-display').innerHTML = `<p class="text-red-500 font-sans p-10 text-center">Fehler beim Laden.</p>`;
+                document.getElementById('content-display').innerHTML = `<p class="text-red-500 font-sans p-10 text-center font-bold">Fehler beim Laden der Kontakte.</p>`;
             } finally { loader.classList.add('hidden'); }
         }
 
         function renderContactView(contacts, companyName) {
+            window.scrollTo(0,0);
             document.getElementById('view-title').innerText = companyName;
             document.getElementById('view-subtitle').innerText = `${contacts.length} Kontakte`;
             
-            let html = `<div class="mb-8"><button onclick="showListView()" class="flex items-center gap-2 text-sm font-bold text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-lg transition-all font-sans italic">← Zurück zur Firmenliste</button></div><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 font-sans">`;
+            let html = `
+                <div class="mb-8">
+                    <button onclick="showListView()" class="flex items-center gap-2 text-sm font-bold text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-xl transition-all font-sans border border-blue-100 shadow-sm">
+                        ← Zurück zur Firmenliste
+                    </button>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 font-sans">`;
             
             if (contacts.length === 0) {
                 html += `<div class="col-span-full py-20 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 font-sans italic">Keine Kontakte für diese Firma gefunden.</div>`;
@@ -189,8 +200,8 @@
                 const f = c.fields;
                 const init = `${(f.Vorname || '?').charAt(0)}${(f.Title || '?').charAt(0)}`;
                 html += `
-                <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-lg transition-all border-b-4 border-b-blue-500">
-                    <div class="flex items-center gap-4 mb-4 italic">
+                <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-lg transition-all border-b-4 border-b-blue-500 font-sans">
+                    <div class="flex items-center gap-4 mb-4">
                         <div class="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center font-bold text-slate-400 text-sm font-sans italic">${init}</div>
                         <div>
                             <h3 class="font-bold text-slate-800 leading-tight font-sans italic">${f.Vorname || ''} ${f.Title || ''}</h3>
@@ -201,7 +212,7 @@
                         <p>📧 ${f.E_x002d_Mail || '-'}</p>
                         <p>📱 ${f.TelefonMobil || '-'}</p>
                     </div>
-                    <button onclick="loadHistory('${c.id}', '${(f.Vorname + ' ' + f.Title).replace(/'/g, "\\'")}')" class="w-full mt-4 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold py-2 rounded-lg transition border border-slate-200 font-sans italic">
+                    <button onclick="loadHistory('${c.id}')" class="w-full mt-4 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold py-2 rounded-lg transition border border-slate-200 font-sans italic">
                         Historie anzeigen
                     </button>
                     <div id="history-${c.id}" class="mt-4 hidden font-sans italic"></div>
@@ -210,13 +221,13 @@
             document.getElementById('content-display').innerHTML = html + "</div>";
         }
 
-        async function loadHistory(contactId, contactName) {
+        async function loadHistory(contactId) {
             const historyDiv = document.getElementById(`history-${contactId}`);
             if (!historyDiv.classList.contains('hidden')) {
                 historyDiv.classList.add('hidden');
                 return;
             }
-            historyDiv.innerHTML = "<p class='text-[10px] animate-pulse py-2 font-sans italic'>Synchronisiere...</p>";
+            historyDiv.innerHTML = "<p class='text-[10px] animate-pulse py-2 font-sans italic text-blue-500'>Lade Historie...</p>";
             historyDiv.classList.remove('hidden');
 
             try {
@@ -226,7 +237,7 @@
                 const response = await fetch(url, { headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` } });
                 const data = await response.json();
                 
-                const notes = data.value.filter(n => n.fields.KontaktpersonLookupId == contactId);
+                const notes = (data.value || []).filter(n => n.fields.KontaktpersonLookupId == contactId);
                 renderHistoryList(notes, contactId);
             } catch (err) { historyDiv.innerHTML = "<p class='text-red-500 text-[10px] font-sans'>Fehler.</p>"; }
         }
@@ -243,7 +254,7 @@
                 const d = f.Datum ? new Date(f.Datum).toLocaleDateString('de-DE') : '-';
                 html += `
                 <div class="relative pl-6 font-sans italic">
-                    <div class="absolute left-[-1.15rem] top-1 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-white font-sans italic"></div>
+                    <div class="absolute left-[-1.15rem] top-1 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-white font-sans italic shadow-sm"></div>
                     <p class="text-[10px] font-bold text-slate-400 font-sans italic">${d} - ${f.Status || ''}</p>
                     <p class="text-xs font-bold text-slate-800 mt-0.5 font-sans italic">${f.Title || 'Notiz'}</p>
                     <p class="text-xs text-slate-600 mt-1 leading-relaxed font-sans italic">${f.Details_x002f_Kontext || '-'}</p>
@@ -252,12 +263,21 @@
             historyDiv.innerHTML = html + "</div>";
         }
 
-        // --- DER BACK-BUTTON FIX ---
+        // --- BACK FUNKTION (BOMBENFEST) ---
         function showListView() { 
+            // Reset Loader & Content
+            document.getElementById('loading-state').classList.add('hidden');
+            
+            // Suchfeld zurücksetzen & zeigen
             const searchInput = document.getElementById('company-search');
             searchInput.value = ""; 
             document.getElementById('search-container').classList.remove('hidden');
+            
+            // UI Titel zurücksetzen
             document.getElementById('view-title').innerText = "Firmenübersicht";
+            document.getElementById('view-subtitle').innerText = `${allCompanies.length} Unternehmen gefunden`;
+            
+            // Liste neu rendern
             renderCompanyTable(allCompanies); 
         }
 
