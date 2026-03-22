@@ -3,48 +3,58 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>bbz CRM Pro</title>
+    <title>bbz CRM Dashboard PRO</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
     <style>
-        body { background-color: #0f172a; color: #f1f5f9; }
-        .card-dark { background-color: #1e293b; border: 1px solid #334155; }
+        body { background-color: #0f172a; color: #f1f5f9; font-family: sans-serif; }
+        .card-dark { background-color: #1e293b; border: 1px solid #334155; transition: all 0.2s; }
+        .card-dark:hover { border-color: #475569; }
         .prio-A { border-left: 4px solid #f59e0b; }
         .prio-B { border-left: 4px solid #3b82f6; }
         .prio-C { border-left: 4px solid #64748b; }
         .timeline-line { border-left: 2px solid #334155; margin-left: 10px; }
+        .status-overdue { color: #ef4444; font-weight: bold; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
     </style>
 </head>
-<body class="min-h-screen font-sans italic">
+<body class="min-h-screen italic">
 
     <nav class="bg-slate-900 border-b border-slate-800 p-4 sticky top-0 z-50">
         <div class="container mx-auto flex justify-between items-center">
-            <h1 class="text-xl font-black text-blue-400 tracking-tighter cursor-pointer" onclick="showListView()">bbz CRM</h1>
+            <h1 class="text-xl font-black text-blue-400 tracking-tighter cursor-pointer" onclick="location.reload()">bbz CRM</h1>
             <div id="auth-area">
                 <button id="login-btn" class="bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded-lg text-sm font-bold transition">Login</button>
                 <div id="user-info" class="hidden flex items-center gap-3">
-                    <span id="username" class="text-sm text-slate-400"></span>
-                    <button id="logout-btn" class="text-xs text-slate-400 hover:text-white underline">Logout</button>
+                    <span id="username" class="text-xs text-slate-400"></span>
+                    <button id="logout-btn" class="text-xs text-slate-500 hover:text-white underline">Logout</button>
                 </div>
             </div>
         </div>
     </nav>
 
-    <main class="container mx-auto mt-6 p-4">
-        <div id="main-content" class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            
-            <div class="lg:col-span-4 space-y-4">
-                <div class="card-dark p-3 rounded-xl flex items-center gap-3">
-                    <input type="text" id="company-search" placeholder="Firma suchen..." class="bg-transparent border-none text-sm w-full outline-none text-white font-bold italic">
-                </div>
-                <div id="company-list" class="space-y-2 max-h-[750px] overflow-y-auto pr-2">
-                    </div>
-            </div>
+    <div class="container mx-auto mt-6 px-4 grid grid-cols-2 md:grid-cols-5 gap-4" id="dashboard-stats">
+        <div class="card-dark p-4 rounded-xl text-center"><p class="text-[10px] uppercase text-slate-500 font-bold">A-Firmen</p><p id="stat-a" class="text-2xl font-black">-</p></div>
+        <div class="card-dark p-4 rounded-xl text-center"><p class="text-[10px] uppercase text-slate-500 font-bold">B-Firmen</p><p id="stat-b" class="text-2xl font-black">-</p></div>
+        <div class="card-dark p-4 rounded-xl text-center"><p class="text-[10px] uppercase text-slate-500 font-bold">C-Firmen</p><p id="stat-c" class="text-2xl font-black">-</p></div>
+        <div class="card-dark p-4 rounded-xl text-center border-b-2 border-b-red-500"><p class="text-[10px] uppercase text-red-400 font-bold">Tasks Offen</p><p id="stat-tasks" class="text-2xl font-black">-</p></div>
+        <div class="card-dark p-4 rounded-xl text-center border-b-2 border-b-blue-500"><p class="text-[10px] uppercase text-blue-400 font-bold">Top-Kunden</p><p id="stat-top" class="text-2xl font-black">-</p></div>
+    </div>
 
-            <div id="detail-pane" class="lg:col-span-8 space-y-6">
-                <div class="card-dark p-20 rounded-2xl text-center text-slate-500 italic">
-                    Wähle ein Unternehmen aus der Liste aus.
+    <main class="container mx-auto mt-6 p-4 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <div class="lg:col-span-3 space-y-4">
+            <div class="card-dark p-3 rounded-xl flex items-center gap-2">
+                <input type="text" id="comp-search" placeholder="Firma suchen..." class="bg-transparent border-none text-sm w-full outline-none text-white italic">
+            </div>
+            <div id="company-list" class="space-y-2 max-h-[600px] overflow-y-auto pr-2">
                 </div>
+        </div>
+
+        <div id="detail-view" class="lg:col-span-9 space-y-6">
+            <div class="card-dark p-20 rounded-2xl text-center text-slate-500 italic">
+                Wähle ein Unternehmen aus, um das Dashboard zu öffnen.
             </div>
         </div>
     </main>
@@ -66,6 +76,7 @@
             await msalInstance.initialize();
             const response = await msalInstance.handleRedirectPromise();
             if (response) msalInstance.setActiveAccount(response.account);
+            else if (msalInstance.getAllAccounts().length > 0) msalInstance.setActiveAccount(msalInstance.getAllAccounts()[0]);
             updateUI();
         }
 
@@ -75,56 +86,63 @@
                 document.getElementById('login-btn').classList.add('hidden');
                 document.getElementById('user-info').classList.remove('hidden');
                 document.getElementById('username').innerText = account.name;
-                loadInitialData();
+                loadDashboardData();
             }
         }
 
-        document.getElementById('login-btn').onclick = () => msalInstance.loginRedirect({ scopes: ["Sites.ReadWrite.All"] });
+        document.getElementById('login-btn').onclick = () => msalInstance.loginRedirect({ scopes: ["Sites.Read.All"] });
         document.getElementById('logout-btn').onclick = () => msalInstance.logoutRedirect();
 
-        async function loadInitialData() {
+        async function loadDashboardData() {
             try {
                 const account = msalInstance.getActiveAccount();
                 const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: account });
                 const token = tokenRes.accessToken;
 
-                const siteRes = await fetch("https://graph.microsoft.com/v1.0/sites/bbzsg.sharepoint.com:/sites/CRM", {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+                // Site ID
+                const siteRes = await fetch("https://graph.microsoft.com/v1.0/sites/bbzsg.sharepoint.com:/sites/CRM", { headers: { 'Authorization': `Bearer ${token}` } });
                 const siteData = await siteRes.json();
                 siteId = siteData.id;
 
-                const compRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Firmen/items?expand=fields`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+                // 1. Firmen laden
+                const compRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Firmen/items?expand=fields`, { headers: { 'Authorization': `Bearer ${token}` } });
                 const compData = await compRes.json();
-                // Dubletten in der Firmenliste verhindern (SharePoint API Eigenheit)
-                const uniqueCompanies = Array.from(new Map(compData.value.map(item => [item.fields.id, item])).values());
-                allCompanies = uniqueCompanies;
+                allCompanies = compData.value || [];
                 
-                renderCompanies(allCompanies);
+                // 2. Tasks laden (für Statistik)
+                const taskRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Tasks/items?expand=fields`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const taskData = await taskRes.json();
+                const openTasks = (taskData.value || []).filter(t => t.fields.Status === "Offen");
+
+                updateStats(allCompanies, openTasks);
+                renderCompanyList(allCompanies);
             } catch (err) { console.error(err); }
         }
 
-        function renderCompanies(items) {
-            const container = document.getElementById('company-list');
-            container.innerHTML = items.map(item => {
-                const f = item.fields;
-                const p = f.Priorit_x00e4_t == '1' || f.Priorit_x00e4_t == 'A' ? 'A' : (f.Priorit_x00e4_t == '2' || f.Priorit_x00e4_t == 'B' ? 'B' : 'C');
-                return `
-                <div onclick="loadCompanyDetails('${item.id}')" class="card-dark p-3 rounded-xl cursor-pointer hover:bg-slate-700 transition flex justify-between items-center prio-${p}">
-                    <div>
-                        <p class="text-sm font-bold text-white italic">${f.Title}</p>
-                        <p class="text-[10px] text-slate-500 uppercase font-black">${f.Ort || ''}</p>
-                    </div>
-                    <span class="text-[10px] font-black text-slate-600">${p}</span>
-                </div>`;
-            }).join('');
+        function updateStats(companies, tasks) {
+            const count = (p) => companies.filter(c => c.fields.Priorit_x00e4_t == p).length;
+            document.getElementById('stat-a').innerText = count('1') || count('A');
+            document.getElementById('stat-b').innerText = count('2') || count('B');
+            document.getElementById('stat-c').innerText = count('3') || count('C');
+            document.getElementById('stat-tasks').innerText = tasks.length;
+            document.getElementById('stat-top').innerText = companies.filter(c => c.fields.TopKunde).length;
         }
 
-        async function loadCompanyDetails(companyId) {
-            const detailPane = document.getElementById('detail-pane');
-            detailPane.innerHTML = `<div class="p-20 text-center text-blue-400 italic font-bold">Lade Präzisions-Daten...</div>`;
+        function renderCompanyList(items) {
+            const list = document.getElementById('company-list');
+            list.innerHTML = items.map(item => `
+                <div onclick="loadDetails('${item.id}')" class="card-dark p-3 rounded-xl cursor-pointer hover:bg-slate-800 transition flex justify-between items-center prio-${item.fields.Priorit_x00e4_t}">
+                    <div>
+                        <p class="text-sm font-bold italic">${item.fields.Title}</p>
+                        <p class="text-[10px] text-slate-500 font-black uppercase tracking-widest">${item.fields.Ort || ''}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function loadDetails(companyId) {
+            const detailPane = document.getElementById('detail-view');
+            detailPane.innerHTML = `<div class="animate-pulse text-center p-20 text-blue-400 font-bold italic">Synchronisiere Präzisionsdaten...</div>`;
 
             try {
                 const account = msalInstance.getActiveAccount();
@@ -133,70 +151,48 @@
 
                 const company = allCompanies.find(c => c.id == companyId).fields;
 
-                // 1. Kontakte mit Dubletten-Check
-                const contRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontakte/items?expand=fields`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+                // 1. Kontakte (Präzise über FirmaLookupId)
+                const contRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontakte/items?expand=fields`, { headers: { 'Authorization': `Bearer ${token}` } });
                 const contData = await contRes.json();
-                const filteredContacts = contData.value.filter(c => c.fields.FirmaId == companyId || (c.fields.Firma && c.fields.Firma.LookupId == companyId));
-                // Dubletten nach ID entfernen
-                const contacts = Array.from(new Map(filteredContacts.map(c => [c.fields.id, c])).values());
+                const contacts = contData.value.filter(c => c.fields.FirmaLookupId == companyId || c.fields.FirmaId == companyId);
 
-                // 2. Notizen
-                const noteRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontaktnotizen/items?expand=fields`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const noteData = await noteRes.json();
-                const notes = noteData.value.filter(n => contacts.some(c => c.id == n.fields.KontaktpersonId));
+                // 2. History & Notizen (Kombiniert)
+                const histRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/History/items?expand=fields`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const histData = await histRes.json();
+                const history = histData.value.filter(h => contacts.some(c => c.id == h.fields.ContactLookupId));
 
-                renderDetailView(company, contacts, notes);
+                renderDetailDashboard(company, contacts, history);
             } catch (err) { console.error(err); }
         }
 
-        function renderDetailView(firma, contacts, notes) {
-            const container = document.getElementById('detail-pane');
+        function renderDetailDashboard(firma, contacts, history) {
+            const container = document.getElementById('detail-view');
             container.innerHTML = `
-                <div class="space-y-6 animate-in fade-in duration-500">
-                    <div class="card-dark p-6 rounded-2xl border-l-4 border-l-blue-500">
-                        <h2 class="text-3xl font-black text-white italic tracking-tighter">${firma.Title}</h2>
-                        <p class="text-slate-400 text-sm mt-1 uppercase tracking-widest font-black italic">${firma.Ort || ''} ${firma.PLZ || ''}</p>
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-6 animate-in fade-in duration-300">
+                    <div class="md:col-span-12 card-dark p-6 rounded-2xl flex justify-between items-center border-l-4 border-l-blue-500">
+                        <div>
+                            <h2 class="text-3xl font-black text-white italic tracking-tighter">${firma.Title}</h2>
+                            <p class="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1 italic">${firma.Ort || ''} | LEAD: ${firma.Leadbbz || 'Nicht definiert'}</p>
+                        </div>
+                        <div class="text-right">
+                            <span class="bg-blue-600/20 text-blue-400 text-[10px] font-black px-3 py-1 rounded-full uppercase italic border border-blue-500/30">Segment ${firma.Priorit_x00e4_t || '-'}</span>
+                        </div>
                     </div>
 
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="md:col-span-5 space-y-4">
+                        <h3 class="text-[10px] font-black uppercase text-slate-500 tracking-widest italic">Ansprechpartner</h3>
                         ${contacts.map(c => `
-                            <div class="card-dark p-4 rounded-xl border border-slate-700">
-                                <p class="text-blue-400 font-black italic text-lg">${c.fields.Vorname || ''} ${c.fields.Title || ''}</p>
-                                <p class="text-[10px] text-slate-500 font-black uppercase tracking-widest italic">${c.fields.Funktion || '-'}</p>
-                                <div class="mt-4 space-y-1 text-[11px] text-slate-300 font-bold italic">
+                            <div class="card-dark p-4 rounded-xl border-b-4 border-b-blue-600/50">
+                                <p class="text-blue-400 font-black italic">${c.fields.Vorname} ${c.fields.Title}</p>
+                                <p class="text-[10px] text-slate-500 font-bold uppercase italic mt-1">${c.fields.Funktion || '-'}</p>
+                                <div class="mt-3 space-y-1 text-[11px] font-bold text-slate-300 italic">
                                     <p>📧 ${c.fields.E_x002d_Mail || '-'}</p>
-                                    <p>📱 ${c.fields.Mobile || c.fields.TelefonMobil || '-'}</p>
+                                    <p>📱 ${c.fields.Mobile || '-'}</p>
+                                    <p>🎂 Geb: ${c.fields.Geburtsdatum ? new Date(c.fields.Geburtsdatum).toLocaleDateString() : '-'}</p>
                                 </div>
                             </div>
                         `).join('')}
                     </div>
 
-                    <div class="card-dark p-6 rounded-2xl">
-                        <h3 class="text-sm font-black uppercase tracking-widest text-slate-500 mb-6 italic">Historie & Timeline</h3>
-                        <div class="timeline-line space-y-8">
-                            ${notes.sort((a,b) => new Date(b.fields.Datum) - new Date(a.fields.Datum)).map(n => `
-                                <div class="relative pl-8">
-                                    <div class="absolute left-[-6px] top-1.5 w-3 h-3 bg-blue-500 rounded-full border-2 border-slate-900"></div>
-                                    <p class="text-[10px] text-slate-500 font-black italic">${new Date(n.fields.Datum || n.fields.Created).toLocaleDateString('de-DE')}</p>
-                                    <p class="text-sm font-black text-white italic">${n.fields.Title || 'Notiz'}</p>
-                                    <p class="text-xs text-slate-400 mt-1 italic">${n.fields.Details_x002f_Kontext || '-'}</p>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
-        function showListView() { 
-            document.getElementById('detail-pane').innerHTML = `<div class="card-dark p-20 rounded-2xl text-center text-slate-500 italic">Firma wählen...</div>`;
-        }
-
-        init();
-    </script>
-</body>
-</html>
+                    <div class="md:col-span-7 card-dark p-6 rounded-2xl">
+                        <h3 class="text-[10px] font-black uppercase text-slate-5
