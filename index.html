@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>bbz CRM - Ultra Stable Dashboard</title>
+    <title>bbz CRM - Name Matching Edition</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
     <style>
@@ -33,23 +33,21 @@
     </nav>
 
     <div class="container mx-auto mt-6 px-4 grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div class="card-dark p-4 rounded-xl text-center"><p class="text-[10px] uppercase text-slate-500 font-bold">A-Firmen</p><p id="stat-a" class="text-2xl font-black">-</p></div>
-        <div class="card-dark p-4 rounded-xl text-center"><p class="text-[10px] uppercase text-slate-500 font-bold">B-Firmen</p><p id="stat-b" class="text-2xl font-black">-</p></div>
-        <div class="card-dark p-4 rounded-xl text-center"><p class="text-[10px] uppercase text-slate-500 font-bold">C-Firmen</p><p id="stat-c" class="text-2xl font-black">-</p></div>
-        <div class="card-dark p-4 rounded-xl text-center border-b-2 border-b-red-500"><p class="text-[10px] uppercase text-red-400 font-bold italic">Tasks Offen</p><p id="stat-tasks" class="text-2xl font-black">-</p></div>
+        <div class="card-dark p-4 rounded-xl text-center"><p class="text-[10px] uppercase text-slate-500 font-bold">A-Kunden</p><p id="stat-a" class="text-2xl font-black">-</p></div>
+        <div class="card-dark p-4 rounded-xl text-center"><p class="text-[10px] uppercase text-slate-500 font-bold">B-Kunden</p><p id="stat-b" class="text-2xl font-black">-</p></div>
+        <div class="card-dark p-4 rounded-xl text-center"><p class="text-[10px] uppercase text-slate-500 font-bold">C-Kunden</p><p id="stat-c" class="text-2xl font-black">-</p></div>
+        <div class="card-dark p-4 rounded-xl text-center border-b-2 border-b-red-500"><p class="text-[10px] uppercase text-red-400 font-bold italic">Tasks</p><p id="stat-tasks" class="text-2xl font-black">-</p></div>
         <div class="card-dark p-4 rounded-xl text-center border-b-2 border-b-blue-500"><p class="text-[10px] uppercase text-blue-400 font-bold">Top ★</p><p id="stat-top" class="text-2xl font-black">-</p></div>
     </div>
 
     <main class="container mx-auto mt-6 p-4 grid grid-cols-1 lg:grid-cols-12 gap-6 font-sans">
         <div class="lg:col-span-3 space-y-4">
             <input type="text" id="comp-search" placeholder="Suchen..." class="card-dark w-full rounded-xl px-4 py-2 text-sm outline-none text-white italic">
-            <div id="company-list" class="space-y-2 max-h-[600px] overflow-y-auto pr-2">
-                <p class="text-slate-600 text-center py-10 font-bold">Warte auf Login...</p>
-            </div>
+            <div id="company-list" class="space-y-2 max-h-[600px] overflow-y-auto pr-2 text-sm"></div>
         </div>
 
         <div id="detail-view" class="lg:col-span-9 space-y-6">
-            <div class="card-dark p-20 rounded-2xl text-center text-slate-500 italic">Bitte loggen Sie sich ein, um den Datenabgleich zu starten.</div>
+            <div class="card-dark p-20 rounded-2xl text-center text-slate-500 italic">Bitte einloggen.</div>
         </div>
     </main>
 
@@ -64,8 +62,8 @@
         };
 
         const msalInstance = new msal.PublicClientApplication(msalConfig);
-        let siteId = "";
         let db = { firmen: [], kontakte: [], notizen: [], tasks: [], history: [] };
+        let siteId = "";
 
         async function init() {
             const res = await msalInstance.handleRedirectPromise();
@@ -90,19 +88,17 @@
 
         async function loadAllData() {
             const pane = document.getElementById('detail-view');
-            pane.innerHTML = `<div class="p-20 text-center text-blue-400 italic font-bold">Synchronisiere alle Listen (Brute Force)...</div>`;
+            pane.innerHTML = `<div class="p-20 text-center text-blue-400 italic font-bold">Synchronisiere (Namens-Abgleich-Modus)...</div>`;
 
             try {
                 const acc = msalInstance.getActiveAccount();
                 const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: acc });
                 const token = tokenRes.accessToken;
 
-                // 1. Site ID
                 const siteRes = await fetch("https://graph.microsoft.com/v1.0/sites/bbzsg.sharepoint.com:/sites/CRM", { headers: { 'Authorization': `Bearer ${token}` } });
                 const site = await siteRes.json();
                 siteId = site.id;
 
-                // 2. Alle Listen parallel laden
                 const endpoints = ["Firmen", "Kontakte", "Kontaktnotizen", "Tasks", "History"];
                 const results = await Promise.all(endpoints.map(ep => 
                     fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${ep}/items?expand=fields&top=5000`, { 
@@ -118,7 +114,7 @@
 
                 renderDashboardStats();
                 renderCompanyList(db.firmen);
-                pane.innerHTML = `<div class="card-dark p-20 rounded-2xl text-center text-slate-500 italic">Daten geladen. Wähle eine Firma aus der Liste.</div>`;
+                pane.innerHTML = `<div class="card-dark p-20 rounded-2xl text-center text-slate-500 italic">Daten geladen. Namens-Matching aktiv.</div>`;
             } catch (err) { console.error(err); }
         }
 
@@ -133,7 +129,7 @@
 
         function renderCompanyList(items) {
             document.getElementById('company-list').innerHTML = items.sort((a,b) => a.fields.Title.localeCompare(b.fields.Title)).map(item => `
-                <div onclick="showCompanyDetail('${item.id}')" class="card-dark p-3 rounded-xl cursor-pointer hover:bg-slate-800 transition italic text-sm font-bold prio-${item.fields.Priorit_x00e4_t}">
+                <div onclick="showCompanyDetail('${item.id}')" class="card-dark p-3 rounded-xl cursor-pointer hover:bg-slate-800 transition font-bold prio-${item.fields.Priorit_x00e4_t}">
                     ${item.fields.Title}
                 </div>
             `).join('');
@@ -141,29 +137,28 @@
 
         function showCompanyDetail(cId) {
             const firmaObj = db.firmen.find(f => String(f.id) === String(cId));
-            const firma = firmaObj.fields;
-            const firmenName = firma.Title;
+            const firmenName = firmaObj.fields.Title;
 
-            // HYBRID-FILTER: Sucht über ID UND über den Namen im Feld "Firma"
+            // RADIKALER FIX: Wir ignorieren die FirmaId im Kontakt komplett!
+            // Wir prüfen nur, ob im Feld "Firma" der exakte Name steht.
             const contacts = db.kontakte.filter(c => {
                 const f = c.fields;
-                const matchById = String(f.FirmaId) === String(cId);
-                const matchByName = f.Firma && String(f.Firma).includes(firmenName);
-                return matchById || matchByName;
+                // Falls das Feld ein Lookup-Objekt ist, nehmen wir den Value, sonst den Text
+                const contactFirmaValue = f.Firma && typeof f.Firma === 'object' ? f.Firma.LookupValue : f.Firma;
+                return String(contactFirmaValue).trim() === String(firmenName).trim();
             });
 
             const contactIds = contacts.map(c => String(c.id));
 
-            // TIMELINE: History + Notizen
+            // Notizen & History ziehen wir über die Kontakt-IDs (die sind pro Person eindeutig)
             const timeline = [
                 ...db.history.filter(h => contactIds.includes(String(h.fields.ContactLookupId))),
                 ...db.notizen.filter(n => contactIds.includes(String(n.fields.KontaktpersonId)))
             ].sort((a,b) => new Date(b.fields.Datum || b.createdDateTime) - new Date(a.fields.Datum || a.createdDateTime));
 
-            // TASKS: Nach Kontakt-ID oder direkt nach Firmen-ID
-            const tasks = db.tasks.filter(t => contactIds.includes(String(t.fields.ContactID)) || String(t.fields.FirmaId) === String(cId));
+            const tasks = db.tasks.filter(t => contactIds.includes(String(t.fields.ContactID)));
 
-            renderDetailsUI(firma, contacts, timeline, tasks);
+            renderDetailsUI(firmaObj.fields, contacts, timeline, tasks);
         }
 
         function renderDetailsUI(firma, contacts, timeline, tasks) {
@@ -171,7 +166,7 @@
             container.innerHTML = `
                 <div class="grid grid-cols-1 md:grid-cols-12 gap-6 animate-in fade-in duration-300">
                     <div class="md:col-span-12 card-dark p-6 rounded-2xl border-l-4 border-l-blue-500">
-                        <h2 class="text-3xl font-black italic tracking-tighter text-blue-400">${firma.Title}</h2>
+                        <h2 class="text-3xl font-black text-blue-400 italic">${firma.Title}</h2>
                         <p class="text-slate-400 text-xs font-bold uppercase mt-1 italic">${firma.Ort || ''} | Lead: ${firma.Leadbbz || '-'}</p>
                     </div>
 
@@ -183,8 +178,12 @@
                                     <div class="card-dark p-4 rounded-xl border-b-4 border-b-blue-600/50">
                                         <p class="text-white font-black italic">${c.fields.Vorname || ''} ${c.fields.Title || ''}</p>
                                         <p class="text-[10px] text-slate-500 uppercase italic">${c.fields.Funktion || '-'}</p>
+                                        <div class="mt-2 text-[10px] text-slate-400 font-bold italic border-t border-slate-700 pt-2">
+                                            📧 ${c.fields.E_x002d_Mail || '-'} | 📱 ${c.fields.Mobile || '-'}
+                                        </div>
                                     </div>
                                 `).join('')}
+                                ${contacts.length === 0 ? '<p class="text-red-400 text-xs italic">Kein Kontakt mit diesem Firmennamen gefunden.</p>' : ''}
                             </div>
                         </section>
 
@@ -197,13 +196,12 @@
                                         <p class="text-slate-500 mt-1">Fällig: ${new Date(t.fields.F_x00e4_lligkeit).toLocaleDateString()}</p>
                                     </div>
                                 `).join('')}
-                                ${tasks.length === 0 ? '<p class="text-slate-600 text-xs italic">Keine Aufgaben.</p>' : ''}
                             </div>
                         </section>
                     </div>
 
                     <div class="md:col-span-7 card-dark p-6 rounded-2xl">
-                        <h3 class="text-[10px] font-black uppercase text-slate-500 italic mb-6">Timeline (History & Notizen)</h3>
+                        <h3 class="text-[10px] font-black uppercase text-slate-500 italic mb-6">Timeline</h3>
                         <div class="timeline-line space-y-6">
                             ${timeline.map(h => `
                                 <div class="relative pl-6">
