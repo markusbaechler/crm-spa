@@ -8,7 +8,7 @@
     <!-- Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
 
-    <!-- MSAL (WICHTIG: defer!) -->
+    <!-- MSAL -->
     <script defer src="https://alcdn.msauth.net/browser/2.37.0/js/msal-browser.min.js"></script>
 </head>
 
@@ -24,15 +24,15 @@
         </div>
 
         <div class="flex gap-2">
-            <button id="btnLogin" class="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700">
+            <button id="btnLogin" class="px-4 py-2 rounded-xl bg-blue-600 text-white">
                 Login
             </button>
 
-            <button id="btnLoad" class="px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 hidden">
+            <button id="btnLoad" class="px-4 py-2 rounded-xl bg-emerald-600 text-white hidden">
                 Kontakte laden
             </button>
 
-            <button id="btnLogout" class="px-4 py-2 rounded-xl bg-slate-700 text-white hover:bg-slate-800 hidden">
+            <button id="btnLogout" class="px-4 py-2 rounded-xl bg-slate-700 text-white hidden">
                 Logout
             </button>
         </div>
@@ -63,10 +63,7 @@
 
         <!-- CONTACTS -->
         <div class="lg:col-span-2 bg-white rounded-2xl p-5 shadow">
-            <div class="flex justify-between mb-3">
-                <h2 class="text-xl font-semibold">Contacts</h2>
-                <input type="text" placeholder="Suche..." class="border px-3 py-1 rounded-lg text-sm"/>
-            </div>
+            <h2 class="text-xl font-semibold mb-3">Contacts</h2>
 
             <table class="w-full text-sm">
                 <thead class="bg-slate-100">
@@ -85,128 +82,150 @@
                 </tbody>
             </table>
         </div>
+
     </div>
 </div>
 
-<!-- SCRIPT -->
 <script>
-    const CONFIG = {
-        clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a",
-        tenantId: "3643e7ab-d166-4e27-bd5f-c5bbfcd282d7",
-        siteUrl: "https://bbzsg.sharepoint.com/sites/CRM",
-        scopes: ["https://bbzsg.sharepoint.com/AllSites.Read"]
-    };
+const CONFIG = {
+    clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a",
+    tenantId: "3643e7ab-d166-4e27-bd5f-c5bbfcd282d7",
+    siteUrl: "https://bbzsg.sharepoint.com/sites/CRM",
+    scopes: ["https://bbzsg.sharepoint.com/AllSites.Read"]
+};
 
-    let msalInstance;
-    let account;
+let msalInstance;
+let account;
 
-    function log(msg) {
-        const debug = document.getElementById("debug");
-        debug.innerHTML += msg + "<br>";
-        debug.scrollTop = debug.scrollHeight;
-    }
+function log(msg) {
+    const el = document.getElementById("debug");
+    el.innerHTML += msg + "<br>";
+    el.scrollTop = el.scrollHeight;
+}
 
-    function setStatus(msg) {
-        document.getElementById("statusInfo").innerText = msg;
-    }
+function setStatus(msg) {
+    document.getElementById("statusInfo").innerText = msg;
+}
 
-    async function initMsal() {
-        msalInstance = new msal.PublicClientApplication({
-            auth: {
-                clientId: CONFIG.clientId,
-                authority: `https://login.microsoftonline.com/${CONFIG.tenantId}`
-            }
-        });
-    }
-
-    async function login() {
-        try {
-            const response = await msalInstance.loginPopup({
-                scopes: CONFIG.scopes
-            });
-
-            account = response.account;
-
-            document.getElementById("userInfo").innerText = account.username;
-            document.getElementById("btnLogin").classList.add("hidden");
-            document.getElementById("btnLoad").classList.remove("hidden");
-            document.getElementById("btnLogout").classList.remove("hidden");
-
-            log("Login erfolgreich");
-        } catch (e) {
-            log("Login Fehler: " + e);
+// INIT MSAL
+async function initMsal() {
+    msalInstance = new msal.PublicClientApplication({
+        auth: {
+            clientId: CONFIG.clientId,
+            authority: `https://login.microsoftonline.com/${CONFIG.tenantId}`
         }
-    }
-
-    async function getToken() {
-        const result = await msalInstance.acquireTokenSilent({
-            scopes: CONFIG.scopes,
-            account: account
-        });
-
-        return result.accessToken;
-    }
-
-    async function loadContacts() {
-        try {
-            setStatus("lade Kontakte...");
-
-            const token = await getToken();
-
-            const response = await fetch(
-                `${CONFIG.siteUrl}/_api/web/lists/getbytitle('Contacts')/items`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                        Accept: "application/json;odata=nometadata"
-                    }
-                }
-            );
-
-            const data = await response.json();
-            const items = data.value || data.d?.results || [];
-
-            renderContacts(items);
-
-            setStatus("fertig");
-            log("Kontakte geladen: " + items.length);
-
-        } catch (e) {
-            log("Fehler: " + e);
-        }
-    }
-
-    function renderContacts(items) {
-        const table = document.getElementById("contactsTable");
-        table.innerHTML = "";
-
-        items.forEach(c => {
-            table.innerHTML += `
-                <tr class="border-b">
-                    <td class="p-2">${c.Id}</td>
-                    <td class="p-2">${c.Title || ""}</td>
-                    <td class="p-2">${c.Firma || ""}</td>
-                    <td class="p-2">${c.EMail || ""}</td>
-                    <td class="p-2">${c.Telefon || ""}</td>
-                </tr>
-            `;
-        });
-    }
-
-    function logout() {
-        msalInstance.logoutPopup();
-    }
-
-    // INIT
-    window.addEventListener("load", async () => {
-        await initMsal();
-
-        document.getElementById("btnLogin").onclick = login;
-        document.getElementById("btnLoad").onclick = loadContacts;
-        document.getElementById("btnLogout").onclick = logout;
-
-        log("App gestartet");
     });
+}
+
+// LOGIN
+async function login() {
+    try {
+        const res = await msalInstance.loginPopup({
+            scopes: CONFIG.scopes
+        });
+
+        account = res.account;
+
+        document.getElementById("userInfo").innerText = account.username;
+        document.getElementById("btnLogin").classList.add("hidden");
+        document.getElementById("btnLoad").classList.remove("hidden");
+        document.getElementById("btnLogout").classList.remove("hidden");
+
+        log("Login erfolgreich");
+
+    } catch (e) {
+        log("Login Fehler: " + e);
+    }
+}
+
+// TOKEN
+async function getToken() {
+    const res = await msalInstance.acquireTokenSilent({
+        scopes: CONFIG.scopes,
+        account: account
+    });
+
+    return res.accessToken;
+}
+
+// LOAD CONTACTS (FIXED)
+async function loadContacts() {
+    try {
+        setStatus("lade Kontakte...");
+
+        const token = await getToken();
+
+        const response = await fetch(
+            `${CONFIG.siteUrl}/_api/web/lists/getbytitle('Contacts')/items`,
+            {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: "application/json;odata=nometadata"
+                }
+            }
+        );
+
+        const data = await response.json();
+
+        log("API Response erhalten");
+
+        // 🔥 UNIVERSAL FIX
+        const items = data.value || data.d?.results || [];
+
+        log("Items: " + items.length);
+
+        renderContacts(items);
+
+        setStatus("fertig");
+
+    } catch (e) {
+        log("Fehler: " + e);
+        setStatus("Fehler");
+    }
+}
+
+// RENDER
+function renderContacts(items) {
+    const table = document.getElementById("contactsTable");
+    table.innerHTML = "";
+
+    if (!items.length) {
+        table.innerHTML = `
+            <tr>
+                <td colspan="5" class="p-3 text-slate-500">Keine Kontakte gefunden.</td>
+            </tr>
+        `;
+        return;
+    }
+
+    items.forEach(c => {
+        table.innerHTML += `
+            <tr class="border-b">
+                <td class="p-2">${c.Id ?? ""}</td>
+                <td class="p-2">${c.Title ?? ""}</td>
+                <td class="p-2">${c.Firma ?? ""}</td>
+                <td class="p-2">${c.EMail ?? c["E_x002d_Mail"] ?? ""}</td>
+                <td class="p-2">${c.Telefon ?? ""}</td>
+            </tr>
+        `;
+    });
+}
+
+// LOGOUT
+function logout() {
+    msalInstance.logoutPopup();
+}
+
+// INIT
+window.addEventListener("load", async () => {
+    await initMsal();
+
+    document.getElementById("btnLogin").onclick = login;
+    document.getElementById("btnLoad").onclick = loadContacts;
+    document.getElementById("btnLogout").onclick = logout;
+
+    log("App gestartet");
+});
 </script>
 
 </body>
