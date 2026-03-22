@@ -11,6 +11,9 @@
         .prio-B, .prio-2 { background: #f3f4f6; color: #374151; border: 1px solid #9ca3af; }
         .prio-C, .prio-3 { background: #ffedd5; color: #9a3412; border: 1px solid #f97316; }
         .timeline-line { border-left: 2px solid #e2e8f0; margin-left: 0.75rem; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen font-sans text-slate-900">
@@ -30,21 +33,23 @@
 
     <main class="container mx-auto mt-8 p-4">
         <div id="main-card" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden min-h-[600px] flex flex-col">
+            
             <div class="p-6 border-b border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h2 id="view-title" class="text-2xl font-bold text-slate-800 tracking-tight">Firmenübersicht</h2>
                     <p id="view-subtitle" class="text-slate-500 text-sm mt-0.5">Daten werden geladen...</p>
                 </div>
                 <div id="search-container" class="hidden relative">
-                    <input type="text" id="company-search" placeholder="Suchen..." class="w-full md:w-80 pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm focus:ring-2 focus:ring-blue-500/20 transition-all font-sans">
-                    <span class="absolute left-4 top-3 text-slate-400">🔍</span>
+                    <input type="text" id="company-search" placeholder="Firma oder Ort suchen..." 
+                        class="w-full md:w-80 pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm focus:ring-2 focus:ring-blue-500/20 transition-all">
+                    <span class="absolute left-4 top-3 text-slate-400 font-bold">🔍</span>
                 </div>
             </div>
 
             <div id="data-area" class="flex-1 relative font-sans text-slate-700">
-                <div id="loading-state" class="hidden absolute inset-0 bg-white/80 z-10 flex flex-col items-center justify-center">
+                <div id="loading-state" class="hidden absolute inset-0 bg-white/80 z-10 flex flex-col items-center justify-center font-sans">
                     <div class="animate-spin h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full mb-3"></div>
-                    <p class="text-slate-600 font-semibold">Synchronisierung...</p>
+                    <p class="text-slate-600 font-semibold font-sans italic">Daten werden synchronisiert...</p>
                 </div>
                 <div id="content-display" class="p-6 font-sans"></div>
             </div>
@@ -65,9 +70,14 @@
         let allCompanies = [];
         let siteId = ""; 
 
+        // Such-Event
         document.getElementById('company-search').addEventListener('input', (e) => {
             const term = e.target.value.toLowerCase().trim();
-            const filtered = allCompanies.filter(c => (c.fields.Title || "").toLowerCase().includes(term) || (c.fields.Ort || "").toLowerCase().includes(term));
+            if (!allCompanies) return;
+            const filtered = allCompanies.filter(c => 
+                (c.fields.Title || "").toLowerCase().includes(term) || 
+                (c.fields.Ort || "").toLowerCase().includes(term)
+            );
             renderCompanyTable(filtered);
         });
 
@@ -89,6 +99,8 @@
                 document.getElementById('user-info').classList.remove('hidden');
                 document.getElementById('username').innerText = account.name;
                 startDataLoad();
+            } else {
+                document.getElementById('content-display').innerHTML = '<div class="py-20 text-center text-slate-400 italic">Bitte loggen Sie sich ein.</div>';
             }
         }
 
@@ -124,7 +136,7 @@
             document.getElementById('search-container').classList.remove('hidden');
 
             let html = `<div class="overflow-x-auto"><table class='w-full text-left border-separate border-spacing-y-2'>
-                <thead><tr class='text-slate-400 text-[10px] uppercase tracking-widest px-4'><th class='p-4 font-sans'>Firma</th><th class='p-4 text-center'>Prio</th><th class='p-4 text-right'>Ort</th></tr></thead><tbody>`;
+                <thead><tr class='text-slate-400 text-[10px] uppercase tracking-widest px-4 font-sans'><th class='p-4'>Firma</th><th class='p-4 text-center'>Prio</th><th class='p-4 text-right'>Ort</th></tr></thead><tbody>`;
             
             items.forEach(item => {
                 const f = item.fields;
@@ -132,9 +144,9 @@
                 if(p == "1") p = "A"; else if(p == "2") p = "B"; else if(p == "3") p = "C";
 
                 html += `<tr onclick="loadContacts('${item.id}', '${(f.Title || 'Unbekannt').replace(/'/g, "\\'")}')" class='bg-white border border-slate-100 shadow-sm hover:shadow-md hover:border-blue-300 cursor-pointer transition-all group font-sans'>
-                    <td class='p-4 rounded-l-xl border-y border-l border-slate-100 font-bold text-slate-800 font-sans'>${f.Title} ${f.TopKunde ? '<span class="text-yellow-500 ml-1 font-sans">★</span>' : ''}</td>
-                    <td class='p-4 border-y border-slate-100 text-center font-sans'><span class="prio-${p} px-3 py-1 rounded-lg text-[10px] font-black uppercase font-sans tracking-tighter">${p}</span></td>
-                    <td class='p-4 rounded-r-xl border-y border-r border-slate-100 text-slate-500 text-sm text-right font-sans'>${f.Ort || ''}</td></tr>`;
+                    <td class='p-4 rounded-l-xl border-y border-l border-slate-100 font-bold text-slate-800 font-sans'>${f.Title} ${f.TopKunde ? '<span class="text-yellow-500 ml-1">★</span>' : ''}</td>
+                    <td class='p-4 border-y border-slate-100 text-center font-sans font-black italic'><span class="prio-${p} px-3 py-1 rounded-lg text-[10px] uppercase tracking-tighter">${p}</span></td>
+                    <td class='p-4 rounded-r-xl border-y border-r border-slate-100 text-slate-500 text-sm text-right font-sans italic'>${f.Ort || ''}</td></tr>`;
             });
             document.getElementById('content-display').innerHTML = html + "</tbody></table></div>";
         }
@@ -147,46 +159,45 @@
             try {
                 const account = msalInstance.getActiveAccount();
                 const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: account });
-                const url = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontakte/items?expand=fields(select=id,Title,Vorname,Funktion,E_x002d_Mail,TelefonMobil,FirmaLookupId,FirmaId)`;
+                const url = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontakte/items?expand=fields`;
                 
                 const response = await fetch(url, { headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` } });
                 const data = await response.json();
                 
-                // Wir filtern lokal, um Feldnamen-Probleme zu umgehen
                 const filtered = data.value.filter(item => {
                     const f = item.fields;
                     return f.FirmaLookupId == companyId || f.FirmaId == companyId;
                 });
 
-                renderContactCards(filtered, companyName);
+                renderContactView(filtered, companyName);
             } catch (err) { 
                 document.getElementById('content-display').innerHTML = `<p class="text-red-500 font-sans p-10 text-center">Fehler beim Laden.</p>`;
             } finally { loader.classList.add('hidden'); }
         }
 
-        function renderContactCards(contacts, companyName) {
+        function renderContactView(contacts, companyName) {
             document.getElementById('view-title').innerText = companyName;
             document.getElementById('view-subtitle').innerText = `${contacts.length} Kontakte`;
             
-            let html = `<div class="mb-8 font-sans font-bold"><button onclick="showListView()" class="text-sm text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-lg transition-all font-sans">← Zurück zur Firmenliste</button></div><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 font-sans">`;
+            let html = `<div class="mb-8"><button onclick="showListView()" class="flex items-center gap-2 text-sm font-bold text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-lg transition-all font-sans italic">← Zurück zur Firmenliste</button></div><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 font-sans">`;
             
             if (contacts.length === 0) {
-                html += `<div class="col-span-full py-20 text-center border-2 border-dashed border-slate-200 rounded-2xl font-sans text-slate-400 italic">Keine Kontakte für diese Firma gefunden.</div>`;
+                html += `<div class="col-span-full py-20 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 font-sans italic">Keine Kontakte für diese Firma gefunden.</div>`;
             }
 
             contacts.forEach(c => {
                 const f = c.fields;
                 const init = `${(f.Vorname || '?').charAt(0)}${(f.Title || '?').charAt(0)}`;
                 html += `
-                <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-lg transition-all border-b-4 border-b-blue-500 font-sans">
-                    <div class="flex items-center gap-4 mb-4 font-sans italic">
+                <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-lg transition-all border-b-4 border-b-blue-500">
+                    <div class="flex items-center gap-4 mb-4 italic">
                         <div class="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center font-bold text-slate-400 text-sm font-sans italic">${init}</div>
                         <div>
                             <h3 class="font-bold text-slate-800 leading-tight font-sans italic">${f.Vorname || ''} ${f.Title || ''}</h3>
-                            <p class="text-blue-600 text-[11px] font-bold uppercase tracking-wider font-sans italic">${f.Funktion || '-'}</p>
+                            <p class="text-blue-600 text-[11px] font-bold uppercase tracking-wider font-sans italic font-black">${f.Funktion || '-'}</p>
                         </div>
                     </div>
-                    <div class="space-y-2 pt-4 border-t border-slate-50 text-sm font-sans text-slate-600 font-bold">
+                    <div class="space-y-2 pt-4 border-t border-slate-50 text-sm font-sans text-slate-600 font-bold italic">
                         <p>📧 ${f.E_x002d_Mail || '-'}</p>
                         <p>📱 ${f.TelefonMobil || '-'}</p>
                     </div>
@@ -241,10 +252,15 @@
             historyDiv.innerHTML = html + "</div>";
         }
 
+        // --- DER BACK-BUTTON FIX ---
         function showListView() { 
-            document.getElementById('company-search').value = ""; 
+            const searchInput = document.getElementById('company-search');
+            searchInput.value = ""; 
+            document.getElementById('search-container').classList.remove('hidden');
+            document.getElementById('view-title').innerText = "Firmenübersicht";
             renderCompanyTable(allCompanies); 
         }
+
         init();
     </script>
 </body>
