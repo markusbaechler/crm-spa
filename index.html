@@ -1,272 +1,378 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CRM SPA</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script defer src="https://alcdn.msauth.net/browser/2.37.0/js/msal-browser.min.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CRM SPA</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://alcdn.msauth.net/browser/2.37.0/js/msal-browser.min.js"></script>
 </head>
 <body class="min-h-screen bg-slate-100 text-slate-800">
-<div class="max-w-6xl mx-auto p-6">
+  <div class="max-w-7xl mx-auto p-6">
     <div class="flex items-center justify-between mb-6">
-        <div>
-            <h1 class="text-3xl font-bold">CRM SPA</h1>
-            <p class="text-slate-600">GitHub Pages + Microsoft Login + SharePoint REST</p>
-        </div>
-        <div class="flex gap-2">
-            <button id="btnLogin" class="px-4 py-2 rounded-xl bg-blue-600 text-white">Login</button>
-            <button id="btnLoad" class="px-4 py-2 rounded-xl bg-emerald-600 text-white hidden">Kontakte laden</button>
-            <button id="btnLogout" class="px-4 py-2 rounded-xl bg-slate-700 text-white hidden">Logout</button>
-        </div>
+      <div>
+        <h1 class="text-3xl font-bold">CRM SPA</h1>
+        <p class="text-slate-600">GitHub Pages + Microsoft Login + SharePoint REST</p>
+      </div>
+      <div class="flex gap-2">
+        <button id="btnLogin" class="px-4 py-2 rounded-xl bg-blue-600 text-white">Login</button>
+        <button id="btnLoadContacts" class="px-4 py-2 rounded-xl bg-emerald-600 text-white hidden">Kontakte laden</button>
+        <button id="btnLogout" class="px-4 py-2 rounded-xl bg-slate-700 text-white hidden">Logout</button>
+      </div>
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div class="bg-white rounded-2xl p-5 shadow">
-            <h2 class="text-xl font-semibold mb-4">Status</h2>
+      <div class="bg-white rounded-2xl p-5 shadow">
+        <h2 class="text-xl font-semibold mb-4">Status</h2>
 
-            <p><b>Site:</b><br><span id="siteInfo">https://bbzsg.sharepoint.com/sites/CRM</span></p>
-            <p class="mt-3"><b>Benutzer:</b><br><span id="userInfo">nicht angemeldet</span></p>
-            <p class="mt-3"><b>Letzte Aktion:</b><br><span id="statusInfo">bereit</span></p>
+        <p><b>Site:</b><br><span id="siteInfo"></span></p>
+        <p class="mt-3"><b>Benutzer:</b><br><span id="userInfo">nicht angemeldet</span></p>
+        <p class="mt-3"><b>Letzte Aktion:</b><br><span id="statusInfo">bereit</span></p>
 
-            <h3 class="mt-6 font-semibold">Debug Log</h3>
-            <div id="debug" class="mt-2 bg-slate-900 text-green-400 text-xs p-3 rounded-xl h-80 overflow-auto"></div>
+        <h3 class="mt-6 font-semibold">Debug Log</h3>
+        <div id="debug" class="mt-2 bg-slate-900 text-green-400 text-xs p-3 rounded-xl h-80 overflow-auto"></div>
+      </div>
+
+      <div class="lg:col-span-2 bg-white rounded-2xl p-5 shadow">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-xl font-semibold">Kontakte</h2>
+          <input id="searchInput" type="text" placeholder="Suche..." class="border px-3 py-2 rounded-lg text-sm w-64" />
         </div>
 
-        <div class="lg:col-span-2 bg-white rounded-2xl p-5 shadow">
-            <h2 class="text-xl font-semibold mb-3">Contacts</h2>
+        <div id="contactsMeta" class="text-sm text-slate-500 mb-3">Noch keine Daten geladen.</div>
 
-            <table class="w-full text-sm">
-                <thead class="bg-slate-100">
-                <tr>
-                    <th class="p-2 text-left">ID</th>
-                    <th class="p-2 text-left">Name</th>
-                    <th class="p-2 text-left">Firma</th>
-                    <th class="p-2 text-left">E-Mail</th>
-                    <th class="p-2 text-left">Telefon</th>
-                </tr>
-                </thead>
-                <tbody id="contactsTable">
-                <tr>
-                    <td colspan="5" class="p-3 text-slate-500">Noch keine Daten geladen.</td>
-                </tr>
-                </tbody>
-            </table>
+        <div class="overflow-auto border border-slate-200 rounded-xl">
+          <table class="w-full text-sm">
+            <thead class="bg-slate-100">
+              <tr>
+                <th class="p-2 text-left">ID</th>
+                <th class="p-2 text-left">Name</th>
+                <th class="p-2 text-left">Firma</th>
+                <th class="p-2 text-left">E-Mail</th>
+                <th class="p-2 text-left">Telefon</th>
+                <th class="p-2 text-left">ABC</th>
+                <th class="p-2 text-left">Tags</th>
+              </tr>
+            </thead>
+            <tbody id="contactsTable">
+              <tr>
+                <td colspan="7" class="p-3 text-slate-500">Noch keine Daten geladen.</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
+      </div>
     </div>
-</div>
+  </div>
 
-<script>
-const CONFIG = {
-    clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a",
-    tenantId: "3643e7ab-d166-4e27-bd5f-c5bbfcd282d7",
-    siteUrl: "https://bbzsg.sharepoint.com/sites/CRM",
-    listName: "Contacts",
-    scopes: ["https://bbzsg.sharepoint.com/AllSites.Read"]
-};
+  <script>
+    const CONFIG = {
+      clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a",
+      tenantId: "3643e7ab-d166-4e27-bd5f-c5bbfcd282d7",
+      siteUrl: "https://bbzsg.sharepoint.com/sites/CRM",
+      scopes: ["https://bbzsg.sharepoint.com/AllSites.Read"],
 
-let msalInstance;
-let account;
+      lists: {
+        contacts: "Kontakte",
+        history: "History",
+        tasks: "Tasks"
+      },
 
-function log(msg, obj = null) {
-    const el = document.getElementById("debug");
-    const time = new Date().toLocaleTimeString("de-CH");
-    let line = `[${time}] ${msg}`;
-    if (obj !== null) {
-        try {
-            line += "<br>" + escapeHtml(JSON.stringify(obj, null, 2));
-        } catch {
-            line += "<br>" + escapeHtml(String(obj));
+      fields: {
+        contacts: {
+          id: "ID",
+          name: ["Title", "Name"],
+          company: ["Firma"],
+          email: ["E_x002d_Mail", "EMail", "Email"],
+          phone: ["Telefon", "Phone", "Telephone"],
+          abc: ["ABC_x002d_Segment", "ABCSegment", "ABC"],
+          tags: ["Tags"]
+        },
+        history: {
+          id: "ID",
+          contactId: "ContactID",
+          date: "Datum",
+          type: "TypEintrag",
+          notes: "Notizen",
+          projectRef: "Projektbezug",
+          contactLookup: "ContactLookup"
+        },
+        tasks: {
+          id: "ID",
+          contactId: "ContactID",
+          dueDate: "Fälligkeit",
+          status: "Status"
         }
-    }
-    el.innerHTML += line + "<br><br>";
-    el.scrollTop = el.scrollHeight;
-    console.log(msg, obj);
-}
+      }
+    };
 
-function setStatus(msg) {
-    document.getElementById("statusInfo").innerText = msg;
-}
+    let msalInstance = null;
+    let activeAccount = null;
+    let contactsCache = [];
 
-function escapeHtml(value) {
-    return String(value ?? "")
+    const $ = (id) => document.getElementById(id);
+
+    function escapeHtml(value) {
+      return String(value ?? "")
         .replaceAll("&", "&amp;")
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#39;");
-}
+    }
 
-async function initMsal() {
-    msalInstance = new msal.PublicClientApplication({
+    function log(message, data = null) {
+      const time = new Date().toLocaleTimeString("de-CH");
+      let line = `[${time}] ${escapeHtml(message)}`;
+      if (data !== null) {
+        try {
+          line += `<br>${escapeHtml(JSON.stringify(data, null, 2))}`;
+        } catch {
+          line += `<br>${escapeHtml(String(data))}`;
+        }
+      }
+      $("debug").innerHTML += line + "<br><br>";
+      $("debug").scrollTop = $("debug").scrollHeight;
+      console.log(message, data);
+    }
+
+    function setStatus(text) {
+      $("statusInfo").innerText = text;
+    }
+
+    function getFirst(item, names) {
+      const arr = Array.isArray(names) ? names : [names];
+      for (const name of arr) {
+        const value = item?.[name];
+        if (value !== undefined && value !== null && value !== "") return value;
+      }
+      return "";
+    }
+
+    function normalizeTags(value) {
+      if (Array.isArray(value)) return value.join(", ");
+      if (typeof value === "string") return value;
+      if (value && Array.isArray(value.results)) return value.results.join(", ");
+      return "";
+    }
+
+    function refreshAuthUi() {
+      const loggedIn = !!activeAccount;
+      $("btnLogin").classList.toggle("hidden", loggedIn);
+      $("btnLoadContacts").classList.toggle("hidden", !loggedIn);
+      $("btnLogout").classList.toggle("hidden", !loggedIn);
+      $("userInfo").innerText = loggedIn ? activeAccount.username : "nicht angemeldet";
+    }
+
+    async function initMsal() {
+      if (typeof msal === "undefined") {
+        throw new Error("MSAL Library wurde nicht geladen.");
+      }
+
+      msalInstance = new msal.PublicClientApplication({
         auth: {
-            clientId: CONFIG.clientId,
-            authority: `https://login.microsoftonline.com/${CONFIG.tenantId}`
+          clientId: CONFIG.clientId,
+          authority: `https://login.microsoftonline.com/${CONFIG.tenantId}`
         },
         cache: {
-            cacheLocation: "localStorage"
+          cacheLocation: "localStorage"
         }
-    });
-}
-
-async function login() {
-    try {
-        const res = await msalInstance.loginPopup({
-            scopes: CONFIG.scopes
-        });
-
-        account = res.account;
-
-        document.getElementById("userInfo").innerText = account.username;
-        document.getElementById("btnLogin").classList.add("hidden");
-        document.getElementById("btnLoad").classList.remove("hidden");
-        document.getElementById("btnLogout").classList.remove("hidden");
-
-        log("Login erfolgreich", { user: account.username });
-    } catch (e) {
-        log("Login Fehler", { message: e.message, stack: e.stack });
+      });
     }
-}
 
-async function getToken() {
-    try {
-        const res = await msalInstance.acquireTokenSilent({
-            scopes: CONFIG.scopes,
-            account: account
+    async function login() {
+      try {
+        setStatus("Login läuft...");
+        const response = await msalInstance.loginPopup({
+          scopes: CONFIG.scopes
         });
-        return res.accessToken;
-    } catch {
-        const res = await msalInstance.acquireTokenPopup({
-            scopes: CONFIG.scopes,
-            account: account
-        });
-        return res.accessToken;
+
+        activeAccount = response.account;
+        msalInstance.setActiveAccount(activeAccount);
+
+        refreshAuthUi();
+        log("Login erfolgreich", { user: activeAccount.username });
+        setStatus("eingeloggt");
+      } catch (error) {
+        log("Login Fehler", { message: error.message });
+        setStatus("Fehler");
+      }
     }
-}
 
-async function spGet(url, token) {
-    const response = await fetch(url, {
+    async function logout() {
+      try {
+        await msalInstance.logoutPopup({
+          account: activeAccount
+        });
+      } catch (error) {
+        log("Logout Fehler", { message: error.message });
+      } finally {
+        activeAccount = null;
+        contactsCache = [];
+        renderContacts([]);
+        refreshAuthUi();
+        setStatus("abgemeldet");
+      }
+    }
+
+    async function getToken() {
+      try {
+        const response = await msalInstance.acquireTokenSilent({
+          scopes: CONFIG.scopes,
+          account: activeAccount
+        });
+        return response.accessToken;
+      } catch {
+        const response = await msalInstance.acquireTokenPopup({
+          scopes: CONFIG.scopes,
+          account: activeAccount
+        });
+        return response.accessToken;
+      }
+    }
+
+    async function spGet(relativeUrl) {
+      const token = await getToken();
+
+      const response = await fetch(`${CONFIG.siteUrl}${relativeUrl}`, {
         headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: "application/json;odata=nometadata"
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json;odata=nometadata"
         }
-    });
+      });
 
-    const text = await response.text();
+      const text = await response.text();
+      let data = null;
 
-    let json = null;
-    try {
-        json = text ? JSON.parse(text) : null;
-    } catch {
-        json = { rawText: text };
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch {
+        data = { rawText: text };
+      }
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${JSON.stringify(data)}`);
+      }
+
+      return data;
     }
 
-    return {
-        ok: response.ok,
-        status: response.status,
-        url,
-        json
-    };
-}
-
-function getField(item, keys) {
-    for (const key of keys) {
-        const val = item?.[key];
-        if (val !== undefined && val !== null && val !== "") return val;
+    function mapContact(item) {
+      const f = CONFIG.fields.contacts;
+      return {
+        id: getFirst(item, f.id),
+        name: getFirst(item, f.name),
+        company: getFirst(item, f.company),
+        email: getFirst(item, f.email),
+        phone: getFirst(item, f.phone),
+        abc: getFirst(item, f.abc),
+        tags: normalizeTags(getFirst(item, f.tags))
+      };
     }
-    return "";
-}
 
-function renderContacts(items) {
-    const table = document.getElementById("contactsTable");
-    table.innerHTML = "";
+    function renderContacts(items) {
+      const tbody = $("contactsTable");
+      tbody.innerHTML = "";
 
-    if (!items.length) {
-        table.innerHTML = `
-            <tr>
-                <td colspan="5" class="p-3 text-slate-500">Keine Kontakte gefunden.</td>
-            </tr>
+      if (!items.length) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="7" class="p-3 text-slate-500">Keine Kontakte gefunden.</td>
+          </tr>
         `;
         return;
-    }
+      }
 
-    for (const c of items) {
-        const row = {
-            id: c.Id ?? "",
-            name: getField(c, ["Title", "Name", "FullName"]),
-            firma: getField(c, ["Firma", "Company"]),
-            email: getField(c, ["EMail", "Email", "E_x002d_Mail"]),
-            telefon: getField(c, ["Telefon", "Phone", "Telephone"])
-        };
+      for (const item of items) {
+        const c = mapContact(item);
 
-        table.innerHTML += `
-            <tr class="border-b">
-                <td class="p-2">${escapeHtml(row.id)}</td>
-                <td class="p-2">${escapeHtml(row.name)}</td>
-                <td class="p-2">${escapeHtml(row.firma)}</td>
-                <td class="p-2">${escapeHtml(row.email)}</td>
-                <td class="p-2">${escapeHtml(row.telefon)}</td>
-            </tr>
+        tbody.innerHTML += `
+          <tr class="border-t border-slate-200">
+            <td class="p-2">${escapeHtml(c.id)}</td>
+            <td class="p-2">${escapeHtml(c.name)}</td>
+            <td class="p-2">${escapeHtml(c.company)}</td>
+            <td class="p-2">${escapeHtml(c.email)}</td>
+            <td class="p-2">${escapeHtml(c.phone)}</td>
+            <td class="p-2">${escapeHtml(c.abc)}</td>
+            <td class="p-2">${escapeHtml(c.tags)}</td>
+          </tr>
         `;
+      }
     }
-}
 
-async function loadContacts() {
-    try {
-        setStatus("diagnose läuft...");
-        const token = await getToken();
-
-        const listMetaUrl =
-            `${CONFIG.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(CONFIG.listName)}')?$select=Id,Title,ItemCount,BaseTemplate,Hidden`;
-        const listItemsUrl =
-            `${CONFIG.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(CONFIG.listName)}')/items?$top=5`;
-
-        log("Liste prüfen", { listName: CONFIG.listName, siteUrl: CONFIG.siteUrl });
-
-        const metaRes = await spGet(listMetaUrl, token);
-        log("List Meta Response", { status: metaRes.status, json: metaRes.json });
-
-        if (!metaRes.ok) {
-            throw new Error(`List Meta Fehler ${metaRes.status}`);
-        }
-
-        const itemsRes = await spGet(listItemsUrl, token);
-        log("List Items Response", { status: itemsRes.status, json: itemsRes.json });
-
-        if (!itemsRes.ok) {
-            throw new Error(`List Items Fehler ${itemsRes.status}`);
-        }
-
-        const items = itemsRes.json?.value || itemsRes.json?.d?.results || [];
-        const itemCount = metaRes.json?.ItemCount;
-
-        log("Diagnose Ergebnis", {
-            itemCountFromListMeta: itemCount,
-            itemsReturnedByEndpoint: items.length,
-            firstItemKeys: items[0] ? Object.keys(items[0]) : []
+    async function loadContacts() {
+      try {
+        setStatus("Kontakte laden...");
+        log("Liste prüfen", {
+          listName: CONFIG.lists.contacts,
+          siteUrl: CONFIG.siteUrl
         });
 
+        const listName = encodeURIComponent(CONFIG.lists.contacts);
+
+        const data = await spGet(`/_api/web/lists/getbytitle('${listName}')/items?$top=200&$orderby=ID desc`);
+        const items = data?.value || data?.d?.results || [];
+
+        contactsCache = items;
         renderContacts(items);
+        $("contactsMeta").innerText = `${items.length} Kontakte geladen`;
+
+        if (items[0]) {
+          log("Erster Kontakt", items[0]);
+        }
+
+        log("Kontakte geladen", { count: items.length });
         setStatus("fertig");
-    } catch (e) {
+      } catch (error) {
+        log("Fehler", { message: error.message });
         setStatus("Fehler");
-        log("Fehler", { message: e.message, stack: e.stack });
+      }
     }
-}
 
-function logout() {
-    msalInstance.logoutPopup();
-}
+    function filterContacts(term) {
+      const q = term.trim().toLowerCase();
 
-window.addEventListener("load", async () => {
-    await initMsal();
+      if (!q) {
+        renderContacts(contactsCache);
+        $("contactsMeta").innerText = `${contactsCache.length} Kontakte geladen`;
+        return;
+      }
 
-    document.getElementById("btnLogin").onclick = login;
-    document.getElementById("btnLoad").onclick = loadContacts;
-    document.getElementById("btnLogout").onclick = logout;
+      const filtered = contactsCache.filter((item) => {
+        const c = mapContact(item);
+        return [
+          c.id,
+          c.name,
+          c.company,
+          c.email,
+          c.phone,
+          c.abc,
+          c.tags
+        ].join(" ").toLowerCase().includes(q);
+      });
 
-    log("App gestartet");
-});
-</script>
+      renderContacts(filtered);
+      $("contactsMeta").innerText = `${filtered.length} / ${contactsCache.length} Kontakte sichtbar`;
+    }
+
+    window.addEventListener("load", async () => {
+      try {
+        $("siteInfo").innerText = CONFIG.siteUrl;
+
+        await initMsal();
+
+        $("btnLogin").addEventListener("click", login);
+        $("btnLoadContacts").addEventListener("click", loadContacts);
+        $("btnLogout").addEventListener("click", logout);
+        $("searchInput").addEventListener("input", (e) => filterContacts(e.target.value));
+
+        log("App gestartet");
+        refreshAuthUi();
+      } catch (error) {
+        log("Init Fehler", { message: error.message });
+        setStatus("Fehler");
+      }
+    });
+  </script>
 </body>
 </html>
