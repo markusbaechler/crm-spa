@@ -14,9 +14,10 @@
         .prio-B { border-left: 4px solid #3b82f6; }
         .prio-C { border-left: 4px solid #64748b; }
         .timeline-line { border-left: 2px solid #334155; margin-left: 10px; }
-        .status-overdue { color: #ef4444; font-weight: bold; }
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
+        .loading-shimmer { animation: shimmer 2s infinite linear; background: linear-gradient(to right, #1e293b 8%, #334155 18%, #1e293b 33%); background-size: 800px 100%; }
+        @keyframes shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
     </style>
 </head>
 <body class="min-h-screen italic">
@@ -25,14 +26,16 @@
         <div class="container mx-auto flex justify-between items-center">
             <h1 class="text-xl font-black text-blue-400 tracking-tighter cursor-pointer" onclick="location.reload()">bbz CRM</h1>
             <div id="auth-area">
-                <button id="login-btn" class="bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded-lg text-sm font-bold transition">Login</button>
+                <button id="login-btn" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-lg text-sm font-bold transition shadow-lg opacity-50 cursor-not-allowed" disabled>Initialisiere...</button>
                 <div id="user-info" class="hidden flex items-center gap-3">
-                    <span id="username" class="text-xs text-slate-400"></span>
-                    <button id="logout-btn" class="text-xs text-slate-500 hover:text-white underline">Logout</button>
+                    <span id="username" class="text-xs text-slate-400 font-bold border-r pr-3 border-slate-700"></span>
+                    <button id="logout-btn" class="text-xs text-slate-500 hover:text-white underline font-sans">Logout</button>
                 </div>
             </div>
         </div>
     </nav>
+
+    <div id="error-banner" class="hidden bg-red-600 text-white text-center p-2 text-xs font-bold"></div>
 
     <div class="container mx-auto mt-6 px-4 grid grid-cols-2 md:grid-cols-5 gap-4" id="dashboard-stats">
         <div class="card-dark p-4 rounded-xl text-center"><p class="text-[10px] uppercase text-slate-500 font-bold">A-Firmen</p><p id="stat-a" class="text-2xl font-black">-</p></div>
@@ -43,18 +46,18 @@
     </div>
 
     <main class="container mx-auto mt-6 p-4 grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
         <div class="lg:col-span-3 space-y-4">
             <div class="card-dark p-3 rounded-xl flex items-center gap-2">
                 <input type="text" id="comp-search" placeholder="Firma suchen..." class="bg-transparent border-none text-sm w-full outline-none text-white italic">
             </div>
             <div id="company-list" class="space-y-2 max-h-[600px] overflow-y-auto pr-2">
-                </div>
+                <div class="text-center py-10 text-slate-600 italic text-sm">Bitte zuerst einloggen</div>
+            </div>
         </div>
 
         <div id="detail-view" class="lg:col-span-9 space-y-6">
-            <div class="card-dark p-20 rounded-2xl text-center text-slate-500 italic">
-                Wähle ein Unternehmen aus, um das Dashboard zu öffnen.
+            <div id="welcome-msg" class="card-dark p-20 rounded-2xl text-center text-slate-500 italic">
+                Willkommen im bbz CRM Dashboard.
             </div>
         </div>
     </main>
@@ -65,19 +68,33 @@
                 clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a",
                 authority: "https://login.microsoftonline.com/3643e7ab-d166-4e27-bd5f-c5bbfcd282d7",
                 redirectUri: "https://markusbaechler.github.io/crm-spa/"
-            }
+            },
+            cache: { cacheLocation: "localStorage", storeAuthStateInCookie: true }
         };
 
-        const msalInstance = new msal.PublicClientApplication(msalConfig);
+        let msalInstance;
         let siteId = "";
         let allCompanies = [];
 
-        async function init() {
-            await msalInstance.initialize();
-            const response = await msalInstance.handleRedirectPromise();
-            if (response) msalInstance.setActiveAccount(response.account);
-            else if (msalInstance.getAllAccounts().length > 0) msalInstance.setActiveAccount(msalInstance.getAllAccounts()[0]);
-            updateUI();
+        async function initializeMsal() {
+            try {
+                msalInstance = await msal.PublicClientApplication.createPublicClientApplication(msalConfig);
+                
+                const loginBtn = document.getElementById('login-btn');
+                loginBtn.innerText = "Login";
+                loginBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                loginBtn.disabled = false;
+
+                const response = await msalInstance.handleRedirectPromise();
+                if (response) msalInstance.setActiveAccount(response.account);
+                else {
+                    const accounts = msalInstance.getAllAccounts();
+                    if (accounts.length > 0) msalInstance.setActiveAccount(accounts[0]);
+                }
+                updateUI();
+            } catch (err) {
+                showError("MSAL Fehler: " + err.message);
+            }
         }
 
         function updateUI() {
@@ -90,33 +107,51 @@
             }
         }
 
-        document.getElementById('login-btn').onclick = () => msalInstance.loginRedirect({ scopes: ["Sites.Read.All"] });
-        document.getElementById('logout-btn').onclick = () => msalInstance.logoutRedirect();
+        document.getElementById('login-btn').onclick = async () => {
+            try {
+                await msalInstance.loginPopup({ 
+                    scopes: ["Sites.Read.All", "Sites.ReadWrite.All"],
+                    prompt: "select_account"
+                });
+                updateUI();
+            } catch (err) {
+                showError("Anmeldung abgebrochen oder fehlgeschlagen.");
+            }
+        };
+
+        document.getElementById('logout-btn').onclick = () => msalInstance.logoutPopup();
+
+        function showError(msg) {
+            const banner = document.getElementById('error-banner');
+            banner.innerText = msg;
+            banner.classList.remove('hidden');
+            setTimeout(() => banner.classList.add('hidden'), 5000);
+        }
 
         async function loadDashboardData() {
+            const listContainer = document.getElementById('company-list');
+            listContainer.innerHTML = '<div class="loading-shimmer h-12 w-full rounded-xl mb-2"></div>'.repeat(5);
+
             try {
                 const account = msalInstance.getActiveAccount();
                 const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: account });
                 const token = tokenRes.accessToken;
 
-                // Site ID
                 const siteRes = await fetch("https://graph.microsoft.com/v1.0/sites/bbzsg.sharepoint.com:/sites/CRM", { headers: { 'Authorization': `Bearer ${token}` } });
                 const siteData = await siteRes.json();
                 siteId = siteData.id;
 
-                // 1. Firmen laden
                 const compRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Firmen/items?expand=fields`, { headers: { 'Authorization': `Bearer ${token}` } });
                 const compData = await compRes.json();
                 allCompanies = compData.value || [];
                 
-                // 2. Tasks laden (für Statistik)
                 const taskRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Tasks/items?expand=fields`, { headers: { 'Authorization': `Bearer ${token}` } });
                 const taskData = await taskRes.json();
                 const openTasks = (taskData.value || []).filter(t => t.fields.Status === "Offen");
 
                 updateStats(allCompanies, openTasks);
                 renderCompanyList(allCompanies);
-            } catch (err) { console.error(err); }
+            } catch (err) { showError("Fehler beim Laden der Daten."); }
         }
 
         function updateStats(companies, tasks) {
@@ -132,17 +167,14 @@
             const list = document.getElementById('company-list');
             list.innerHTML = items.map(item => `
                 <div onclick="loadDetails('${item.id}')" class="card-dark p-3 rounded-xl cursor-pointer hover:bg-slate-800 transition flex justify-between items-center prio-${item.fields.Priorit_x00e4_t}">
-                    <div>
-                        <p class="text-sm font-bold italic">${item.fields.Title}</p>
-                        <p class="text-[10px] text-slate-500 font-black uppercase tracking-widest">${item.fields.Ort || ''}</p>
-                    </div>
+                    <div><p class="text-sm font-bold italic">${item.fields.Title}</p><p class="text-[10px] text-slate-500 font-black uppercase">${item.fields.Ort || ''}</p></div>
                 </div>
             `).join('');
         }
 
         async function loadDetails(companyId) {
             const detailPane = document.getElementById('detail-view');
-            detailPane.innerHTML = `<div class="animate-pulse text-center p-20 text-blue-400 font-bold italic">Synchronisiere Präzisionsdaten...</div>`;
+            detailPane.innerHTML = `<div class="animate-pulse text-center p-20 text-blue-400 font-bold italic">Synchronisiere...</div>`;
 
             try {
                 const account = msalInstance.getActiveAccount();
@@ -150,49 +182,40 @@
                 const token = tokenRes.accessToken;
 
                 const company = allCompanies.find(c => c.id == companyId).fields;
-
-                // 1. Kontakte (Präzise über FirmaLookupId)
                 const contRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontakte/items?expand=fields`, { headers: { 'Authorization': `Bearer ${token}` } });
                 const contData = await contRes.json();
                 const contacts = contData.value.filter(c => c.fields.FirmaLookupId == companyId || c.fields.FirmaId == companyId);
 
-                // 2. History & Notizen (Kombiniert)
                 const histRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/History/items?expand=fields`, { headers: { 'Authorization': `Bearer ${token}` } });
                 const histData = await histRes.json();
                 const history = histData.value.filter(h => contacts.some(c => c.id == h.fields.ContactLookupId));
 
                 renderDetailDashboard(company, contacts, history);
-            } catch (err) { console.error(err); }
+            } catch (err) { showError("Details konnten nicht geladen werden."); }
         }
 
         function renderDetailDashboard(firma, contacts, history) {
             const container = document.getElementById('detail-view');
             container.innerHTML = `
                 <div class="grid grid-cols-1 md:grid-cols-12 gap-6 animate-in fade-in duration-300">
-                    <div class="md:col-span-12 card-dark p-6 rounded-2xl flex justify-between items-center border-l-4 border-l-blue-500">
-                        <div>
-                            <h2 class="text-3xl font-black text-white italic tracking-tighter">${firma.Title}</h2>
-                            <p class="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1 italic">${firma.Ort || ''} | LEAD: ${firma.Leadbbz || 'Nicht definiert'}</p>
-                        </div>
-                        <div class="text-right">
-                            <span class="bg-blue-600/20 text-blue-400 text-[10px] font-black px-3 py-1 rounded-full uppercase italic border border-blue-500/30">Segment ${firma.Priorit_x00e4_t || '-'}</span>
-                        </div>
+                    <div class="md:col-span-12 card-dark p-6 rounded-2xl border-l-4 border-l-blue-500">
+                        <h2 class="text-3xl font-black text-white italic tracking-tighter">${firma.Title}</h2>
+                        <p class="text-slate-400 text-xs font-bold uppercase mt-1 italic">${firma.Ort || ''} | LEAD: ${firma.Leadbbz || '-'}</p>
                     </div>
-
                     <div class="md:col-span-5 space-y-4">
-                        <h3 class="text-[10px] font-black uppercase text-slate-500 tracking-widest italic">Ansprechpartner</h3>
-                        ${contacts.map(c => `
-                            <div class="card-dark p-4 rounded-xl border-b-4 border-b-blue-600/50">
-                                <p class="text-blue-400 font-black italic">${c.fields.Vorname} ${c.fields.Title}</p>
-                                <p class="text-[10px] text-slate-500 font-bold uppercase italic mt-1">${c.fields.Funktion || '-'}</p>
-                                <div class="mt-3 space-y-1 text-[11px] font-bold text-slate-300 italic">
-                                    <p>📧 ${c.fields.E_x002d_Mail || '-'}</p>
-                                    <p>📱 ${c.fields.Mobile || '-'}</p>
-                                    <p>🎂 Geb: ${c.fields.Geburtsdatum ? new Date(c.fields.Geburtsdatum).toLocaleDateString() : '-'}</p>
-                                </div>
-                            </div>
-                        `).join('')}
+                        <h3 class="text-[10px] font-black uppercase text-slate-500 italic">Ansprechpartner</h3>
+                        ${contacts.map(c => `<div class="card-dark p-4 rounded-xl border-b-4 border-b-blue-600/50"><p class="text-blue-400 font-black italic">${c.fields.Vorname} ${c.fields.Title}</p><p class="text-[10px] text-slate-500 mt-1 uppercase italic">${c.fields.Funktion || '-'}</p></div>`).join('')}
                     </div>
-
                     <div class="md:col-span-7 card-dark p-6 rounded-2xl">
-                        <h3 class="text-[10px] font-black uppercase text-slate-5
+                        <h3 class="text-[10px] font-black uppercase text-slate-500 italic mb-6">Letzte Aktivitäten</h3>
+                        <div class="timeline-line space-y-6">
+                            ${history.map(h => `<div class="relative pl-6"><div class="absolute left-[-15px] top-1.5 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-slate-900 shadow-lg"></div><p class="text-[9px] text-slate-500 font-black">${new Date(h.fields.Datum).toLocaleDateString('de-DE')}</p><p class="text-xs font-black text-white italic mt-0.5">${h.fields.TypEintrag || 'Eintrag'}: ${h.fields.Title || '-'}</p></div>`).join('')}
+                        </div>
+                    </div>
+                </div>`;
+        }
+
+        initializeMsal();
+    </script>
+</body>
+</html>
