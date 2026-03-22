@@ -5,7 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CRM SPA</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script defer src="https://alcdn.msauth.net/browser/2.37.0/js/msal-browser.min.js"></script>
+ <script src="https://unpkg.com/@azure/msal-browser@3.20.0/lib/msal-browser.min.js"></script>
+<script>
+  window.__msalLoaded = typeof window.msal !== "undefined";
+</script>
   <style>
     [hidden] { display: none !important; }
     .scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -361,8 +364,8 @@
     // MSAL
     // =========================
     async function initAuth() {
-  if (typeof msal === "undefined") {
-    throw new Error("MSAL konnte nicht geladen werden.");
+  if (!window.__msalLoaded || typeof window.msal === "undefined") {
+    throw new Error("MSAL Script wurde nicht geladen. Bitte CDN prüfen.");
   }
 
   state.msal = new msal.PublicClientApplication({
@@ -391,6 +394,10 @@ async function login() {
   try {
     clearAlert();
 
+    if (!state.msal) {
+      throw new Error("MSAL ist nicht initialisiert.");
+    }
+
     const result = await state.msal.loginPopup({
       scopes: ["openid", "profile"],
       prompt: "select_account"
@@ -404,14 +411,7 @@ async function login() {
     await loadAllData();
   } catch (err) {
     console.error("LOGIN ERROR", err);
-
-    const msg =
-      err?.message ||
-      err?.errorMessage ||
-      err?.errorCode ||
-      JSON.stringify(err);
-
-    showAlert(`Login fehlgeschlagen: ${msg}`, "error");
+    showAlert(`Login fehlgeschlagen: ${err?.message || err}`, "error");
   }
 }
    
