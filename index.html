@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CRM SPA</title>
-  <script src="https://cdn.tailwindcss.com"></script>
  <script src="https://unpkg.com/@azure/msal-browser@3.20.0/lib/msal-browser.min.js"></script>
 <script>
   window.__msalLoaded = typeof window.msal !== "undefined";
@@ -363,9 +362,9 @@
     // =========================
     // MSAL
     // =========================
-    async function initAuth() {
+   async function initAuth() {
   if (!window.__msalLoaded || typeof window.msal === "undefined") {
-    throw new Error("MSAL Script wurde nicht geladen. Bitte CDN prüfen.");
+    throw new Error("MSAL Script wurde nicht geladen.");
   }
 
   state.msal = new msal.PublicClientApplication({
@@ -432,6 +431,10 @@ async function login() {
     }
 
     async function getAccessToken() {
+  if (!state.msal) {
+    throw new Error("MSAL ist nicht initialisiert.");
+  }
+
   if (!state.activeAccount) {
     throw new Error("Nicht angemeldet.");
   }
@@ -446,7 +449,6 @@ async function login() {
     return response.accessToken;
   } catch (silentErr) {
     console.warn("Silent token failed", silentErr);
-
     const response = await state.msal.acquireTokenPopup(request);
     return response.accessToken;
   }
@@ -1288,18 +1290,21 @@ async function login() {
     // =========================
     // START
     // =========================
-    (async function start() {
-      bindUi();
-      try {
-        await initAuth();
-        if (state.activeAccount) {
-          await loadAllData();
-        }
-      } catch (err) {
-        console.error(err);
-        showAlert(`Initialisierung fehlgeschlagen. ${err.message}`, "error");
-      }
-    })();
+window.addEventListener("load", async () => {
+  bindUi();
+  setAuthUi();
+
+  try {
+    await initAuth();
+
+    if (state.activeAccount) {
+      await loadAllData();
+    }
+  } catch (err) {
+    console.error("INIT ERROR", err);
+    showAlert(`Initialisierung fehlgeschlagen. ${err?.message || err}`, "error");
+  }
+});
   </script>
 </body>
 </html>
