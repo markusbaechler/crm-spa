@@ -34,32 +34,41 @@
       </div>
 
       <div class="lg:col-span-2 bg-white rounded-2xl p-5 shadow">
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-xl font-semibold">Kontakte</h2>
-          <input id="searchInput" type="text" placeholder="Suche..." class="border px-3 py-2 rounded-lg text-sm w-64" />
-        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-xl font-semibold">Kontakte</h2>
+              <input id="searchInput" type="text" placeholder="Suche..." class="border px-3 py-2 rounded-lg text-sm w-40" />
+            </div>
 
-        <div id="contactsMeta" class="text-sm text-slate-500 mb-3">Noch keine Daten geladen.</div>
+            <div id="contactsMeta" class="text-sm text-slate-500 mb-3">Noch keine Daten geladen.</div>
 
-        <div class="overflow-auto border border-slate-200 rounded-xl">
-          <table class="w-full text-sm">
-            <thead class="bg-slate-100">
-              <tr>
-                <th class="p-2 text-left">ID</th>
-                <th class="p-2 text-left">Name</th>
-                <th class="p-2 text-left">Firma</th>
-                <th class="p-2 text-left">E-Mail</th>
-                <th class="p-2 text-left">Telefon</th>
-                <th class="p-2 text-left">ABC</th>
-                <th class="p-2 text-left">Tags</th>
-              </tr>
-            </thead>
-            <tbody id="contactsTable">
-              <tr>
-                <td colspan="7" class="p-3 text-slate-500">Noch keine Daten geladen.</td>
-              </tr>
-            </tbody>
-          </table>
+            <div class="overflow-auto border border-slate-200 rounded-xl">
+              <table class="w-full text-sm">
+                <thead class="bg-slate-100">
+                  <tr>
+                    <th class="p-2 text-left">Name</th>
+                    <th class="p-2 text-left">Firma</th>
+                  </tr>
+                </thead>
+                <tbody id="contactsTable">
+                  <tr>
+                    <td colspan="2" class="p-3 text-slate-500">Noch keine Daten geladen.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div>
+            <h2 class="text-xl font-semibold mb-4">History</h2>
+            <div id="selectedContactInfo" class="text-sm text-slate-500 mb-3">
+              Kein Kontakt ausgewählt.
+            </div>
+            <div id="historyContainer" class="space-y-4">
+              <div class="text-slate-400 text-sm">Keine Einträge</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -96,12 +105,6 @@
           notes: "Notizen",
           projectRef: "Projektbezug",
           contactLookup: "ContactLookup"
-        },
-        tasks: {
-          id: "ID",
-          contactId: "ContactID",
-          dueDate: "Fälligkeit",
-          status: "Status"
         }
       }
     };
@@ -210,6 +213,8 @@
         activeAccount = null;
         contactsCache = [];
         renderContacts([]);
+        $("historyContainer").innerHTML = `<div class="text-slate-400 text-sm">Keine Einträge</div>`;
+        $("selectedContactInfo").innerText = "Kein Kontakt ausgewählt.";
         refreshAuthUi();
         setStatus("abgemeldet");
       }
@@ -266,7 +271,8 @@
         email: getFirst(item, f.email),
         phone: getFirst(item, f.phone),
         abc: getFirst(item, f.abc),
-        tags: normalizeTags(getFirst(item, f.tags))
+        tags: normalizeTags(getFirst(item, f.tags)),
+        raw: item
       };
     }
 
@@ -277,7 +283,7 @@
       if (!items.length) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="7" class="p-3 text-slate-500">Keine Kontakte gefunden.</td>
+            <td colspan="2" class="p-3 text-slate-500">Keine Kontakte gefunden.</td>
           </tr>
         `;
         return;
@@ -287,17 +293,72 @@
         const c = mapContact(item);
 
         tbody.innerHTML += `
-          <tr class="border-t border-slate-200">
-            <td class="p-2">${escapeHtml(c.id)}</td>
-            <td class="p-2">${escapeHtml(c.name)}</td>
-            <td class="p-2">${escapeHtml(c.company)}</td>
-            <td class="p-2">${escapeHtml(c.email)}</td>
-            <td class="p-2">${escapeHtml(c.phone)}</td>
-            <td class="p-2">${escapeHtml(c.abc)}</td>
-            <td class="p-2">${escapeHtml(c.tags)}</td>
+          <tr class="border-t border-slate-200 cursor-pointer hover:bg-slate-50" data-contact-id="${escapeHtml(c.id)}">
+            <td class="p-2">
+              <div class="font-medium">${escapeHtml(c.name)}</div>
+              <div class="text-xs text-slate-500">${escapeHtml(c.email)}</div>
+            </td>
+            <td class="p-2">
+              <div>${escapeHtml(c.company)}</div>
+              <div class="text-xs text-slate-500">${escapeHtml(c.phone)}</div>
+            </td>
           </tr>
         `;
       }
+
+      [...tbody.querySelectorAll("tr[data-contact-id]")].forEach((row) => {
+        row.addEventListener("click", () => {
+          const id = row.getAttribute("data-contact-id");
+          const source = items.find((x) => String(getFirst(x, CONFIG.fields.contacts.id)) === String(id));
+          const c = source ? mapContact(source) : null;
+          loadHistory(id, c);
+        });
+      });
+    }
+
+    function formatDate(value) {
+      if (!value) return "";
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return String(value);
+      return d.toLocaleString("de-CH");
+    }
+
+    function renderHistory(items) {
+      const container = $("historyContainer");
+      container.innerHTML = "";
+
+      if (!items.length) {
+        container.innerHTML = `<div class="text-slate-400 text-sm">Keine Einträge</div>`;
+        return;
+      }
+
+      const f = CONFIG.fields.history;
+
+      const projectItems = items.filter(item => !!item[f.projectRef]);
+      const generalItems = items.filter(item => !item[f.projectRef]);
+
+      function block(title, arr) {
+        if (!arr.length) return "";
+
+        return `
+          <div class="mb-5">
+            <h3 class="font-semibold mb-2">${escapeHtml(title)}</h3>
+            <div class="space-y-2">
+              ${arr.map(item => `
+                <div class="border rounded-xl p-3 bg-slate-50">
+                  <div class="text-xs text-slate-500 mb-1">${escapeHtml(formatDate(item[f.date]))}</div>
+                  <div class="font-medium mb-1">${escapeHtml(item[f.type] ?? "")}</div>
+                  <div class="text-sm whitespace-pre-wrap">${escapeHtml(item[f.notes] ?? "")}</div>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        `;
+      }
+
+      container.innerHTML =
+        block("📁 Projektbezogen", projectItems) +
+        block("📝 Allgemein", generalItems);
     }
 
     async function loadContacts() {
@@ -309,7 +370,6 @@
         });
 
         const listName = encodeURIComponent(CONFIG.lists.contacts);
-
         const data = await spGet(`/_api/web/lists/getbytitle('${listName}')/items?$top=200&$orderby=ID desc`);
         const items = data?.value || data?.d?.results || [];
 
@@ -317,14 +377,44 @@
         renderContacts(items);
         $("contactsMeta").innerText = `${items.length} Kontakte geladen`;
 
-        if (items[0]) {
-          log("Erster Kontakt", items[0]);
-        }
-
         log("Kontakte geladen", { count: items.length });
         setStatus("fertig");
       } catch (error) {
-        log("Fehler", { message: error.message });
+        log("Fehler Kontakte", { message: error.message });
+        setStatus("Fehler");
+      }
+    }
+
+    async function loadHistory(contactId, contact = null) {
+      try {
+        setStatus("History laden...");
+        const listName = encodeURIComponent(CONFIG.lists.history);
+        const f = CONFIG.fields.history;
+
+        if (contact) {
+          $("selectedContactInfo").innerText =
+            `${contact.name || "(ohne Name)"}${contact.company ? " · " + contact.company : ""}`;
+        } else {
+          $("selectedContactInfo").innerText = `Kontakt-ID: ${contactId}`;
+        }
+
+        log("History laden", {
+          listName: CONFIG.lists.history,
+          contactId
+        });
+
+        const data = await spGet(
+          `/_api/web/lists/getbytitle('${listName}')/items?$filter=${f.contactId} eq ${contactId}&$orderby=${f.date} desc&$top=200`
+        );
+
+        const items = data?.value || data?.d?.results || [];
+        renderHistory(items);
+
+        log("History geladen", { count: items.length, contactId });
+        setStatus("fertig");
+      } catch (error) {
+        log("Fehler History", { message: error.message });
+        $("historyContainer").innerHTML = `<div class="text-red-600 text-sm">History konnte nicht geladen werden.</div>`;
         setStatus("Fehler");
       }
     }
