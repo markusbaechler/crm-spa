@@ -12,7 +12,7 @@
     <div class="flex items-center justify-between mb-6">
       <div>
         <h1 class="text-3xl font-bold">CRM SPA</h1>
-        <p class="text-slate-600">Stabile GitHub-Basis: Login + Kontakte</p>
+        <p class="text-slate-600">Stabile GitHub-Basis: Login + Kontakte + Companies Debug</p>
       </div>
 
       <div class="flex gap-2">
@@ -92,6 +92,7 @@
       siteUrl: "https://bbzsg.sharepoint.com/sites/CRM",
       tenantHost: "https://bbzsg.sharepoint.com",
       listName: "Kontakte",
+      companiesList: "Companies",
       loginScopes: ["openid", "profile", "offline_access"],
       sharePointScopes: ["https://bbzsg.sharepoint.com/AllSites.Read"]
     };
@@ -101,6 +102,7 @@
     let msalInstance = null;
     let activeAccount = null;
     let contactsCache = [];
+    let companiesCache = [];
 
     function log(message, data) {
       const time = new Date().toLocaleTimeString("de-CH");
@@ -218,6 +220,7 @@
       } finally {
         activeAccount = null;
         contactsCache = [];
+        companiesCache = [];
         renderContacts([]);
         refreshUi();
         setAction("Abgemeldet");
@@ -247,50 +250,73 @@
       }
     }
 
+    async function spFetchListItems(listTitle, query = "") {
+      const token = await getAccessToken();
+      const url = `${CONFIG.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(listTitle)}')/items${query}`;
+      log("REST Request", { listTitle, url });
+
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json;odata=nometadata"
+        }
+      });
+
+      const text = await response.text();
+      let data = null;
+
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch {
+        throw new Error(`Unerwartete Antwort: ${text}`);
+      }
+
+      if (!response.ok) {
+        throw new Error(`REST ${response.status}: ${JSON.stringify(data)}`);
+      }
+
+      return data?.value || [];
+    }
+
     async function loadContacts() {
+      const items = await spFetchListItems(
+        CONFIG.listName,
+        "?$top=200&$orderby=ID desc"
+      );
+
+      contactsCache = items;
+      renderContacts(items);
+      $("contactsMeta").textContent = `${items.length} Kontakte geladen`;
+
+      log("Kontakte geladen", {
+        count: items.length,
+        firstItem: items[0] || null
+      });
+    }
+
+    async function loadCompanies() {
+      const items = await spFetchListItems(
+        CONFIG.companiesList,
+        "?$top=200&$orderby=ID desc"
+      );
+
+      companiesCache = items;
+
+      log("Companies geladen", {
+        count: items.length,
+        firstItem: items[0] || null
+      });
+    }
+
+    async function loadAllBaseData() {
       try {
         clearAlert();
-        setAction("Token abrufen");
+        setAction("Daten laden");
 
-        const token = await getAccessToken();
+        await loadContacts();
+        await loadCompanies();
 
-        setAction("Kontakte laden");
-
-        const url = `${CONFIG.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(CONFIG.listName)}')/items?$top=200&$orderby=ID desc`;
-        log("REST Request", { url });
-
-        const response = await fetch(url, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: "application/json;odata=nometadata"
-          }
-        });
-
-        const text = await response.text();
-        let data = null;
-
-        try {
-          data = text ? JSON.parse(text) : null;
-        } catch {
-          throw new Error(`Unerwartete Antwort: ${text}`);
-        }
-
-        if (!response.ok) {
-          throw new Error(`REST ${response.status}: ${JSON.stringify(data)}`);
-        }
-
-        const items = data?.value || [];
-        contactsCache = items;
-
-        renderContacts(items);
-        $("contactsMeta").textContent = `${items.length} Kontakte geladen`;
-
-        log("Kontakte geladen", {
-          count: items.length,
-          firstItem: items[0] || null
-        });
-
-        setAction("Kontakte erfolgreich geladen");
+        setAction("Daten erfolgreich geladen");
       } catch (err) {
         console.error(err);
         const msg = err?.message || String(err);
@@ -357,7 +383,7 @@
 
     $("btnLogin").addEventListener("click", login);
     $("btnLogout").addEventListener("click", logout);
-    $("btnLoad").addEventListener("click", loadContacts);
+    $("btnLoad").addEventListener("click", loadAllBaseData);
     $("searchInput").addEventListener("input", (e) => filterContacts(e.target.value));
 
     window.addEventListener("load", async () => {
