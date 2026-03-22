@@ -4,64 +4,35 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CRM SPA</title>
-
-    <!-- Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
-
-    <!-- MSAL -->
     <script defer src="https://alcdn.msauth.net/browser/2.37.0/js/msal-browser.min.js"></script>
 </head>
-
 <body class="min-h-screen bg-slate-100 text-slate-800">
-
 <div class="max-w-6xl mx-auto p-6">
-
-    <!-- HEADER -->
     <div class="flex items-center justify-between mb-6">
         <div>
             <h1 class="text-3xl font-bold">CRM SPA</h1>
             <p class="text-slate-600">GitHub Pages + Microsoft Login + SharePoint REST</p>
         </div>
-
         <div class="flex gap-2">
-            <button id="btnLogin" class="px-4 py-2 rounded-xl bg-blue-600 text-white">
-                Login
-            </button>
-
-            <button id="btnLoad" class="px-4 py-2 rounded-xl bg-emerald-600 text-white hidden">
-                Kontakte laden
-            </button>
-
-            <button id="btnLogout" class="px-4 py-2 rounded-xl bg-slate-700 text-white hidden">
-                Logout
-            </button>
+            <button id="btnLogin" class="px-4 py-2 rounded-xl bg-blue-600 text-white">Login</button>
+            <button id="btnLoad" class="px-4 py-2 rounded-xl bg-emerald-600 text-white hidden">Kontakte laden</button>
+            <button id="btnLogout" class="px-4 py-2 rounded-xl bg-slate-700 text-white hidden">Logout</button>
         </div>
     </div>
 
-    <!-- CONTENT -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-        <!-- STATUS -->
         <div class="bg-white rounded-2xl p-5 shadow">
             <h2 class="text-xl font-semibold mb-4">Status</h2>
 
-            <p><b>Site:</b><br>
-                https://bbzsg.sharepoint.com/sites/CRM
-            </p>
-
-            <p class="mt-3"><b>Benutzer:</b><br>
-                <span id="userInfo">nicht angemeldet</span>
-            </p>
-
-            <p class="mt-3"><b>Letzte Aktion:</b><br>
-                <span id="statusInfo">bereit</span>
-            </p>
+            <p><b>Site:</b><br><span id="siteInfo">https://bbzsg.sharepoint.com/sites/CRM</span></p>
+            <p class="mt-3"><b>Benutzer:</b><br><span id="userInfo">nicht angemeldet</span></p>
+            <p class="mt-3"><b>Letzte Aktion:</b><br><span id="statusInfo">bereit</span></p>
 
             <h3 class="mt-6 font-semibold">Debug Log</h3>
-            <div id="debug" class="mt-2 bg-slate-900 text-green-400 text-xs p-3 rounded-xl h-48 overflow-auto"></div>
+            <div id="debug" class="mt-2 bg-slate-900 text-green-400 text-xs p-3 rounded-xl h-80 overflow-auto"></div>
         </div>
 
-        <!-- CONTACTS -->
         <div class="lg:col-span-2 bg-white rounded-2xl p-5 shadow">
             <h2 class="text-xl font-semibold mb-3">Contacts</h2>
 
@@ -82,7 +53,6 @@
                 </tbody>
             </table>
         </div>
-
     </div>
 </div>
 
@@ -91,33 +61,54 @@ const CONFIG = {
     clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a",
     tenantId: "3643e7ab-d166-4e27-bd5f-c5bbfcd282d7",
     siteUrl: "https://bbzsg.sharepoint.com/sites/CRM",
+    listName: "Contacts",
     scopes: ["https://bbzsg.sharepoint.com/AllSites.Read"]
 };
 
 let msalInstance;
 let account;
 
-function log(msg) {
+function log(msg, obj = null) {
     const el = document.getElementById("debug");
-    el.innerHTML += msg + "<br>";
+    const time = new Date().toLocaleTimeString("de-CH");
+    let line = `[${time}] ${msg}`;
+    if (obj !== null) {
+        try {
+            line += "<br>" + escapeHtml(JSON.stringify(obj, null, 2));
+        } catch {
+            line += "<br>" + escapeHtml(String(obj));
+        }
+    }
+    el.innerHTML += line + "<br><br>";
     el.scrollTop = el.scrollHeight;
+    console.log(msg, obj);
 }
 
 function setStatus(msg) {
     document.getElementById("statusInfo").innerText = msg;
 }
 
-// INIT MSAL
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+}
+
 async function initMsal() {
     msalInstance = new msal.PublicClientApplication({
         auth: {
             clientId: CONFIG.clientId,
             authority: `https://login.microsoftonline.com/${CONFIG.tenantId}`
+        },
+        cache: {
+            cacheLocation: "localStorage"
         }
     });
 }
 
-// LOGIN
 async function login() {
     try {
         const res = await msalInstance.loginPopup({
@@ -131,60 +122,61 @@ async function login() {
         document.getElementById("btnLoad").classList.remove("hidden");
         document.getElementById("btnLogout").classList.remove("hidden");
 
-        log("Login erfolgreich");
-
+        log("Login erfolgreich", { user: account.username });
     } catch (e) {
-        log("Login Fehler: " + e);
+        log("Login Fehler", { message: e.message, stack: e.stack });
     }
 }
 
-// TOKEN
 async function getToken() {
-    const res = await msalInstance.acquireTokenSilent({
-        scopes: CONFIG.scopes,
-        account: account
+    try {
+        const res = await msalInstance.acquireTokenSilent({
+            scopes: CONFIG.scopes,
+            account: account
+        });
+        return res.accessToken;
+    } catch {
+        const res = await msalInstance.acquireTokenPopup({
+            scopes: CONFIG.scopes,
+            account: account
+        });
+        return res.accessToken;
+    }
+}
+
+async function spGet(url, token) {
+    const response = await fetch(url, {
+        headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json;odata=nometadata"
+        }
     });
 
-    return res.accessToken;
-}
+    const text = await response.text();
 
-// LOAD CONTACTS (FIXED)
-async function loadContacts() {
+    let json = null;
     try {
-        setStatus("lade Kontakte...");
-
-        const token = await getToken();
-
-        const response = await fetch(
-            `${CONFIG.siteUrl}/_api/web/lists/getbytitle('Contacts')/items`,
-            {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    Accept: "application/json;odata=nometadata"
-                }
-            }
-        );
-
-        const data = await response.json();
-
-        log("API Response erhalten");
-
-        // 🔥 UNIVERSAL FIX
-        const items = data.value || data.d?.results || [];
-
-        log("Items: " + items.length);
-
-        renderContacts(items);
-
-        setStatus("fertig");
-
-    } catch (e) {
-        log("Fehler: " + e);
-        setStatus("Fehler");
+        json = text ? JSON.parse(text) : null;
+    } catch {
+        json = { rawText: text };
     }
+
+    return {
+        ok: response.ok,
+        status: response.status,
+        url,
+        json
+    };
 }
 
-// RENDER
+function getField(item, keys) {
+    for (const key of keys) {
+        const val = item?.[key];
+        if (val !== undefined && val !== null && val !== "") return val;
+    }
+    return "";
+}
+
 function renderContacts(items) {
     const table = document.getElementById("contactsTable");
     table.innerHTML = "";
@@ -198,25 +190,74 @@ function renderContacts(items) {
         return;
     }
 
-    items.forEach(c => {
+    for (const c of items) {
+        const row = {
+            id: c.Id ?? "",
+            name: getField(c, ["Title", "Name", "FullName"]),
+            firma: getField(c, ["Firma", "Company"]),
+            email: getField(c, ["EMail", "Email", "E_x002d_Mail"]),
+            telefon: getField(c, ["Telefon", "Phone", "Telephone"])
+        };
+
         table.innerHTML += `
             <tr class="border-b">
-                <td class="p-2">${c.Id ?? ""}</td>
-                <td class="p-2">${c.Title ?? ""}</td>
-                <td class="p-2">${c.Firma ?? ""}</td>
-                <td class="p-2">${c.EMail ?? c["E_x002d_Mail"] ?? ""}</td>
-                <td class="p-2">${c.Telefon ?? ""}</td>
+                <td class="p-2">${escapeHtml(row.id)}</td>
+                <td class="p-2">${escapeHtml(row.name)}</td>
+                <td class="p-2">${escapeHtml(row.firma)}</td>
+                <td class="p-2">${escapeHtml(row.email)}</td>
+                <td class="p-2">${escapeHtml(row.telefon)}</td>
             </tr>
         `;
-    });
+    }
 }
 
-// LOGOUT
+async function loadContacts() {
+    try {
+        setStatus("diagnose läuft...");
+        const token = await getToken();
+
+        const listMetaUrl =
+            `${CONFIG.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(CONFIG.listName)}')?$select=Id,Title,ItemCount,BaseTemplate,Hidden`;
+        const listItemsUrl =
+            `${CONFIG.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(CONFIG.listName)}')/items?$top=5`;
+
+        log("Liste prüfen", { listName: CONFIG.listName, siteUrl: CONFIG.siteUrl });
+
+        const metaRes = await spGet(listMetaUrl, token);
+        log("List Meta Response", { status: metaRes.status, json: metaRes.json });
+
+        if (!metaRes.ok) {
+            throw new Error(`List Meta Fehler ${metaRes.status}`);
+        }
+
+        const itemsRes = await spGet(listItemsUrl, token);
+        log("List Items Response", { status: itemsRes.status, json: itemsRes.json });
+
+        if (!itemsRes.ok) {
+            throw new Error(`List Items Fehler ${itemsRes.status}`);
+        }
+
+        const items = itemsRes.json?.value || itemsRes.json?.d?.results || [];
+        const itemCount = metaRes.json?.ItemCount;
+
+        log("Diagnose Ergebnis", {
+            itemCountFromListMeta: itemCount,
+            itemsReturnedByEndpoint: items.length,
+            firstItemKeys: items[0] ? Object.keys(items[0]) : []
+        });
+
+        renderContacts(items);
+        setStatus("fertig");
+    } catch (e) {
+        setStatus("Fehler");
+        log("Fehler", { message: e.message, stack: e.stack });
+    }
+}
+
 function logout() {
     msalInstance.logoutPopup();
 }
 
-// INIT
 window.addEventListener("load", async () => {
     await initMsal();
 
@@ -227,6 +268,5 @@ window.addEventListener("load", async () => {
     log("App gestartet");
 });
 </script>
-
 </body>
 </html>
