@@ -33,23 +33,26 @@
 
     <main class="container mx-auto mt-8 p-4">
         <div id="main-card" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden min-h-[600px] flex flex-col">
+            
             <div class="p-6 border-b border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h2 id="view-title" class="text-2xl font-bold text-slate-800 tracking-tight">Firmenübersicht</h2>
-                    <p id="view-subtitle" class="text-slate-500 text-sm mt-0.5 italic">Daten werden synchronisiert...</p>
+                    <p id="view-subtitle" class="text-slate-500 text-sm mt-0.5 italic font-medium">Lade Daten...</p>
                 </div>
                 <div id="search-container" class="hidden relative">
-                    <input type="text" id="company-search" placeholder="Suchen..." class="w-full md:w-80 pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm focus:ring-2 focus:ring-blue-500/20 transition-all font-bold">
+                    <input type="text" id="company-search" placeholder="Firma oder Ort suchen..." 
+                        class="w-full md:w-80 pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm focus:ring-2 focus:ring-blue-500/20 transition-all font-bold">
                     <span class="absolute left-4 top-3 text-slate-400">🔍</span>
                 </div>
             </div>
 
-            <div id="data-area" class="flex-1 relative">
+            <div id="data-area" class="flex-1 relative font-sans text-slate-700">
                 <div id="loading-state" class="hidden absolute inset-0 bg-white/80 z-20 flex flex-col items-center justify-center">
                     <div class="animate-spin h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full mb-3"></div>
                     <p class="text-slate-600 font-bold italic font-sans">Lade Daten...</p>
                 </div>
-                <div id="content-display" class="p-6"></div>
+                <div id="content-display" class="p-6 font-sans">
+                    </div>
             </div>
         </div>
     </main>
@@ -68,11 +71,12 @@
         let allCompanies = [];
         let siteId = ""; 
 
-        // Browser-Zurück Button abfangen
+        // Browser-Historie Wächter
         window.onpopstate = function(event) {
-            showListView(false); // false verhindert endlose History-Loops
+            showListView(false); 
         };
 
+        // Autofilter Event
         document.getElementById('company-search').addEventListener('input', (e) => {
             const term = e.target.value.toLowerCase().trim();
             if (!allCompanies || allCompanies.length === 0) return;
@@ -104,7 +108,7 @@
                 document.getElementById('username').innerText = account.name;
                 startDataLoad();
             } else {
-                document.getElementById('content-display').innerHTML = '<div class="py-20 text-center text-slate-400 italic font-bold">Bitte einloggen.</div>';
+                document.getElementById('content-display').innerHTML = '<div class="py-20 text-center text-slate-400 italic font-bold">Bitte loggen Sie sich ein.</div>';
             }
         }
 
@@ -130,35 +134,33 @@
                 allCompanies = data.value || [];
                 renderCompanyTable(allCompanies);
             } catch (err) { 
-                document.getElementById('content-display').innerHTML = `<p class="text-red-500 font-bold p-10 text-center">Fehler: ${err.message}</p>`;
+                document.getElementById('content-display').innerHTML = `<p class="text-red-500 font-bold p-10 text-center">Fehler beim Laden: ${err.message}</p>`;
             } finally { loader.classList.add('hidden'); }
         }
 
         function renderCompanyTable(items) {
             document.getElementById('view-title').innerText = "Firmenübersicht";
-            document.getElementById('view-subtitle').innerText = `${items.length} Unternehmen`;
+            document.getElementById('view-subtitle').innerText = `${items.length} Unternehmen gefunden`;
             document.getElementById('search-container').classList.remove('hidden');
 
             let html = `<div class="overflow-x-auto"><table class='w-full text-left border-separate border-spacing-y-2'>
-                <thead><tr class='text-slate-400 text-[10px] uppercase tracking-widest px-4 font-bold'><th class='p-4'>Firma</th><th class='p-4 text-center'>Prio</th><th class='p-4 text-right'>Ort</th></tr></thead><tbody>`;
+                <thead><tr class='text-slate-400 text-[10px] uppercase tracking-widest px-4 font-bold'><th class='p-4 font-sans'>Firma</th><th class='p-4 text-center'>Prio</th><th class='p-4 text-right'>Ort</th></tr></thead><tbody>`;
             
             items.forEach(item => {
                 const f = item.fields;
                 let p = f.Priorit_x00e4_t || '-';
                 if(p == "1") p = "A"; else if(p == "2") p = "B"; else if(p == "3") p = "C";
 
-                html += `<tr onclick="loadContacts('${item.id}', '${(f.Title || 'Unbekannt').replace(/'/g, "\\'")}')" class='bg-white border border-slate-100 shadow-sm hover:shadow-md hover:border-blue-300 cursor-pointer transition-all group'>
-                    <td class='p-4 rounded-l-xl border-y border-l border-slate-100 font-bold text-slate-800'>${f.Title || 'N/A'} ${f.TopKunde ? '<span class="text-yellow-500 ml-1">★</span>' : ''}</td>
-                    <td class='p-4 border-y border-slate-100 text-center'><span class="prio-${p} px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter">${p}</span></td>
-                    <td class='p-4 rounded-r-xl border-y border-r border-slate-100 text-slate-500 text-sm text-right italic font-bold'>${f.Ort || ''}</td></tr>`;
+                html += `<tr onclick="loadContacts('${item.id}', '${(f.Title || 'Unbekannt').replace(/'/g, "\\'")}')" class='bg-white border border-slate-100 shadow-sm hover:shadow-md hover:border-blue-300 cursor-pointer transition-all group font-sans'>
+                    <td class='p-4 rounded-l-xl border-y border-l border-slate-100 font-bold text-slate-800 font-sans'>${f.Title || 'N/A'} ${f.TopKunde ? '<span class="text-yellow-500 ml-1">★</span>' : ''}</td>
+                    <td class='p-4 border-y border-slate-100 text-center font-sans font-black italic'><span class="prio-${p} px-3 py-1 rounded-lg text-[10px] uppercase tracking-tighter">${p}</span></td>
+                    <td class='p-4 rounded-r-xl border-y border-r border-slate-100 text-slate-500 text-sm text-right font-sans italic font-bold'>${f.Ort || ''}</td></tr>`;
             });
             document.getElementById('content-display').innerHTML = html + "</tbody></table></div>";
         }
 
         async function loadContacts(companyId, companyName) {
-            // History-Eintrag hinzufügen
             history.pushState({view: 'contacts'}, companyName, "#contacts");
-
             const loader = document.getElementById('loading-state');
             loader.classList.remove('hidden');
             document.getElementById('search-container').classList.add('hidden');
@@ -179,26 +181,30 @@
             document.getElementById('view-title').innerText = companyName;
             document.getElementById('view-subtitle').innerText = `${contacts.length} Kontakte`;
             
-            let html = `<div class="mb-8"><button onclick="showListView()" class="flex items-center gap-2 text-sm font-bold text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-xl transition-all border border-blue-100 shadow-sm italic font-bold">← Zurück zur Firmenliste</button></div><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 font-sans">`;
+            let html = `<div class="mb-8 font-sans"><button onclick="showListView()" class="flex items-center gap-2 text-sm font-bold text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-xl transition-all font-sans border border-blue-100 shadow-sm italic font-bold">← Zurück zur Firmenliste</button></div><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 font-sans">`;
             
+            if (contacts.length === 0) {
+                html += `<div class="col-span-full py-20 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 font-sans italic font-bold">Keine Kontakte hinterlegt.</div>`;
+            }
+
             contacts.forEach(c => {
                 const f = c.fields;
                 const init = `${(f.Vorname || '?').charAt(0)}${(f.Title || '?').charAt(0)}`;
                 html += `
-                <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-lg transition-all border-b-4 border-b-blue-500">
-                    <div class="flex items-center gap-4 mb-4 italic">
-                        <div class="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center font-bold text-slate-400 text-sm italic">${init}</div>
+                <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-lg transition-all border-b-4 border-b-blue-500 font-sans">
+                    <div class="flex items-center gap-4 mb-4 italic font-sans">
+                        <div class="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center font-bold text-slate-400 text-sm italic font-sans">${init}</div>
                         <div>
-                            <h3 class="font-bold text-slate-800 leading-tight italic font-bold">${f.Vorname || ''} ${f.Title || ''}</h3>
-                            <p class="text-blue-600 text-[11px] font-bold uppercase tracking-wider italic font-black font-bold">${f.Funktion || '-'}</p>
+                            <h3 class="font-bold text-slate-800 leading-tight italic font-bold font-sans">${f.Vorname || ''} ${f.Title || ''}</h3>
+                            <p class="text-blue-600 text-[11px] font-bold uppercase tracking-wider italic font-black font-sans">${f.Funktion || '-'}</p>
                         </div>
                     </div>
-                    <div class="space-y-2 pt-4 border-t border-slate-50 text-sm text-slate-600 font-bold italic">
+                    <div class="space-y-2 pt-4 border-t border-slate-50 text-sm text-slate-600 font-bold italic font-sans">
                         <p>📧 ${f.E_x002d_Mail || '-'}</p>
                         <p>📱 ${f.TelefonMobil || '-'}</p>
                     </div>
-                    <button onclick="loadHistory('${c.id}')" class="w-full mt-4 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold py-2 rounded-lg transition border border-slate-200 italic font-bold">Historie anzeigen</button>
-                    <div id="history-${c.id}" class="mt-4 hidden italic"></div>
+                    <button onclick="loadHistory('${c.id}')" class="w-full mt-4 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold py-2 rounded-lg transition border border-slate-200 italic font-bold font-sans">Historie anzeigen</button>
+                    <div id="history-${c.id}" class="mt-4 hidden font-sans italic"></div>
                 </div>`;
             });
             document.getElementById('content-display').innerHTML = html + "</div>";
@@ -210,7 +216,7 @@
                 historyDiv.classList.add('hidden');
                 return;
             }
-            historyDiv.innerHTML = "<p class='text-[10px] animate-pulse py-2 italic text-blue-500 font-bold'>Lade Historie...</p>";
+            historyDiv.innerHTML = "<p class='text-[10px] animate-pulse py-2 italic text-blue-500 font-bold font-sans'>Lade Historie...</p>";
             historyDiv.classList.remove('hidden');
 
             try {
@@ -221,25 +227,25 @@
                 const data = await response.json();
                 const notes = (data.value || []).filter(n => n.fields.KontaktpersonLookupId == contactId);
                 renderHistoryList(notes, contactId);
-            } catch (err) { historyDiv.innerHTML = "<p class='text-red-500 text-[10px] font-bold'>Fehler.</p>"; }
+            } catch (err) { historyDiv.innerHTML = "<p class='text-red-500 text-[10px] font-bold font-sans'>Fehler beim Laden.</p>"; }
         }
 
         function renderHistoryList(notes, contactId) {
             const historyDiv = document.getElementById(`history-${contactId}`);
             if (notes.length === 0) {
-                historyDiv.innerHTML = "<p class='text-[10px] text-slate-400 italic py-2 font-bold'>Keine Notizen vorhanden.</p>";
+                historyDiv.innerHTML = "<p class='text-[10px] text-slate-400 italic py-2 font-bold font-sans'>Keine Notizen vorhanden.</p>";
                 return;
             }
-            let html = `<div class="timeline-line mt-2 space-y-4 italic">`;
+            let html = `<div class="timeline-line mt-2 space-y-4 italic font-sans">`;
             notes.forEach(n => {
                 const f = n.fields;
                 const d = f.Datum ? new Date(f.Datum).toLocaleDateString('de-DE') : '-';
                 html += `
-                <div class="relative pl-6 italic font-medium">
-                    <div class="absolute left-[-1.15rem] top-1 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-white shadow-sm"></div>
-                    <p class="text-[10px] font-bold text-slate-400 italic">${d} - ${f.Status || ''}</p>
-                    <p class="text-xs font-bold text-slate-800 mt-0.5 italic">${f.Title || 'Notiz'}</p>
-                    <p class="text-xs text-slate-600 mt-1 leading-relaxed italic">${f.Details_x002f_Kontext || '-'}</p>
+                <div class="relative pl-6 italic font-medium font-sans">
+                    <div class="absolute left-[-1.15rem] top-1 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-white shadow-sm font-sans"></div>
+                    <p class="text-[10px] font-bold text-slate-400 italic font-sans">${d} - ${f.Status || ''}</p>
+                    <p class="text-xs font-bold text-slate-800 mt-0.5 italic font-sans">${f.Title || 'Notiz'}</p>
+                    <p class="text-xs text-slate-600 mt-1 leading-relaxed font-sans">${f.Details_x002f_Kontext || '-'}</p>
                 </div>`;
             });
             historyDiv.innerHTML = html + "</div>";
