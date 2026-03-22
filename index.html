@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>bbz CRM - Performance Edition</title>
+    <title>bbz CRM - No Bullshit Edition</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
     <style>
         body { background-color: #0f172a; color: #f1f5f9; font-family: sans-serif; }
         .card-dark { background-color: #1e293b; border: 1px solid #334155; }
-        .prio-A, .prio-1 { border-left: 4px solid #f59e0b; }
-        .prio-B, .prio-2 { border-left: 4px solid #3b82f6; }
+        .prio-1, .prio-A { border-left: 4px solid #f59e0b; }
+        .prio-2, .prio-B { border-left: 4px solid #3b82f6; }
         .timeline-line { border-left: 2px solid #334155; margin-left: 10px; }
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
@@ -18,16 +18,13 @@
 </head>
 <body class="min-h-screen italic">
 
-    <nav class="bg-slate-900 border-b border-slate-800 p-4 sticky top-0 z-50">
+    <nav class="bg-slate-900 border-b border-slate-800 p-4 sticky top-0 z-50 font-sans">
         <div class="container mx-auto flex justify-between items-center">
             <h1 class="text-xl font-black text-blue-400 tracking-tighter cursor-pointer" onclick="location.reload()">bbz CRM</h1>
             <div id="auth-area" class="flex items-center gap-4">
-                <span id="status-dot" class="w-2 h-2 bg-red-500 rounded-full"></span>
-                <div id="user-info" class="hidden flex items-center gap-3">
-                    <span id="username" class="text-xs text-slate-400 font-bold"></span>
-                    <button id="logout-btn" class="text-xs text-slate-500 hover:text-white underline font-sans">Logout</button>
-                </div>
-                <button id="login-btn" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-lg text-sm font-bold transition shadow-lg">Login</button>
+                <span id="username" class="text-xs text-slate-400 font-bold"></span>
+                <button id="login-btn" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-lg text-sm font-bold transition">Login</button>
+                <button id="logout-btn" class="hidden text-xs text-slate-500 underline">Logout</button>
             </div>
         </div>
     </nav>
@@ -43,10 +40,10 @@
     <main class="container mx-auto mt-6 p-4 grid grid-cols-1 lg:grid-cols-12 gap-6 font-sans">
         <div class="lg:col-span-3 space-y-4">
             <input type="text" id="comp-search" placeholder="Suchen..." class="card-dark w-full rounded-xl px-4 py-2 text-sm outline-none text-white italic">
-            <div id="company-list" class="space-y-2 max-h-[600px] overflow-y-auto pr-2 text-sm italic font-bold text-slate-400 text-center">Warte auf Login...</div>
+            <div id="company-list" class="space-y-2 max-h-[600px] overflow-y-auto pr-2 text-sm font-bold"></div>
         </div>
         <div id="detail-view" class="lg:col-span-9 space-y-6">
-            <div class="card-dark p-20 rounded-2xl text-center text-slate-500 italic">Wähle eine Firma aus der Liste.</div>
+            <div class="card-dark p-20 rounded-2xl text-center text-slate-500 italic">Datenabgleich bereit.</div>
         </div>
     </main>
 
@@ -62,7 +59,6 @@
 
         const msalInstance = new msal.PublicClientApplication(msalConfig);
         let db = { firmen: [], kontakte: [], notizen: [], tasks: [], history: [] };
-        let firmenMap = {}; // ID -> Name Mapping
 
         async function init() {
             const res = await msalInstance.handleRedirectPromise();
@@ -75,17 +71,19 @@
             const acc = msalInstance.getActiveAccount();
             if (acc) {
                 document.getElementById('login-btn').classList.add('hidden');
-                document.getElementById('user-info').classList.remove('hidden');
+                document.getElementById('logout-btn').classList.remove('hidden');
                 document.getElementById('username').innerText = acc.name;
-                document.getElementById('status-dot').classList.replace('bg-red-500', 'bg-green-500');
-                loadAllData();
+                loadEverything();
             }
         }
 
         document.getElementById('login-btn').onclick = () => msalInstance.loginRedirect({ scopes: ["Sites.Read.All"] });
         document.getElementById('logout-btn').onclick = () => { localStorage.clear(); location.reload(); };
 
-        async function loadAllData() {
+        async function loadEverything() {
+            const pane = document.getElementById('detail-view');
+            pane.innerHTML = `<div class="p-20 text-center text-blue-400 font-bold italic">Lade alle Listen ($top=5000)...</div>`;
+
             try {
                 const acc = msalInstance.getActiveAccount();
                 const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: acc });
@@ -95,9 +93,12 @@
                 const site = await siteRes.json();
                 const siteId = site.id;
 
+                // WICHTIG: Wir laden 5000 Items, um sicherzustellen, dass keine Firma fehlt!
                 const endpoints = ["Firmen", "Kontakte", "Kontaktnotizen", "Tasks", "History"];
                 const results = await Promise.all(endpoints.map(ep => 
-                    fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${ep}/items?expand=fields&top=5000`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
+                    fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${ep}/items?expand=fields&$top=5000`, { 
+                        headers: { 'Authorization': `Bearer ${token}` } 
+                    }).then(r => r.json())
                 ));
 
                 db.firmen = results[0].value || [];
@@ -106,16 +107,13 @@
                 db.tasks = results[3].value || [];
                 db.history = results[4].value || [];
 
-                // WICHTIG: Die "Übersetzungs-Matrix" bauen
-                firmenMap = {};
-                db.firmen.forEach(f => { firmenMap[String(f.id)] = f.fields.Title; });
-
-                renderDashboardStats();
-                renderCompanyList(db.firmen);
+                renderStats();
+                renderList(db.firmen);
+                pane.innerHTML = `<div class="card-dark p-20 rounded-2xl text-center text-slate-500 italic">Bereit. Wähle eine Firma.</div>`;
             } catch (err) { console.error(err); }
         }
 
-        function renderDashboardStats() {
+        function renderStats() {
             const count = (p) => db.firmen.filter(f => f.fields.Priorit_x00e4_t == p).length;
             document.getElementById('stat-a').innerText = count('1') || count('A');
             document.getElementById('stat-b').innerText = count('2') || count('B');
@@ -124,42 +122,49 @@
             document.getElementById('stat-top').innerText = db.firmen.filter(f => f.fields.TopKunde).length;
         }
 
-        function renderCompanyList(items) {
+        function renderList(items) {
             document.getElementById('company-list').innerHTML = items.sort((a,b) => a.fields.Title.localeCompare(b.fields.Title)).map(item => `
-                <div onclick="showCompanyDetail('${item.id}')" class="card-dark p-3 rounded-xl cursor-pointer hover:bg-slate-800 transition font-bold prio-${item.fields.Priorit_x00e4_t}">
+                <div onclick="showDetail('${item.id}')" class="card-dark p-3 rounded-xl cursor-pointer hover:bg-slate-800 transition prio-${item.fields.Priorit_x00e4_t}">
                     ${item.fields.Title}
                 </div>
             `).join('');
         }
 
-        function showCompanyDetail(cId) {
-            const selectedFirmaName = firmenMap[String(cId)];
+        function showDetail(cId) {
+            const firmaObj = db.firmen.find(f => String(f.id) === String(cId));
+            const firmenName = firmaObj.fields.Title;
 
-            // DER FIX: Wir suchen Kontakte, deren zugeordnete Firma (via ID) den gleichen NAMEN hat
+            // DER ABSOLUTE FIX: Wir ignorieren die IDs in den Kontakten.
+            // Wir mappen die Kontakte über den Namen der Firma.
             const contacts = db.kontakte.filter(c => {
-                const kontaktFirmaId = String(c.fields.FirmaId);
-                const nameInDatenbank = firmenMap[kontaktFirmaId];
-                return nameInDatenbank === selectedFirmaName;
+                const f = c.fields;
+                // Wir holen uns den Firmennamen aus dem Kontakt-Objekt (LookupValue)
+                // Falls das nicht da ist, suchen wir in unserer Firmen-Tabelle nach der ID, die im Kontakt steht
+                const linkedFirma = db.firmen.find(fir => String(fir.id) === String(f.FirmaId));
+                return linkedFirma && linkedFirma.fields.Title === firmenName;
             });
 
             const contactIds = contacts.map(c => String(c.id));
+            const contactNames = contacts.map(c => (c.fields.Vorname + " " + c.fields.Title).trim());
 
+            // Timeline: History & Notizen (über Kontakt-IDs)
             const timeline = [
                 ...db.history.filter(h => contactIds.includes(String(h.fields.ContactLookupId))),
                 ...db.notizen.filter(n => contactIds.includes(String(n.fields.KontaktpersonId)))
             ].sort((a,b) => new Date(b.fields.Datum || b.createdDateTime) - new Date(a.fields.Datum || a.createdDateTime));
 
+            // Tasks: Über Kontakt-ID ODER über den Namen der Firma im Task
             const tasks = db.tasks.filter(t => contactIds.includes(String(t.fields.ContactID)));
 
-            renderDetailsUI(db.firmen.find(f => String(f.id) === String(cId)).fields, contacts, timeline, tasks);
+            renderUI(firmaObj.fields, contacts, timeline, tasks);
         }
 
-        function renderDetailsUI(firma, contacts, timeline, tasks) {
+        function renderUI(firma, contacts, timeline, tasks) {
             document.getElementById('detail-view').innerHTML = `
                 <div class="grid grid-cols-1 md:grid-cols-12 gap-6 animate-in fade-in duration-300">
                     <div class="md:col-span-12 card-dark p-6 rounded-2xl border-l-4 border-l-blue-500">
                         <h2 class="text-3xl font-black text-blue-400 italic">${firma.Title}</h2>
-                        <p class="text-slate-400 text-xs font-bold mt-1">${firma.Ort || ''} | ${firma.Adresse || ''}</p>
+                        <p class="text-slate-400 text-xs font-bold mt-1 uppercase italic">${firma.Ort || ''}</p>
                     </div>
                     <div class="md:col-span-5 space-y-6">
                         <section>
@@ -167,14 +172,14 @@
                             <div class="space-y-3">
                                 ${contacts.map(c => `
                                     <div class="card-dark p-4 rounded-xl border-b-4 border-b-blue-600/50">
-                                        <p class="text-white font-black italic font-sans">${c.fields.Vorname || ''} ${c.fields.Title || ''}</p>
+                                        <p class="text-white font-black italic">${c.fields.Vorname || ''} ${c.fields.Title || ''}</p>
                                         <p class="text-[10px] text-slate-500 uppercase italic">${c.fields.Funktion || '-'}</p>
                                     </div>
                                 `).join('')}
                             </div>
                         </section>
                         <section>
-                            <h3 class="text-[10px] font-black uppercase text-red-500 italic mb-3">Tasks</h3>
+                            <h3 class="text-[10px] font-black uppercase text-red-500 italic mb-3">Offene Tasks</h3>
                             ${tasks.filter(t => t.fields.Status !== "Erledigt").map(t => `
                                 <div class="card-dark p-3 rounded-lg text-xs border-l-2 border-l-red-500 italic mb-2">
                                     <p class="font-bold text-white">${t.fields.Title}</p>
