@@ -133,13 +133,13 @@
         history: "History"
       },
 
-      fields: {
-        companies: {
-          id: "ID",
-          title: "Title",
-          abc: "Priority",
-          tags: "Tags"
-        },
+     fields: {
+  companies: {
+    id: "ID",
+    title: "Title",
+    abc: null,
+    tags: "Tags"
+  },
         contacts: {
           id: "ID",
           title: "Title",
@@ -410,29 +410,27 @@
       });
     }
 
-    async function loadCompanies() {
+   async function loadCompanies() {
   const f = CONFIG.fields.companies;
 
-  let items = [];
-  try {
-    items = await spFetchListItems(
-      CONFIG.lists.companies,
-      `?$top=500&$select=ID,${f.title},${f.abc},${f.tags}&$orderby=ID desc`
-    );
-  } catch (err) {
-    const msg = err?.message || String(err);
+  const items = await spFetchListItems(
+    CONFIG.lists.companies,
+    `?$top=500&$select=ID,${f.title},${f.tags}&$orderby=ID desc`
+  );
 
-    if (msg.includes("Priority")) {
-      log("Hinweis", { message: "Firmenfeld 'Priority' existiert nicht. Lade Firmen ohne ABC-Feld." });
+  companiesCache = items.map(item => ({
+    id: item.ID,
+    title: item[f.title] || "",
+    abc: "", // bewusst leer
+    tags: asTags(item[f.tags]),
+    raw: item
+  }));
 
-      items = await spFetchListItems(
-        CONFIG.lists.companies,
-        `?$top=500&$select=ID,${f.title},${f.tags}&$orderby=ID desc`
-      );
-    } else {
-      throw err;
-    }
-  }
+  log("Firmen geladen", {
+    count: companiesCache.length,
+    firstItem: companiesCache[0] || null
+  });
+}
 
   companiesCache = items.map(item => mapCompany(item));
 
