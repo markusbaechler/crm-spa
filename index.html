@@ -15,39 +15,36 @@
 </head>
 <body class="bg-slate-50 min-h-screen font-sans text-slate-900">
 
-    <nav class="bg-slate-900 text-white shadow-xl p-4 sticky top-0 z-50 font-sans">
-        <div class="container mx-auto flex justify-between items-center font-sans">
-            <div class="flex items-center gap-6 font-sans">
-                <h1 class="text-2xl font-black text-blue-400 tracking-tighter cursor-pointer font-sans" onclick="showListView()">bbz CRM</h1>
-            </div>
-            <div id="auth-area" class="font-sans">
-                <button id="login-btn" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-full text-sm font-bold transition font-sans">Login mit M365</button>
-                <div id="user-info" class="hidden flex items-center gap-4 font-sans">
-                    <span id="username" class="text-sm font-medium text-slate-400 border-r pr-4 border-slate-700 font-sans"></span>
-                    <button id="logout-btn" class="text-xs text-slate-400 hover:text-white underline font-sans">Logout</button>
+    <nav class="bg-slate-900 text-white shadow-xl p-4 sticky top-0 z-50">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-2xl font-black text-blue-400 tracking-tighter cursor-pointer" onclick="showListView()">bbz CRM</h1>
+            <div id="auth-area">
+                <button id="login-btn" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-full text-sm font-bold transition">Login</button>
+                <div id="user-info" class="hidden flex items-center gap-4">
+                    <span id="username" class="text-sm font-medium text-slate-400 border-r pr-4 border-slate-700"></span>
+                    <button id="logout-btn" class="text-xs text-slate-400 hover:text-white underline">Logout</button>
                 </div>
             </div>
         </div>
     </nav>
 
-    <main class="container mx-auto mt-8 p-4 font-sans">
-        <div id="main-card" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden min-h-[600px] flex flex-col font-sans">
-            <div class="p-6 border-b border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-4 font-sans">
+    <main class="container mx-auto mt-8 p-4">
+        <div id="main-card" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden min-h-[600px] flex flex-col">
+            <div class="p-6 border-b border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h2 id="view-title" class="text-2xl font-bold text-slate-800 tracking-tight font-sans">Firmenübersicht</h2>
-                    <p id="view-subtitle" class="text-slate-500 text-sm mt-0.5 font-sans">Daten werden synchronisiert...</p>
+                    <h2 id="view-title" class="text-2xl font-bold text-slate-800 tracking-tight">Firmenübersicht</h2>
+                    <p id="view-subtitle" class="text-slate-500 text-sm mt-0.5">Daten werden geladen...</p>
                 </div>
-                <div id="search-container" class="hidden relative font-sans">
-                    <input type="text" id="company-search" placeholder="Suchen..." 
-                        class="w-full md:w-80 pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm focus:ring-2 focus:ring-blue-500/20 font-sans">
-                    <span class="absolute left-4 top-3 text-slate-400 font-sans font-bold">🔍</span>
+                <div id="search-container" class="hidden relative">
+                    <input type="text" id="company-search" placeholder="Suchen..." class="w-full md:w-80 pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm focus:ring-2 focus:ring-blue-500/20 transition-all font-sans">
+                    <span class="absolute left-4 top-3 text-slate-400">🔍</span>
                 </div>
             </div>
 
-            <div id="data-area" class="flex-1 relative font-sans">
+            <div id="data-area" class="flex-1 relative font-sans text-slate-700">
                 <div id="loading-state" class="hidden absolute inset-0 bg-white/80 z-10 flex flex-col items-center justify-center font-sans">
-                    <div class="animate-spin h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full mb-3 font-sans"></div>
-                    <p class="text-slate-600 font-semibold font-sans">Lade Daten...</p>
+                    <div class="animate-spin h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full mb-3"></div>
+                    <p class="text-slate-600 font-semibold font-sans">Verbindung wird aufgebaut...</p>
                 </div>
                 <div id="content-display" class="p-6 font-sans"></div>
             </div>
@@ -94,7 +91,7 @@
                 document.getElementById('username').innerText = account.name;
                 startDataLoad();
             } else {
-                document.getElementById('content-display').innerHTML = '<div class="py-20 text-center text-slate-400 italic font-sans">Bitte loggen Sie sich ein.</div>';
+                document.getElementById('content-display').innerHTML = '<div class="py-20 text-center text-slate-400 italic">Bitte loggen Sie sich ein.</div>';
             }
         }
 
@@ -126,63 +123,86 @@
 
         function renderCompanyTable(items) {
             document.getElementById('view-title').innerText = "Firmenübersicht";
-            document.getElementById('view-subtitle').innerText = `${items.length} Unternehmen`;
+            document.getElementById('view-subtitle').innerText = `${items.length} Unternehmen gefunden`;
             document.getElementById('search-container').classList.remove('hidden');
 
             let html = `<div class="overflow-x-auto"><table class='w-full text-left border-separate border-spacing-y-2'>
-                <thead><tr class='text-slate-400 text-[10px] uppercase tracking-widest px-4'><th class='p-4 font-sans'>Firma</th><th class='p-4 text-center font-sans'>Prio</th><th class='p-4 text-right font-sans'>Ort</th></tr></thead><tbody>`;
+                <thead><tr class='text-slate-400 text-[10px] uppercase tracking-widest px-4 font-sans'><th class='p-4'>Firma</th><th class='p-4 text-center'>Prio</th><th class='p-4 text-right'>Ort</th></tr></thead><tbody>`;
             
             items.forEach(item => {
                 const f = item.fields;
                 let p = f.Priorit_x00e4_t || '-';
                 if(p == "1") p = "A"; else if(p == "2") p = "B"; else if(p == "3") p = "C";
 
-                html += `<tr onclick="loadContacts('${item.id}', '${(f.Title || 'Unbekannt').replace(/'/g, "\\'")}')" class='bg-white border border-slate-100 shadow-sm hover:shadow-md hover:border-blue-300 cursor-pointer transition-all group font-sans'>
-                    <td class='p-4 rounded-l-xl border-y border-l border-slate-100 font-bold font-sans text-slate-800'>${f.Title} ${f.TopKunde ? '<span class="text-yellow-500 font-sans ml-1">★</span>' : ''}</td>
-                    <td class='p-4 border-y border-slate-100 text-center font-sans'><span class="prio-${p} px-3 py-1 rounded-lg text-[10px] font-black font-sans uppercase">${p}</span></td>
-                    <td class='p-4 rounded-r-xl border-y border-r border-slate-100 text-slate-500 text-sm text-right font-sans'>${f.Ort || ''}</td></tr>`;
+                html += `<tr onclick="loadContacts('${item.id}', '${(f.Title || 'Unbekannt').replace(/'/g, "\\'")}')" class='bg-white border border-slate-100 shadow-sm hover:shadow-md hover:border-blue-300 cursor-pointer transition-all group'>
+                    <td class='p-4 rounded-l-xl border-y border-l border-slate-100 font-bold text-slate-800'>${f.Title} ${f.TopKunde ? '<span class="text-yellow-500 ml-1">★</span>' : ''}</td>
+                    <td class='p-4 border-y border-slate-100 text-center'><span class="prio-${p} px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter">${p}</span></td>
+                    <td class='p-4 rounded-r-xl border-y border-r border-slate-100 text-slate-500 text-sm text-right'>${f.Ort || ''}</td></tr>`;
             });
             document.getElementById('content-display').innerHTML = html + "</tbody></table></div>";
         }
 
-       async function loadContacts(companyId, companyName) {
-    const loader = document.getElementById('loading-state');
-    const content = document.getElementById('content-display');
-    loader.classList.remove('hidden');
-    document.getElementById('search-container').classList.add('hidden');
-    
-    try {
-        const account = msalInstance.getActiveAccount();
-        const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: account });
-        
-        // TEST: Wir versuchen erst die Kontakte zu laden. 
-        // Falls 'FirmaLookupId' falsch ist, probieren wir es mit 'FirmaId'
-        const url = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontakte/items?expand=fields(select=id,Title,Vorname,Funktion,E_x002d_Mail,TelefonMobil,FirmaLookupId,FirmaId)&filter=fields/FirmaLookupId eq ${companyId}`;
-        
-        const response = await fetch(url, { headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` } });
-        const data = await response.json();
-
-        if (data.error) {
-            console.error("Graph Filter Fehler:", data.error);
-            // Falls FirmaLookupId nicht existiert, versuchen wir es ohne Filter und filtern lokal
-            const backupUrl = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontakte/items?expand=fields`;
-            const backupRes = await fetch(backupUrl, { headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` } });
-            const backupData = await backupRes.json();
+        async function loadContacts(companyId, companyName) {
+            const loader = document.getElementById('loading-state');
+            loader.classList.remove('hidden');
+            document.getElementById('search-container').classList.add('hidden');
             
-            // Lokale Filterung (sicherer, falls Feldname unbekannt)
-            const filtered = backupData.value.filter(item => 
-                item.fields.FirmaLookupId == companyId || 
-                item.fields.FirmaId == companyId ||
-                (item.fields.Firma && item.fields.Firma[0] && item.fields.Firma[0].LookupId == companyId)
-            );
-            renderContactCards(filtered, companyName);
-        } else {
-            renderContactCards(data.value || [], companyName);
+            try {
+                const account = msalInstance.getActiveAccount();
+                const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: account });
+                
+                // Wir fragen erst mit Filter ab, falls das fehlschlägt, laden wir alle Kontakte für diese Site
+                const url = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontakte/items?expand=fields(select=id,Title,Vorname,Funktion,E_x002d_Mail,TelefonMobil,FirmaLookupId,FirmaId)`;
+                
+                const response = await fetch(url, { headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` } });
+                const data = await response.json();
+                
+                // Lokale Filterung ist am sichersten, da SharePoint Feldnamen wie 'FirmaLookupId' manchmal versteckt
+                const filtered = data.value.filter(item => {
+                    const f = item.fields;
+                    return f.FirmaLookupId == companyId || f.FirmaId == companyId;
+                });
+
+                renderContactView(filtered, companyName);
+            } catch (err) { 
+                document.getElementById('content-display').innerHTML = `<p class="text-red-500 text-center p-10 font-bold font-sans">Fehler beim Laden: ${err.message}</p>`;
+            } finally { loader.classList.add('hidden'); }
         }
-    } catch (err) { 
-        content.innerHTML = `<p class="text-red-500 p-10 text-center font-bold">Fehler beim Laden: ${err.message}</p>`;
-    } finally { loader.classList.add('hidden'); }
-}
+
+        function renderContactView(contacts, companyName) {
+            document.getElementById('view-title').innerText = companyName;
+            document.getElementById('view-subtitle').innerText = `${contacts.length} Kontakte`;
+            
+            let html = `<div class="mb-8"><button onclick="showListView()" class="flex items-center gap-2 text-sm font-bold text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-lg transition-all">← Zurück zur Firmenliste</button></div><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 font-sans">`;
+            
+            if (contacts.length === 0) {
+                html += `<div class="col-span-full py-20 text-center border-2 border-dashed border-slate-200 rounded-2xl"><p class="text-slate-400">Keine verknüpften Kontakte gefunden.</p></div>`;
+            }
+
+            contacts.forEach(c => {
+                const f = c.fields;
+                const init = `${(f.Vorname || '?').charAt(0)}${(f.Title || '?').charAt(0)}`;
+                html += `
+                <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-lg transition-all border-b-4 border-b-blue-500 font-sans">
+                    <div class="flex items-center gap-4 mb-4">
+                        <div class="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center font-bold text-slate-400 text-sm font-sans italic">${init}</div>
+                        <div>
+                            <h3 class="font-bold text-slate-800 leading-tight font-sans">${f.Vorname || ''} ${f.Title || ''}</h3>
+                            <p class="text-blue-600 text-[11px] font-bold uppercase tracking-wider font-sans">${f.Funktion || '-'}</p>
+                        </div>
+                    </div>
+                    <div class="space-y-2 pt-4 border-t border-slate-50 text-sm font-sans text-slate-600">
+                        <p>📧 ${f.E_x002d_Mail || '-'}</p>
+                        <p>📱 ${f.TelefonMobil || '-'}</p>
+                    </div>
+                    <button onclick="loadHistory('${c.id}', '${(f.Vorname + ' ' + f.Title).replace(/'/g, "\\'")}')" class="w-full mt-4 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold py-2 rounded-lg transition border border-slate-200">
+                        Historie anzeigen
+                    </button>
+                    <div id="history-${c.id}" class="mt-4 hidden font-sans"></div>
+                </div>`;
+            });
+            document.getElementById('content-display').innerHTML = html + "</div>";
+        }
 
         async function loadHistory(contactId, contactName) {
             const historyDiv = document.getElementById(`history-${contactId}`);
@@ -190,41 +210,39 @@
                 historyDiv.classList.add('hidden');
                 return;
             }
-
-            historyDiv.innerHTML = "<p class='text-[10px] animate-pulse py-2 font-sans'>Lade Notizen...</p>";
+            historyDiv.innerHTML = "<p class='text-[10px] animate-pulse py-2 font-sans'>Synchronisiere Notizen...</p>";
             historyDiv.classList.remove('hidden');
 
             try {
                 const account = msalInstance.getActiveAccount();
                 const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: account });
-                
-                // Wir filtern die Liste 'Kontaktnotizen' nach der KontaktpersonID (Lookup)
-                const url = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontaktnotizen/items?expand=fields(select=Title,Details_x002f_Kontext,Status,Datum,KontaktpersonLookupId)&filter=fields/KontaktpersonLookupId eq ${contactId}&$orderby=fields/Datum desc`;
-                
+                const url = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontaktnotizen/items?expand=fields`;
                 const response = await fetch(url, { headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` } });
                 const data = await response.json();
                 
-                renderHistoryList(data.value || [], contactId);
-            } catch (err) { historyDiv.innerHTML = "<p class='text-red-500 text-[10px] font-sans'>Fehler beim Laden.</p>"; }
+                // Lokale Filterung für Notizen (ID der Kontaktperson)
+                const notes = data.value.filter(n => n.fields.KontaktpersonLookupId == contactId);
+                
+                renderHistoryList(notes, contactId);
+            } catch (err) { historyDiv.innerHTML = "<p class='text-red-500 text-[10px] font-sans italic font-bold'>Notizen konnten nicht geladen werden.</p>"; }
         }
 
         function renderHistoryList(notes, contactId) {
             const historyDiv = document.getElementById(`history-${contactId}`);
             if (notes.length === 0) {
-                historyDiv.innerHTML = "<p class='text-[10px] text-slate-400 italic py-2 font-sans'>Keine Notizen vorhanden.</p>";
+                historyDiv.innerHTML = "<p class='text-[10px] text-slate-400 italic py-2 font-sans'>Noch keine Einträge vorhanden.</p>";
                 return;
             }
-
             let html = `<div class="timeline-line mt-2 space-y-4">`;
             notes.forEach(n => {
                 const f = n.fields;
-                const d = f.Datum ? new Date(f.Datum).toLocaleDateString('de-DE') : 'Kein Datum';
+                const d = f.Datum ? new Date(f.Datum).toLocaleDateString('de-DE') : 'Datum fehlt';
                 html += `
                 <div class="relative pl-6 font-sans">
-                    <div class="absolute left-[-1.15rem] top-1 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-white font-sans"></div>
-                    <p class="text-[10px] font-bold text-slate-400 font-sans">${d} - ${f.Status || 'Status offen'}</p>
-                    <p class="text-xs font-bold text-slate-800 font-sans mt-0.5">${f.Title || 'Notiz'}</p>
-                    <p class="text-xs text-slate-600 font-sans mt-1 leading-relaxed">${f.Details_x002f_Kontext || '-'}</p>
+                    <div class="absolute left-[-1.15rem] top-1 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-white"></div>
+                    <p class="text-[10px] font-bold text-slate-400">${d} - ${f.Status || 'Status offen'}</p>
+                    <p class="text-xs font-bold text-slate-800 mt-0.5">${f.Title || 'Notiz'}</p>
+                    <p class="text-xs text-slate-600 mt-1 leading-relaxed">${f.Details_x002f_Kontext || '-'}</p>
                 </div>`;
             });
             historyDiv.innerHTML = html + "</div>";
