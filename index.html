@@ -365,16 +365,16 @@
       return data?.value || [];
     }
 
-    function mapCompany(item) {
-      const f = CONFIG.fields.companies;
-      return {
-        id: item[f.id] ?? item.Id ?? item.ID ?? "",
-        title: item[f.title] ?? "",
-        abc: item[f.abc] ?? "",
-        tags: asTags(item[f.tags]),
-        raw: item
-      };
-    }
+   function mapCompany(item) {
+  const f = CONFIG.fields.companies;
+  return {
+    id: item[f.id] ?? item.Id ?? item.ID ?? "",
+    title: item[f.title] ?? "",
+    abc: item[f.abc] ?? item.ABC ?? item.ABCSegment ?? item["ABC_x002d_Segment"] ?? "",
+    tags: asTags(item[f.tags]),
+    raw: item
+  };
+}
 
     function mapContact(item) {
       const f = CONFIG.fields.contacts;
@@ -411,19 +411,36 @@
     }
 
     async function loadCompanies() {
-      const f = CONFIG.fields.companies;
-      const items = await spFetchListItems(
+  const f = CONFIG.fields.companies;
+
+  let items = [];
+  try {
+    items = await spFetchListItems(
+      CONFIG.lists.companies,
+      `?$top=500&$select=ID,${f.title},${f.abc},${f.tags}&$orderby=ID desc`
+    );
+  } catch (err) {
+    const msg = err?.message || String(err);
+
+    if (msg.includes("Priority")) {
+      log("Hinweis", { message: "Firmenfeld 'Priority' existiert nicht. Lade Firmen ohne ABC-Feld." });
+
+      items = await spFetchListItems(
         CONFIG.lists.companies,
-        `?$top=500&$select=ID,${f.title},${f.abc},${f.tags}&$orderby=ID desc`
+        `?$top=500&$select=ID,${f.title},${f.tags}&$orderby=ID desc`
       );
-
-      companiesCache = items.map(mapCompany);
-
-      log("Firmen geladen", {
-        count: companiesCache.length,
-        firstItem: companiesCache[0] || null
-      });
+    } else {
+      throw err;
     }
+  }
+
+  companiesCache = items.map(item => mapCompany(item));
+
+  log("Firmen geladen", {
+    count: companiesCache.length,
+    firstItem: companiesCache[0] || null
+  });
+}
 
     async function loadAllBaseData() {
       try {
