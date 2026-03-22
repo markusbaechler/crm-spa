@@ -29,25 +29,24 @@
     </nav>
 
     <main class="container mx-auto mt-8 p-4 font-sans">
-        <div id="main-card" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden min-h-[600px] flex flex-col">
+        <div id="main-card" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden min-h-[600px] flex flex-col font-sans">
             <div class="p-6 border-b border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-4 font-sans">
                 <div>
                     <h2 id="view-title" class="text-2xl font-bold text-slate-800 tracking-tight font-sans">Firmenübersicht</h2>
-                    <p id="view-subtitle" class="text-slate-500 text-sm mt-0.5 font-sans">Lade Daten...</p>
+                    <p id="view-subtitle" class="text-slate-500 text-sm mt-0.5 font-sans">Synchronisiere...</p>
                 </div>
-                <div id="search-container" class="hidden relative">
-                    <input type="text" id="company-search" placeholder="Firma suchen..." 
-                        class="w-full md:w-80 pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm focus:ring-2 focus:ring-blue-500/20 font-sans">
-                    <span class="absolute left-4 top-3 text-slate-400">🔍</span>
+                <div id="search-container" class="hidden relative font-sans">
+                    <input type="text" id="company-search" placeholder="Firma suchen..." class="w-full md:w-80 pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm focus:ring-2 focus:ring-blue-500/20 font-bold font-sans">
+                    <span class="absolute left-4 top-3 text-slate-400 font-sans">🔍</span>
                 </div>
             </div>
 
-            <div id="data-area" class="flex-1 relative">
-                <div id="loading-state" class="hidden absolute inset-0 bg-white/80 z-20 flex flex-col items-center justify-center">
-                    <div class="animate-spin h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full mb-3"></div>
-                    <p class="text-slate-600 font-bold italic font-sans">Einen Moment...</p>
+            <div id="data-area" class="flex-1 relative font-sans">
+                <div id="loading-state" class="hidden absolute inset-0 bg-white/80 z-20 flex flex-col items-center justify-center font-sans">
+                    <div class="animate-spin h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full mb-3 font-sans"></div>
+                    <p class="text-slate-600 font-bold italic font-sans">Verarbeitung...</p>
                 </div>
-                <div id="content-display" class="p-6"></div>
+                <div id="content-display" class="p-6 font-sans"></div>
             </div>
         </div>
     </main>
@@ -146,15 +145,14 @@
                 const account = msalInstance.getActiveAccount();
                 const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: account });
                 
-                // Wir laden Kontakte und expandieren das Firmen-Lookup, um die technische ID zu finden
+                // Wir nutzen jetzt 'FirmaId' als Filter (interner Name für Nachschlagen-Felder)
                 const url = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontakte/items?expand=fields`;
                 const response = await fetch(url, { headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` } });
                 const data = await response.json();
                 
-                // Wir filtern jetzt so, dass er JEDE Form von Verknüpfung zur Firma akzeptiert
                 const filtered = data.value.filter(item => {
                     const f = item.fields;
-                    return f.FirmaLookupId == companyId || f.FirmaId == companyId || (f.Firma && f.Firma.LookupId == companyId);
+                    return f.FirmaId == companyId || (f.Firma && f.Firma.LookupId == companyId);
                 });
                 renderContactView(filtered, companyName);
             } catch (err) { console.error(err); } finally { loader.classList.add('hidden'); }
@@ -164,25 +162,29 @@
             window.scrollTo(0,0);
             document.getElementById('view-title').innerText = companyName;
             document.getElementById('view-subtitle').innerText = `${contacts.length} Kontakte`;
-            let html = `<div class="mb-8"><button onclick="showListView()" class="text-sm font-bold text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-xl transition-all border border-blue-100 italic">← Zurück</button></div><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">`;
+            let html = `<div class="mb-8"><button onclick="showListView()" class="text-sm font-bold text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-xl transition-all border border-blue-100 italic">← Zurück</button></div><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 font-sans">`;
             
             contacts.forEach(c => {
                 const f = c.fields;
                 html += `<div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm border-b-4 border-b-blue-500 font-sans">
                     <div class="flex items-center gap-4 mb-4">
-                        <div class="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center font-bold text-slate-400 italic">${(f.Vorname || '?').charAt(0)}${(f.Title || '?').charAt(0)}</div>
-                        <div><h3 class="font-bold text-slate-800 italic">${f.Vorname || ''} ${f.Title || ''}</h3><p class="text-blue-600 text-[11px] font-bold uppercase italic">${f.Funktion || '-'}</p></div>
+                        <div class="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center font-bold text-slate-400 italic font-sans">${(f.Vorname || '?').charAt(0)}${(f.Title || '?').charAt(0)}</div>
+                        <div><h3 class="font-bold text-slate-800 italic font-sans">${f.Vorname || ''} ${f.Title || ''}</h3><p class="text-blue-600 text-[11px] font-bold uppercase italic font-sans">${f.Funktion || '-'}</p></div>
                     </div>
-                    <div class="mt-4 flex gap-2">
-                        <button onclick="loadHistory('${c.id}')" class="flex-1 bg-slate-50 text-[10px] font-bold py-2 rounded-lg border border-slate-200 italic">Historie</button>
-                        <button onclick="toggleNoteForm('${c.id}')" class="flex-1 bg-blue-50 text-blue-600 text-[10px] font-bold py-2 rounded-lg border border-blue-100 italic">+ Notiz</button>
+                    <div class="text-xs space-y-1 text-slate-500 mb-4 font-sans font-bold italic">
+                        <p>📧 ${f.E_x002d_Mail || f.E_x002d_Mail0 || '-'}</p>
+                        <p>📱 ${f.TelefonMobil || f.TelefonFestnetz || '-'}</p>
                     </div>
-                    <div id="note-form-${c.id}" class="hidden mt-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
-                        <input type="text" id="title-${c.id}" placeholder="Betreff" class="w-full text-xs p-2 mb-2 rounded border border-slate-300">
-                        <textarea id="details-${c.id}" placeholder="Details..." class="w-full text-xs p-2 mb-2 rounded border border-slate-300 h-20"></textarea>
-                        <button onclick="saveNote('${c.id}')" class="w-full bg-blue-600 text-white text-xs font-bold py-2 rounded italic">Speichern</button>
+                    <div class="mt-4 flex gap-2 font-sans font-bold italic">
+                        <button onclick="loadHistory('${c.id}')" class="flex-1 bg-slate-50 text-[10px] font-bold py-2 rounded-lg border border-slate-200 italic font-sans">Historie</button>
+                        <button onclick="toggleNoteForm('${c.id}')" class="flex-1 bg-blue-50 text-blue-600 text-[10px] font-bold py-2 rounded-lg border border-blue-100 italic font-sans">+ Notiz</button>
                     </div>
-                    <div id="history-${c.id}" class="mt-4 hidden italic"></div>
+                    <div id="note-form-${c.id}" class="hidden mt-4 p-3 bg-slate-50 rounded-xl border border-slate-200 font-sans italic">
+                        <input type="text" id="title-${c.id}" placeholder="Betreff" class="w-full text-xs p-2 mb-2 rounded border border-slate-300 font-sans">
+                        <textarea id="details-${c.id}" placeholder="Details..." class="w-full text-xs p-2 mb-2 rounded border border-slate-300 h-20 font-sans"></textarea>
+                        <button onclick="saveNote('${c.id}')" class="w-full bg-blue-600 text-white text-xs font-bold py-2 rounded italic font-sans">Speichern</button>
+                    </div>
+                    <div id="history-${c.id}" class="mt-4 hidden italic font-sans font-bold"></div>
                 </div>`;
             });
             document.getElementById('content-display').innerHTML = html + "</div>";
@@ -197,18 +199,22 @@
             try {
                 const account = msalInstance.getActiveAccount();
                 const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.ReadWrite.All"], account: account });
-                const body = { fields: { Title: title, Details_x002f_Kontext: details, KontaktpersonLookupId: contactId, Datum: new Date().toISOString() } };
+                
+                // Wir nutzen jetzt die Namen aus deinem Mapping: 'Details_x002f_Kontext' und 'KontaktpersonId'
+                const body = { fields: { Title: title, Details_x002f_Kontext: details, KontaktpersonId: contactId, Datum: new Date().toISOString() } };
+                
                 const res = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontaktnotizen/items`, {
                     method: 'POST', headers: { 'Authorization': `Bearer ${tokenRes.accessToken}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify(body)
                 });
                 if (res.ok) { alert("Gespeichert!"); toggleNoteForm(contactId); loadHistory(contactId); }
+                else { const e = await res.json(); alert("Fehler: " + e.error.message); }
             } catch (err) { alert("Fehler beim Speichern."); }
         }
 
         async function loadHistory(contactId) {
             const historyDiv = document.getElementById(`history-${contactId}`);
-            historyDiv.innerHTML = "<p class='text-[10px] animate-pulse py-2 text-blue-500 font-bold'>Suche...</p>";
+            historyDiv.innerHTML = "<p class='text-[10px] animate-pulse py-2 text-blue-500 font-bold italic font-sans'>Lade...</p>";
             historyDiv.classList.remove('hidden');
             try {
                 const account = msalInstance.getActiveAccount();
@@ -217,18 +223,18 @@
                 const response = await fetch(url, { headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` } });
                 const data = await response.json();
                 
-                // FIX: Wir filtern nach der Kontakt-ID und laden NUR das Feld 'Details_x002f_Kontext'
-                const notes = (data.value || []).filter(n => n.fields.KontaktpersonLookupId == contactId || (n.fields.Kontaktperson && n.fields.Kontaktperson.LookupId == contactId));
+                // Filterung basierend auf 'KontaktpersonId'
+                const notes = (data.value || []).filter(n => n.fields.KontaktpersonId == contactId);
                 
-                let html = `<div class="timeline-line mt-2 space-y-3">`;
+                let html = `<div class="timeline-line mt-2 space-y-3 font-sans">`;
                 notes.forEach(n => {
                     const f = n.fields;
-                    html += `<div class="relative pl-6"><div class="absolute left-[-1.15rem] top-1 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-white shadow-sm"></div>
-                        <p class="text-[9px] font-bold text-slate-400">${new Date(n.createdDateTime).toLocaleDateString('de-DE')}</p>
-                        <p class="text-[11px] font-bold text-slate-800">${f.Title || 'Notiz'}</p>
-                        <p class="text-[11px] text-slate-600 italic">${f.Details_x002f_Kontext || '-'}</p></div>`;
+                    html += `<div class="relative pl-6"><div class="absolute left-[-1.15rem] top-1 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-white shadow-sm font-sans"></div>
+                        <p class="text-[9px] font-bold text-slate-400 font-sans">${new Date(n.createdDateTime).toLocaleDateString('de-DE')}</p>
+                        <p class="text-[11px] font-bold text-slate-800 font-sans">${f.Title || 'Notiz'}</p>
+                        <p class="text-[11px] text-slate-600 italic font-sans">${f.Details_x002f_Kontext || '-'}</p></div>`;
                 });
-                historyDiv.innerHTML = notes.length ? html + "</div>" : "<p class='text-[10px] text-slate-400 py-2'>Keine Einträge.</p>";
+                historyDiv.innerHTML = notes.length ? html + "</div>" : "<p class='text-[10px] text-slate-400 py-2 font-sans'>Keine Einträge.</p>";
             } catch (err) { historyDiv.innerHTML = "Fehler."; }
         }
 
