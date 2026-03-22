@@ -44,16 +44,17 @@
 
    <script>
     const msalConfig = {
-        auth: {
-            clientId: "43485d45-3642-4f81-9f93-4a6f203666b6",
-            authority: "https://login.microsoftonline.com/6401031d-b672-4d06-9c4c-7c08127387d8",
-            redirectUri: "https://markusbaechler.github.io/crm-spa/"
-        },
-        cache: { 
-            cacheLocation: "localStorage", 
-            storeAuthStateInCookie: true 
-        }
-    };
+    auth: {
+        clientId: "43485d45-3642-4f81-9f93-4a6f203666b6",
+        // WICHTIG: Hier darf KEIN /v2.0/ am Ende stehen!
+        authority: "https://login.microsoftonline.com/6401031d-b672-4d06-9c4c-7c08127387d8",
+        redirectUri: "https://markusbaechler.github.io/crm-spa/"
+    },
+    cache: { 
+        cacheLocation: "localStorage", 
+        storeAuthStateInCookie: true 
+    }
+};
 
     const siteId = "bbzsg.sharepoint.com,6123e75e-8557-4f6c-9f68-18e404bc0448,53f08f87-a068-45a9-bc26-216979603f5f";
     const msalInstance = new msal.PublicClientApplication(msalConfig);
