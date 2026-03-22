@@ -19,38 +19,37 @@
 <body class="bg-slate-50 min-h-screen font-sans text-slate-900">
 
     <nav class="bg-slate-900 text-white shadow-xl p-4 sticky top-0 z-50">
-        <div class="container mx-auto flex justify-between items-center font-sans">
-            <h1 class="text-2xl font-black text-blue-400 tracking-tighter cursor-pointer hover:text-blue-300 transition font-sans" onclick="showListView()">bbz CRM</h1>
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-2xl font-black text-blue-400 tracking-tighter cursor-pointer hover:text-blue-300 transition" onclick="showListView()">bbz CRM</h1>
             <div id="auth-area">
-                <button id="login-btn" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-full text-sm font-bold transition font-sans shadow-lg">Login</button>
+                <button id="login-btn" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-full text-sm font-bold transition shadow-lg">Login</button>
                 <div id="user-info" class="hidden flex items-center gap-4">
-                    <span id="username" class="text-sm font-medium text-slate-400 border-r pr-4 border-slate-700 font-sans"></span>
-                    <button id="logout-btn" class="text-xs text-slate-400 hover:text-white underline font-sans">Logout</button>
+                    <span id="username" class="text-sm font-medium text-slate-400 border-r pr-4 border-slate-700"></span>
+                    <button id="logout-btn" class="text-xs text-slate-400 hover:text-white underline">Logout</button>
                 </div>
             </div>
         </div>
     </nav>
 
-    <main class="container mx-auto mt-8 p-4 font-sans">
-        <div id="main-card" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden min-h-[600px] flex flex-col font-sans">
+    <main class="container mx-auto mt-8 p-4">
+        <div id="main-card" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden min-h-[600px] flex flex-col">
             <div class="p-6 border-b border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h2 id="view-title" class="text-2xl font-bold text-slate-800 tracking-tight font-sans">Firmenübersicht</h2>
-                    <p id="view-subtitle" class="text-slate-500 text-sm mt-0.5 font-sans italic font-medium">Daten werden synchronisiert...</p>
+                    <h2 id="view-title" class="text-2xl font-bold text-slate-800 tracking-tight">Firmenübersicht</h2>
+                    <p id="view-subtitle" class="text-slate-500 text-sm mt-0.5 italic">Daten werden synchronisiert...</p>
                 </div>
                 <div id="search-container" class="hidden relative">
-                    <input type="text" id="company-search" placeholder="Firma oder Ort suchen..." 
-                        class="w-full md:w-80 pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm focus:ring-2 focus:ring-blue-500/20 transition-all font-sans font-bold">
-                    <span class="absolute left-4 top-3 text-slate-400 font-sans">🔍</span>
+                    <input type="text" id="company-search" placeholder="Suchen..." class="w-full md:w-80 pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm focus:ring-2 focus:ring-blue-500/20 transition-all font-bold">
+                    <span class="absolute left-4 top-3 text-slate-400">🔍</span>
                 </div>
             </div>
 
-            <div id="data-area" class="flex-1 relative font-sans">
-                <div id="loading-state" class="hidden absolute inset-0 bg-white/80 z-20 flex flex-col items-center justify-center font-sans">
-                    <div class="animate-spin h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full mb-3 font-sans font-bold"></div>
+            <div id="data-area" class="flex-1 relative">
+                <div id="loading-state" class="hidden absolute inset-0 bg-white/80 z-20 flex flex-col items-center justify-center">
+                    <div class="animate-spin h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full mb-3"></div>
                     <p class="text-slate-600 font-bold italic font-sans">Lade Daten...</p>
                 </div>
-                <div id="content-display" class="p-6 font-sans"></div>
+                <div id="content-display" class="p-6"></div>
             </div>
         </div>
     </main>
@@ -68,6 +67,11 @@
         const msalInstance = new msal.PublicClientApplication(msalConfig);
         let allCompanies = [];
         let siteId = ""; 
+
+        // Browser-Zurück Button abfangen
+        window.onpopstate = function(event) {
+            showListView(false); // false verhindert endlose History-Loops
+        };
 
         document.getElementById('company-search').addEventListener('input', (e) => {
             const term = e.target.value.toLowerCase().trim();
@@ -89,7 +93,7 @@
                     if (accounts.length > 0) msalInstance.setActiveAccount(accounts[0]);
                 }
                 updateUI();
-            } catch (err) { console.error("MSAL Init Error:", err); }
+            } catch (err) { console.error(err); }
         }
 
         function updateUI() {
@@ -100,18 +104,11 @@
                 document.getElementById('username').innerText = account.name;
                 startDataLoad();
             } else {
-                document.getElementById('content-display').innerHTML = '<div class="py-20 text-center text-slate-400 italic font-bold">Bitte loggen Sie sich ein.</div>';
+                document.getElementById('content-display').innerHTML = '<div class="py-20 text-center text-slate-400 italic font-bold">Bitte einloggen.</div>';
             }
         }
 
-        // LOGIN FIX: Wir erzwingen eine saubere Account-Auswahl
-        document.getElementById('login-btn').onclick = () => {
-            msalInstance.loginRedirect({ 
-                scopes: ["Sites.Read.All"],
-                prompt: "select_account" 
-            });
-        };
-        
+        document.getElementById('login-btn').onclick = () => msalInstance.loginRedirect({ scopes: ["Sites.Read.All"], prompt: "select_account" });
         document.getElementById('logout-btn').onclick = () => msalInstance.logoutRedirect();
 
         async function startDataLoad() {
@@ -120,7 +117,6 @@
             try {
                 const account = msalInstance.getActiveAccount();
                 const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: account });
-                
                 const siteRes = await fetch("https://graph.microsoft.com/v1.0/sites/bbzsg.sharepoint.com:/sites/CRM", {
                     headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` }
                 });
@@ -134,32 +130,35 @@
                 allCompanies = data.value || [];
                 renderCompanyTable(allCompanies);
             } catch (err) { 
-                document.getElementById('content-display').innerHTML = `<p class="text-red-500 font-bold p-10 text-center">Fehler beim Laden: ${err.message}</p>`;
+                document.getElementById('content-display').innerHTML = `<p class="text-red-500 font-bold p-10 text-center">Fehler: ${err.message}</p>`;
             } finally { loader.classList.add('hidden'); }
         }
 
         function renderCompanyTable(items) {
             document.getElementById('view-title').innerText = "Firmenübersicht";
-            document.getElementById('view-subtitle').innerText = `${items.length} Unternehmen gefunden`;
+            document.getElementById('view-subtitle').innerText = `${items.length} Unternehmen`;
             document.getElementById('search-container').classList.remove('hidden');
 
-            let html = `<div class="overflow-x-auto"><table class='w-full text-left border-separate border-spacing-y-2 font-sans'>
-                <thead><tr class='text-slate-400 text-[10px] uppercase tracking-widest px-4 font-bold'><th class='p-4 font-sans'>Firma</th><th class='p-4 text-center'>Prio</th><th class='p-4 text-right'>Ort</th></tr></thead><tbody>`;
+            let html = `<div class="overflow-x-auto"><table class='w-full text-left border-separate border-spacing-y-2'>
+                <thead><tr class='text-slate-400 text-[10px] uppercase tracking-widest px-4 font-bold'><th class='p-4'>Firma</th><th class='p-4 text-center'>Prio</th><th class='p-4 text-right'>Ort</th></tr></thead><tbody>`;
             
             items.forEach(item => {
                 const f = item.fields;
                 let p = f.Priorit_x00e4_t || '-';
                 if(p == "1") p = "A"; else if(p == "2") p = "B"; else if(p == "3") p = "C";
 
-                html += `<tr onclick="loadContacts('${item.id}', '${(f.Title || 'Unbekannt').replace(/'/g, "\\'")}')" class='bg-white border border-slate-100 shadow-sm hover:shadow-md hover:border-blue-300 cursor-pointer transition-all group font-sans'>
-                    <td class='p-4 rounded-l-xl border-y border-l border-slate-100 font-bold text-slate-800 font-sans'>${f.Title || 'N/A'} ${f.TopKunde ? '<span class="text-yellow-500 ml-1 font-sans">★</span>' : ''}</td>
-                    <td class='p-4 border-y border-slate-100 text-center font-sans'><span class="prio-${p} px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter font-sans">${p}</span></td>
-                    <td class='p-4 rounded-r-xl border-y border-r border-slate-100 text-slate-500 text-sm text-right font-sans font-bold italic'>${f.Ort || ''}</td></tr>`;
+                html += `<tr onclick="loadContacts('${item.id}', '${(f.Title || 'Unbekannt').replace(/'/g, "\\'")}')" class='bg-white border border-slate-100 shadow-sm hover:shadow-md hover:border-blue-300 cursor-pointer transition-all group'>
+                    <td class='p-4 rounded-l-xl border-y border-l border-slate-100 font-bold text-slate-800'>${f.Title || 'N/A'} ${f.TopKunde ? '<span class="text-yellow-500 ml-1">★</span>' : ''}</td>
+                    <td class='p-4 border-y border-slate-100 text-center'><span class="prio-${p} px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter">${p}</span></td>
+                    <td class='p-4 rounded-r-xl border-y border-r border-slate-100 text-slate-500 text-sm text-right italic font-bold'>${f.Ort || ''}</td></tr>`;
             });
             document.getElementById('content-display').innerHTML = html + "</tbody></table></div>";
         }
 
         async function loadContacts(companyId, companyName) {
+            // History-Eintrag hinzufügen
+            history.pushState({view: 'contacts'}, companyName, "#contacts");
+
             const loader = document.getElementById('loading-state');
             loader.classList.remove('hidden');
             document.getElementById('search-container').classList.add('hidden');
@@ -168,10 +167,8 @@
                 const account = msalInstance.getActiveAccount();
                 const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: account });
                 const url = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontakte/items?expand=fields`;
-                
                 const response = await fetch(url, { headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` } });
                 const data = await response.json();
-                
                 const filtered = data.value.filter(item => item.fields.FirmaLookupId == companyId || item.fields.FirmaId == companyId);
                 renderContactView(filtered, companyName);
             } catch (err) { console.error(err); } finally { loader.classList.add('hidden'); }
@@ -182,38 +179,26 @@
             document.getElementById('view-title').innerText = companyName;
             document.getElementById('view-subtitle').innerText = `${contacts.length} Kontakte`;
             
-            let html = `
-                <div class="mb-8 font-sans">
-                    <button onclick="showListView()" class="flex items-center gap-2 text-sm font-bold text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-xl transition-all font-sans border border-blue-100 shadow-sm italic font-bold">
-                        ← Zurück zur Firmenliste
-                    </button>
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 font-sans">`;
+            let html = `<div class="mb-8"><button onclick="showListView()" class="flex items-center gap-2 text-sm font-bold text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-xl transition-all border border-blue-100 shadow-sm italic font-bold">← Zurück zur Firmenliste</button></div><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 font-sans">`;
             
-            if (contacts.length === 0) {
-                html += `<div class="col-span-full py-20 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 font-sans italic font-bold">Keine Kontakte gefunden.</div>`;
-            }
-
             contacts.forEach(c => {
                 const f = c.fields;
                 const init = `${(f.Vorname || '?').charAt(0)}${(f.Title || '?').charAt(0)}`;
                 html += `
-                <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-lg transition-all border-b-4 border-b-blue-500 font-sans">
-                    <div class="flex items-center gap-4 mb-4 font-sans italic">
-                        <div class="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center font-bold text-slate-400 text-sm font-sans italic">${init}</div>
+                <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-lg transition-all border-b-4 border-b-blue-500">
+                    <div class="flex items-center gap-4 mb-4 italic">
+                        <div class="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center font-bold text-slate-400 text-sm italic">${init}</div>
                         <div>
-                            <h3 class="font-bold text-slate-800 leading-tight font-sans italic font-bold">${f.Vorname || ''} ${f.Title || ''}</h3>
-                            <p class="text-blue-600 text-[11px] font-bold uppercase tracking-wider font-sans italic font-black font-bold">${f.Funktion || '-'}</p>
+                            <h3 class="font-bold text-slate-800 leading-tight italic font-bold">${f.Vorname || ''} ${f.Title || ''}</h3>
+                            <p class="text-blue-600 text-[11px] font-bold uppercase tracking-wider italic font-black font-bold">${f.Funktion || '-'}</p>
                         </div>
                     </div>
-                    <div class="space-y-2 pt-4 border-t border-slate-50 text-sm font-sans text-slate-600 font-bold italic">
+                    <div class="space-y-2 pt-4 border-t border-slate-50 text-sm text-slate-600 font-bold italic">
                         <p>📧 ${f.E_x002d_Mail || '-'}</p>
                         <p>📱 ${f.TelefonMobil || '-'}</p>
                     </div>
-                    <button onclick="loadHistory('${c.id}')" class="w-full mt-4 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold py-2 rounded-lg transition border border-slate-200 font-sans italic font-bold">
-                        Historie anzeigen
-                    </button>
-                    <div id="history-${c.id}" class="mt-4 hidden font-sans italic"></div>
+                    <button onclick="loadHistory('${c.id}')" class="w-full mt-4 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold py-2 rounded-lg transition border border-slate-200 italic font-bold">Historie anzeigen</button>
+                    <div id="history-${c.id}" class="mt-4 hidden italic"></div>
                 </div>`;
             });
             document.getElementById('content-display').innerHTML = html + "</div>";
@@ -225,7 +210,7 @@
                 historyDiv.classList.add('hidden');
                 return;
             }
-            historyDiv.innerHTML = "<p class='text-[10px] animate-pulse py-2 font-sans italic text-blue-500 font-bold'>Lade Historie...</p>";
+            historyDiv.innerHTML = "<p class='text-[10px] animate-pulse py-2 italic text-blue-500 font-bold'>Lade Historie...</p>";
             historyDiv.classList.remove('hidden');
 
             try {
@@ -236,16 +221,41 @@
                 const data = await response.json();
                 const notes = (data.value || []).filter(n => n.fields.KontaktpersonLookupId == contactId);
                 renderHistoryList(notes, contactId);
-            } catch (err) { historyDiv.innerHTML = "<p class='text-red-500 text-[10px] font-sans font-bold'>Fehler beim Laden.</p>"; }
+            } catch (err) { historyDiv.innerHTML = "<p class='text-red-500 text-[10px] font-bold'>Fehler.</p>"; }
         }
 
         function renderHistoryList(notes, contactId) {
             const historyDiv = document.getElementById(`history-${contactId}`);
             if (notes.length === 0) {
-                historyDiv.innerHTML = "<p class='text-[10px] text-slate-400 italic py-2 font-sans italic font-bold'>Keine Notizen vorhanden.</p>";
+                historyDiv.innerHTML = "<p class='text-[10px] text-slate-400 italic py-2 font-bold'>Keine Notizen vorhanden.</p>";
                 return;
             }
-            let html = `<div class="timeline-line mt-2 space-y-4 font-sans italic">`;
+            let html = `<div class="timeline-line mt-2 space-y-4 italic">`;
             notes.forEach(n => {
                 const f = n.fields;
-                const d = f.Datum ? new
+                const d = f.Datum ? new Date(f.Datum).toLocaleDateString('de-DE') : '-';
+                html += `
+                <div class="relative pl-6 italic font-medium">
+                    <div class="absolute left-[-1.15rem] top-1 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-white shadow-sm"></div>
+                    <p class="text-[10px] font-bold text-slate-400 italic">${d} - ${f.Status || ''}</p>
+                    <p class="text-xs font-bold text-slate-800 mt-0.5 italic">${f.Title || 'Notiz'}</p>
+                    <p class="text-xs text-slate-600 mt-1 leading-relaxed italic">${f.Details_x002f_Kontext || '-'}</p>
+                </div>`;
+            });
+            historyDiv.innerHTML = html + "</div>";
+        }
+
+        function showListView(addToHistory = true) { 
+            if (addToHistory) history.pushState({view: 'list'}, "Firmenübersicht", "#list");
+            document.getElementById('loading-state').classList.add('hidden');
+            document.getElementById('search-container').classList.remove('hidden');
+            document.getElementById('company-search').value = ""; 
+            document.getElementById('view-title').innerText = "Firmenübersicht";
+            document.getElementById('view-subtitle').innerText = `${allCompanies.length} Unternehmen gefunden`;
+            renderCompanyTable(allCompanies); 
+        }
+
+        init();
+    </script>
+</body>
+</html>
