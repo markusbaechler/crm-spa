@@ -9,7 +9,6 @@
     <style>
         body { background-color: #0f172a; color: #f1f5f9; font-family: sans-serif; }
         .card-dark { background-color: #1e293b; border: 1px solid #334155; transition: all 0.2s; }
-        .card-dark:hover { border-color: #475569; }
         .prio-A { border-left: 4px solid #f59e0b; }
         .prio-B { border-left: 4px solid #3b82f6; }
         .prio-C { border-left: 4px solid #64748b; }
@@ -35,8 +34,6 @@
         </div>
     </nav>
 
-    <div id="error-banner" class="hidden bg-red-600 text-white text-center p-2 text-xs font-bold"></div>
-
     <div class="container mx-auto mt-6 px-4 grid grid-cols-2 md:grid-cols-5 gap-4" id="dashboard-stats">
         <div class="card-dark p-4 rounded-xl text-center"><p class="text-[10px] uppercase text-slate-500 font-bold">A-Firmen</p><p id="stat-a" class="text-2xl font-black">-</p></div>
         <div class="card-dark p-4 rounded-xl text-center"><p class="text-[10px] uppercase text-slate-500 font-bold">B-Firmen</p><p id="stat-b" class="text-2xl font-black">-</p></div>
@@ -46,7 +43,6 @@
     </div>
 
     <main class="container mx-auto mt-6 p-4 grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
         <div class="lg:col-span-3 space-y-4">
             <div class="card-dark p-3 rounded-xl flex items-center gap-2">
                 <input type="text" id="comp-search" placeholder="Firma suchen..." class="bg-transparent border-none text-sm w-full outline-none text-white italic">
@@ -78,23 +74,33 @@
         let allCompanies = [];
 
         async function initializeApp() {
+            // Fallback-Timer: Falls MSAL im privaten Modus hängen bleibt
+            const timeout = setTimeout(() => {
+                const btn = document.getElementById('login-btn');
+                if (btn && btn.disabled) {
+                    btn.innerText = "Login (Force)";
+                    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                    btn.disabled = false;
+                }
+            }, 3500);
+
             try {
                 msalInstance = await msal.PublicClientApplication.createPublicClientApplication(msalConfig);
+                clearTimeout(timeout);
                 
                 const loginBtn = document.getElementById('login-btn');
                 loginBtn.innerText = "Login";
                 loginBtn.classList.remove('opacity-50', 'cursor-not-allowed');
                 loginBtn.disabled = false;
 
-                // Handle Redirect (falls doch genutzt)
-                const response = await msalInstance.handleRedirectPromise();
-                if (response) msalInstance.setActiveAccount(response.account);
-                else {
-                    const accounts = msalInstance.getAllAccounts();
-                    if (accounts.length > 0) msalInstance.setActiveAccount(accounts[0]);
+                const accounts = msalInstance.getAllAccounts();
+                if (accounts.length > 0) {
+                    msalInstance.setActiveAccount(accounts[0]);
                 }
                 updateUI();
-            } catch (err) { console.error("MSAL Init Error:", err); }
+            } catch (err) { 
+                console.error("MSAL Init Error:", err); 
+            }
         }
 
         function updateUI() {
@@ -108,16 +114,27 @@
         }
 
         document.getElementById('login-btn').onclick = async () => {
+            // Lösche eventuelle Fehler-Reste vor neuem Versuch
+            localStorage.clear();
+            sessionStorage.clear();
+            
             try {
                 await msalInstance.loginPopup({ 
                     scopes: ["Sites.Read.All", "Sites.ReadWrite.All"],
                     prompt: "select_account"
                 });
                 updateUI();
-            } catch (err) { console.error(err); }
+            } catch (err) { 
+                console.error("Login Error:", err);
+                alert("Login fehlgeschlagen. Bitte Popups erlauben.");
+            }
         };
 
-        document.getElementById('logout-btn').onclick = () => msalInstance.logoutPopup();
+        document.getElementById('logout-btn').onclick = () => {
+            localStorage.clear();
+            sessionStorage.clear();
+            location.reload();
+        };
 
         async function loadDashboardData() {
             const listContainer = document.getElementById('company-list');
@@ -128,17 +145,14 @@
                 const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: account });
                 const token = tokenRes.accessToken;
 
-                // 1. Site ID holen
                 const siteRes = await fetch("https://graph.microsoft.com/v1.0/sites/bbzsg.sharepoint.com:/sites/CRM", { headers: { 'Authorization': `Bearer ${token}` } });
                 const siteData = await siteRes.json();
                 siteId = siteData.id;
 
-                // 2. Firmen laden
                 const compRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Firmen/items?expand=fields`, { headers: { 'Authorization': `Bearer ${token}` } });
                 const compData = await compRes.json();
                 allCompanies = compData.value || [];
                 
-                // 3. Tasks laden für globalen Zähler
                 const taskRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Tasks/items?expand=fields`, { headers: { 'Authorization': `Bearer ${token}` } });
                 const taskData = await taskRes.json();
                 const openTasks = (taskData.value || []).filter(t => t.fields.Status === "Offen");
@@ -150,9 +164,9 @@
 
         function updateStats(companies, tasks) {
             const count = (p) => companies.filter(c => c.fields.Priorit_x00e4_t == p).length;
-            document.getElementById('stat-a').innerText = count('1') || count('A');
-            document.getElementById('stat-b').innerText = count('2') || count('B');
-            document.getElementById('stat-c').innerText = count('3') || count('C');
+            document.getElementById('stat-a').innerText = count('1') || count('A') || 0;
+            document.getElementById('stat-b').innerText = count('2') || count('B') || 0;
+            document.getElementById('stat-c').innerText = count('3') || count('C') || 0;
             document.getElementById('stat-tasks').innerText = tasks.length;
             document.getElementById('stat-top').innerText = companies.filter(c => c.fields.TopKunde).length;
         }
@@ -162,14 +176,13 @@
             list.innerHTML = items.sort((a,b) => a.fields.Title.localeCompare(b.fields.Title)).map(item => `
                 <div onclick="loadDetails('${item.id}')" class="card-dark p-3 rounded-xl cursor-pointer hover:bg-slate-800 transition flex justify-between items-center prio-${item.fields.Priorit_x00e4_t}">
                     <div><p class="text-sm font-bold italic">${item.fields.Title} ${item.fields.TopKunde ? '★' : ''}</p><p class="text-[10px] text-slate-500 font-black uppercase">${item.fields.Ort || ''}</p></div>
-                    <span class="text-[9px] font-black text-slate-600 uppercase">${item.fields.Priorit_x00e4_t || '-'}</span>
                 </div>
             `).join('');
         }
 
         async function loadDetails(companyId) {
             const detailPane = document.getElementById('detail-view');
-            detailPane.innerHTML = `<div class="animate-pulse text-center p-20 text-blue-400 font-bold italic">Synchronisiere...</div>`;
+            detailPane.innerHTML = `<div class="animate-pulse text-center p-20 text-blue-400 font-bold italic">Lade Daten...</div>`;
 
             try {
                 const account = msalInstance.getActiveAccount();
@@ -177,13 +190,16 @@
                 const token = tokenRes.accessToken;
 
                 const company = allCompanies.find(c => c.id == companyId).fields;
-
-                // 1. Kontakte (Lookup-Filter)
                 const contRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontakte/items?expand=fields`, { headers: { 'Authorization': `Bearer ${token}` } });
                 const contData = await contRes.json();
-                const contacts = contData.value.filter(c => c.fields.FirmaLookupId == companyId || c.fields.FirmaId == companyId || (c.fields.Firma && c.fields.Firma.LookupId == companyId));
+                
+                // Flexible Filterung
+                const contacts = contData.value.filter(c => 
+                    c.fields.FirmaLookupId == companyId || 
+                    c.fields.FirmaId == companyId || 
+                    (c.fields.Firma && c.fields.Firma.LookupId == companyId)
+                );
 
-                // 2. History (Über ContactLookupId)
                 const histRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/History/items?expand=fields`, { headers: { 'Authorization': `Bearer ${token}` } });
                 const histData = await histRes.json();
                 const history = histData.value.filter(h => contacts.some(c => c.id == h.fields.ContactLookupId));
@@ -198,16 +214,29 @@
                 <div class="grid grid-cols-1 md:grid-cols-12 gap-6 animate-in fade-in duration-300">
                     <div class="md:col-span-12 card-dark p-6 rounded-2xl border-l-4 border-l-blue-500">
                         <h2 class="text-3xl font-black text-white italic tracking-tighter">${firma.Title}</h2>
-                        <p class="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1 italic">${firma.Ort || ''} | LEAD: ${firma.Leadbbz || '-'}</p>
+                        <p class="text-slate-400 text-xs font-bold uppercase mt-1 italic">${firma.Ort || ''} | LEAD: ${firma.Leadbbz || '-'}</p>
                     </div>
                     <div class="md:col-span-5 space-y-4">
                         <h3 class="text-[10px] font-black uppercase text-slate-500 italic">Ansprechpartner</h3>
-                        ${contacts.map(c => `<div class="card-dark p-4 rounded-xl border-b-4 border-b-blue-600/50"><p class="text-blue-400 font-black italic">${c.fields.Vorname} ${c.fields.Title}</p><p class="text-[10px] text-slate-500 mt-1 uppercase italic">${c.fields.Funktion || '-'}</p><div class="mt-3 text-[10px] text-slate-400 italic">📱 ${c.fields.Mobile || '-'}</div></div>`).join('')}
+                        ${contacts.map(c => `
+                            <div class="card-dark p-4 rounded-xl border-b-4 border-b-blue-600/50">
+                                <p class="text-blue-400 font-black italic">${c.fields.Vorname} ${c.fields.Title}</p>
+                                <p class="text-[10px] text-slate-500 mt-1 uppercase italic">${c.fields.Funktion || '-'}</p>
+                            </div>
+                        `).join('')}
+                        ${contacts.length === 0 ? '<p class="text-slate-600 text-xs italic">Keine Kontakte gefunden.</p>' : ''}
                     </div>
                     <div class="md:col-span-7 card-dark p-6 rounded-2xl">
                         <h3 class="text-[10px] font-black uppercase text-slate-500 italic mb-6">Letzte Aktivitäten</h3>
                         <div class="timeline-line space-y-6">
-                            ${history.sort((a,b) => new Date(b.fields.Datum) - new Date(a.fields.Datum)).map(h => `<div class="relative pl-6"><div class="absolute left-[-15px] top-1.5 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-slate-900 shadow-lg"></div><p class="text-[9px] text-slate-500 font-black">${new Date(h.fields.Datum).toLocaleDateString('de-DE')}</p><p class="text-xs font-black text-white italic mt-0.5">${h.fields.TypEintrag || 'Eintrag'}: ${h.fields.Title || '-'}</p></div>`).join('')}
+                            ${history.sort((a,b) => new Date(b.fields.Datum) - new Date(a.fields.Datum)).map(h => `
+                                <div class="relative pl-6">
+                                    <div class="absolute left-[-15px] top-1.5 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-slate-900 shadow-lg"></div>
+                                    <p class="text-[9px] text-slate-500 font-black">${new Date(h.fields.Datum).toLocaleDateString('de-DE')}</p>
+                                    <p class="text-xs font-black text-white italic mt-0.5">${h.fields.TypEintrag || 'Eintrag'}: ${h.fields.Title || '-'}</p>
+                                </div>
+                            `).join('')}
+                            ${history.length === 0 ? '<p class="text-slate-600 text-xs italic">Keine Historie vorhanden.</p>' : ''}
                         </div>
                     </div>
                 </div>`;
