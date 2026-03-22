@@ -382,6 +382,8 @@
     }
   });
 
+  await state.msal.initialize();
+
   const accounts = state.msal.getAllAccounts();
   if (accounts.length) {
     state.activeAccount = accounts[0];
