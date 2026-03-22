@@ -3,13 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>bbz CRM - Final Engine</title>
+    <title>bbz CRM - Ultra Stable</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
     <style>
         body { background-color: #0f172a; color: #f1f5f9; font-family: sans-serif; }
-        .card-dark { background-color: #1e293b; border: 1px solid #334155; }
-        .prio-A { border-left: 4px solid #f59e0b; }
+        .card-dark { background-color: #1e293b; border: 1px solid #334155; transition: 0.2s; }
+        .card-dark:hover { border-color: #475569; }
+        .prio-A, .prio-1 { border-left: 4px solid #f59e0b; }
+        .prio-B, .prio-2 { border-left: 4px solid #3b82f6; }
         .timeline-line { border-left: 2px solid #334155; margin-left: 10px; }
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
@@ -20,26 +22,24 @@
     <nav class="bg-slate-900 border-b border-slate-800 p-4 sticky top-0 z-50">
         <div class="container mx-auto flex justify-between items-center">
             <h1 class="text-xl font-black text-blue-400 tracking-tighter cursor-pointer" onclick="location.reload()">bbz CRM</h1>
-            <div id="auth-area">
-                <button id="login-btn" class="bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded-lg text-sm font-bold transition">Login</button>
-                <div id="user-info" class="hidden flex items-center gap-3">
-                    <span id="username" class="text-xs text-slate-400 font-bold border-r pr-3 border-slate-700"></span>
-                    <button id="logout-btn" class="text-xs text-slate-500 hover:text-white underline">Logout</button>
-                </div>
+            <div id="user-info" class="hidden flex items-center gap-3">
+                <span id="username" class="text-xs text-slate-400 font-bold border-r pr-3 border-slate-700"></span>
+                <button id="logout-btn" class="text-xs text-slate-500 hover:text-white underline">Logout</button>
             </div>
+            <button id="login-btn" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-lg text-sm font-bold transition">Login</button>
         </div>
     </nav>
 
     <main class="container mx-auto mt-6 p-4 grid grid-cols-1 lg:grid-cols-12 gap-6 font-sans">
         <div class="lg:col-span-3 space-y-4">
             <input type="text" id="comp-search" placeholder="Firma suchen..." class="card-dark w-full rounded-xl px-4 py-2 text-sm outline-none text-white italic">
-            <div id="company-list" class="space-y-2 max-h-[600px] overflow-y-auto pr-2">
-                <p class="text-slate-600 text-center py-10 font-bold">Lade Firmen...</p>
+            <div id="company-list" class="space-y-2 max-h-[650px] overflow-y-auto pr-2">
+                <p class="text-slate-600 text-center py-10 font-bold">Warte auf Login...</p>
             </div>
         </div>
 
         <div id="detail-view" class="lg:col-span-9 space-y-6">
-            <div class="card-dark p-20 rounded-2xl text-center text-slate-500 italic">Bitte loggen Sie sich ein.</div>
+            <div class="card-dark p-20 rounded-2xl text-center text-slate-500 italic">Bereit für Daten-Abgleich.</div>
         </div>
     </main>
 
@@ -82,12 +82,10 @@
             const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: acc });
             const token = tokenRes.accessToken;
 
-            // Site ID ermitteln
             const siteRes = await fetch("https://graph.microsoft.com/v1.0/sites/bbzsg.sharepoint.com:/sites/CRM", { headers: { 'Authorization': `Bearer ${token}` } });
             const siteData = await siteRes.json();
             siteId = siteData.id;
 
-            // Firmen laden
             const compRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Firmen/items?expand=fields`, { headers: { 'Authorization': `Bearer ${token}` } });
             const compData = await compRes.json();
             allCompanies = compData.value || [];
@@ -97,7 +95,7 @@
 
         function renderCompanyList(items) {
             document.getElementById('company-list').innerHTML = items.sort((a,b) => a.fields.Title.localeCompare(b.fields.Title)).map(item => `
-                <div onclick="loadDetails('${item.id}')" class="card-dark p-3 rounded-xl cursor-pointer hover:bg-slate-800 transition italic text-sm font-bold">
+                <div onclick="loadDetails('${item.id}')" class="card-dark p-3 rounded-xl cursor-pointer hover:bg-slate-800 transition italic text-sm font-bold prio-${item.fields.Priorit_x00e4_t}">
                     ${item.fields.Title}
                 </div>
             `).join('');
@@ -105,20 +103,25 @@
 
         async function loadDetails(companyId) {
             const pane = document.getElementById('detail-view');
-            pane.innerHTML = `<div class="p-20 text-center text-blue-400 italic font-bold">Präzisions-Abgleich läuft...</div>`;
+            pane.innerHTML = `<div class="p-20 text-center text-blue-400 italic font-bold">Deep Scan: Kontakte & Timeline...</div>`;
 
             const acc = msalInstance.getActiveAccount();
             const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: acc });
             const token = tokenRes.accessToken;
 
-            // 1. Kontakte laden & Filter auf FirmaId (Das ist der Name laut deiner Logik-Tabelle)
+            // 1. Kontakte mit flexiblem ID-Abgleich
             const contRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontakte/items?expand=fields`, { headers: { 'Authorization': `Bearer ${token}` } });
             const contData = await contRes.json();
             
-            // Logik: Wir suchen Kontakte, bei denen das Feld FirmaId mit unserer companyId übereinstimmt
-            const contacts = contData.value.filter(c => String(c.fields.FirmaId) === String(companyId));
+            const contacts = contData.value.filter(c => {
+                const f = c.fields;
+                // Prüft alle Eventualitäten der ID-Speicherung
+                return String(f.FirmaId) === String(companyId) || 
+                       String(f.FirmaLookupId) === String(companyId) ||
+                       (f.Firma && String(f.Firma.LookupId) === String(companyId));
+            });
 
-            // 2. Timeline (History & Kontaktnotizen)
+            // 2. Timeline-Listen abrufen
             const [histRes, noteRes] = await Promise.all([
                 fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/History/items?expand=fields`, { headers: { 'Authorization': `Bearer ${token}` } }),
                 fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontaktnotizen/items?expand=fields`, { headers: { 'Authorization': `Bearer ${token}` } })
@@ -128,7 +131,7 @@
 
             const cIds = contacts.map(c => String(c.id));
             
-            // Abgleich über die Felder 'ContactLookupId' und 'KontaktpersonId' (Laut deinem Mapping!)
+            // Mapping der Timeline-Daten
             const combined = [
                 ...(histData.value || []).filter(h => cIds.includes(String(h.fields.ContactLookupId))),
                 ...(noteData.value || []).filter(n => cIds.includes(String(n.fields.KontaktpersonId)))
@@ -140,35 +143,37 @@
         function renderDashboard(cId, contacts, history) {
             const firma = allCompanies.find(c => c.id == cId).fields;
             document.getElementById('detail-view').innerHTML = `
-                <div class="grid grid-cols-1 md:grid-cols-12 gap-6 font-sans">
-                    <div class="md:col-span-12 card-dark p-6 rounded-2xl border-l-4 border-l-blue-500">
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-6 animate-in fade-in duration-500">
+                    <div class="md:col-span-12 card-dark p-6 rounded-2xl border-l-4 border-l-blue-500 font-sans">
                         <h2 class="text-3xl font-black italic tracking-tighter text-blue-400">${firma.Title}</h2>
-                        <p class="text-slate-400 text-xs font-bold uppercase mt-1 italic">${firma.Ort || ''}</p>
+                        <p class="text-slate-400 text-xs font-bold uppercase mt-1 italic">${firma.Ort || ''} | Lead: ${firma.Leadbbz || '-'}</p>
                     </div>
                     
-                    <div class="md:col-span-4 space-y-4">
+                    <div class="md:col-span-5 space-y-4">
                         <h3 class="text-[10px] font-black uppercase text-slate-500 italic">Kontakte (${contacts.length})</h3>
                         ${contacts.map(c => `
                             <div class="card-dark p-4 rounded-xl border-b-4 border-b-blue-600/50">
                                 <p class="text-white font-black italic">${c.fields.Vorname || ''} ${c.fields.Title || ''}</p>
                                 <p class="text-[10px] text-slate-500 mt-1 uppercase italic">${c.fields.Funktion || '-'}</p>
+                                <div class="mt-3 text-[10px] text-slate-400 font-bold border-t border-slate-700 pt-2 italic">
+                                    📧 ${c.fields.E_x002d_Mail || '-'} <br>
+                                    📱 ${c.fields.Mobile || '-'}
+                                </div>
                             </div>
                         `).join('')}
-                        ${contacts.length === 0 ? '<p class="text-slate-600 text-xs italic">Keine Kontakte gefunden.</p>' : ''}
                     </div>
 
-                    <div class="md:col-span-8 card-dark p-6 rounded-2xl">
+                    <div class="md:col-span-7 card-dark p-6 rounded-2xl">
                         <h3 class="text-[10px] font-black uppercase text-slate-500 italic mb-6">Timeline</h3>
                         <div class="timeline-line space-y-6">
                             ${history.map(h => `
                                 <div class="relative pl-6">
                                     <div class="absolute left-[-15px] top-1.5 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-slate-900 shadow-lg"></div>
                                     <p class="text-[9px] text-slate-500 font-black">${new Date(h.fields.Datum || h.createdDateTime).toLocaleDateString()}</p>
-                                    <p class="text-xs font-black text-white italic mt-0.5">${h.fields.TypEintrag || h.fields.Title || 'Eintrag'}</p>
+                                    <p class="text-xs font-black text-white italic mt-0.5">${h.fields.TypEintrag || h.fields.Title || 'Notiz'}</p>
                                     <p class="text-[11px] text-slate-400 italic mt-1 leading-relaxed">${h.fields.Details_x002f_Kontext || h.fields.Notizen || ''}</p>
                                 </div>
                             `).join('')}
-                            ${history.length === 0 ? '<p class="text-slate-600 text-xs italic">Keine Timeline-Daten vorhanden.</p>' : ''}
                         </div>
                     </div>
                 </div>`;
