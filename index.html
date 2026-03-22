@@ -145,49 +145,44 @@
             document.getElementById('content-display').innerHTML = html + "</tbody></table></div>";
         }
 
-        async function loadContacts(companyId, companyName) {
-            const loader = document.getElementById('loading-state');
-            loader.classList.remove('hidden');
-            document.getElementById('search-container').classList.add('hidden');
-            
-            try {
-                const account = msalInstance.getActiveAccount();
-                const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: account });
-                const url = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontakte/items?expand=fields(select=id,Title,Vorname,Funktion,E_x002d_Mail,TelefonMobil,FirmaLookupId)&filter=fields/FirmaLookupId eq ${companyId}`;
-                const response = await fetch(url, { headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` } });
-                const data = await response.json();
-                renderContactCards(data.value || [], companyName);
-            } catch (err) { console.error(err); } finally { loader.classList.add('hidden'); }
-        }
+       async function loadContacts(companyId, companyName) {
+    const loader = document.getElementById('loading-state');
+    const content = document.getElementById('content-display');
+    loader.classList.remove('hidden');
+    document.getElementById('search-container').classList.add('hidden');
+    
+    try {
+        const account = msalInstance.getActiveAccount();
+        const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: account });
+        
+        // TEST: Wir versuchen erst die Kontakte zu laden. 
+        // Falls 'FirmaLookupId' falsch ist, probieren wir es mit 'FirmaId'
+        const url = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontakte/items?expand=fields(select=id,Title,Vorname,Funktion,E_x002d_Mail,TelefonMobil,FirmaLookupId,FirmaId)&filter=fields/FirmaLookupId eq ${companyId}`;
+        
+        const response = await fetch(url, { headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` } });
+        const data = await response.json();
 
-        function renderContactCards(contacts, companyName) {
-            document.getElementById('view-title').innerText = companyName;
-            document.getElementById('view-subtitle').innerText = `${contacts.length} Kontakte`;
-            let html = `<div class="mb-8 font-sans"><button onclick="showListView()" class="text-sm font-bold text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-lg transition font-sans">← Zurück</button></div><div class="grid grid-cols-1 md:grid-cols-2 gap-6 font-sans">`;
+        if (data.error) {
+            console.error("Graph Filter Fehler:", data.error);
+            // Falls FirmaLookupId nicht existiert, versuchen wir es ohne Filter und filtern lokal
+            const backupUrl = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontakte/items?expand=fields`;
+            const backupRes = await fetch(backupUrl, { headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` } });
+            const backupData = await backupRes.json();
             
-            contacts.forEach(c => {
-                const f = c.fields;
-                html += `
-                <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm border-b-4 border-b-blue-500 font-sans">
-                    <div class="flex items-center gap-4 mb-4">
-                        <div class="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center font-bold text-slate-400 font-sans italic">${(f.Vorname || '?').charAt(0)}${(f.Title || '?').charAt(0)}</div>
-                        <div>
-                            <h3 class="font-bold text-slate-800 font-sans leading-tight">${f.Vorname || ''} ${f.Title || ''}</h3>
-                            <p class="text-blue-600 text-[11px] font-bold uppercase font-sans">${f.Funktion || '-'}</p>
-                        </div>
-                    </div>
-                    <div class="space-y-2 pt-4 border-t border-slate-50 text-sm font-sans text-slate-600 mb-4">
-                        <p>📧 ${f.E_x002d_Mail || '-'}</p>
-                        <p>📱 ${f.TelefonMobil || '-'}</p>
-                    </div>
-                    <button onclick="loadHistory('${c.id}', '${f.Vorname} ${f.Title}')" class="w-full bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold py-2 rounded-lg transition font-sans border border-slate-200">
-                        Historie anzeigen
-                    </button>
-                    <div id="history-${c.id}" class="mt-4 hidden font-sans"></div>
-                </div>`;
-            });
-            document.getElementById('content-display').innerHTML = html + "</div>";
+            // Lokale Filterung (sicherer, falls Feldname unbekannt)
+            const filtered = backupData.value.filter(item => 
+                item.fields.FirmaLookupId == companyId || 
+                item.fields.FirmaId == companyId ||
+                (item.fields.Firma && item.fields.Firma[0] && item.fields.Firma[0].LookupId == companyId)
+            );
+            renderContactCards(filtered, companyName);
+        } else {
+            renderContactCards(data.value || [], companyName);
         }
+    } catch (err) { 
+        content.innerHTML = `<p class="text-red-500 p-10 text-center font-bold">Fehler beim Laden: ${err.message}</p>`;
+    } finally { loader.classList.add('hidden'); }
+}
 
         async function loadHistory(contactId, contactName) {
             const historyDiv = document.getElementById(`history-${contactId}`);
