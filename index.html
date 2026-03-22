@@ -40,10 +40,14 @@
 
     <script>
         // 1. MSAL KONFIGURATION (Ohne /v2.0/ am Ende der Authority!)
-        const msalConfig = {
+      const msalConfig = {
     auth: {
-        clientId: "43485d45-3642-4f81-9f93-4a6f203666b6",
-        authority: "https://login.microsoftonline.com/6401031d-b672-4d06-9c4c-7c08127387d8",
+        // Die Client-ID aus deinem Screenshot
+        clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a", 
+        
+        // Die Verzeichnis-ID (Mandant) aus deinem Screenshot
+        authority: "https://login.microsoftonline.com/3643e7ab-d166-4e27-bd5f-c5bbfcd282d7",
+        
         redirectUri: "https://markusbaechler.github.io/crm-spa/"
     },
     cache: { 
