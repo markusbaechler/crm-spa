@@ -1,656 +1,170 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CRM SPA</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/@azure/msal-browser@3.20.0/lib/msal-browser.min.js"></script>
-  <style>
-    [hidden] { display: none !important; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>bbz CRM - Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
 </head>
-<body class="min-h-screen bg-slate-100 text-slate-800">
-  <div class="max-w-7xl mx-auto p-6">
-    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
-      <div>
-        <h1 class="text-3xl font-bold">CRM SPA</h1>
-        <p class="text-slate-600">Stabile GitHub-Basis: Login + Firmen + Kontakte</p>
-      </div>
+<body class="bg-gray-50 min-h-screen">
 
-      <div class="flex flex-wrap gap-2">
-        <button id="btnLogin" class="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700">
-          Login
-        </button>
-        <button id="btnLoad" class="px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 hidden">
-          Daten laden
-        </button>
-        <button id="btnLogout" class="px-4 py-2 rounded-xl bg-slate-700 text-white hover:bg-slate-800 hidden">
-          Logout
-        </button>
-      </div>
-    </div>
-
-    <div id="alertBox" hidden class="mb-4 rounded-2xl px-4 py-3 border"></div>
-
-    <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
-      <div class="xl:col-span-3 space-y-6">
-        <div class="bg-white rounded-2xl shadow p-5">
-          <h2 class="text-xl font-semibold mb-4">Status</h2>
-
-          <div class="space-y-3 text-sm">
-            <div>
-              <div class="text-slate-500">Site</div>
-              <div class="font-medium break-all">https://bbzsg.sharepoint.com/sites/CRM</div>
+    <nav class="bg-slate-800 text-white shadow-md p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-4">
+                <h1 class="text-xl font-bold tracking-tight text-blue-400">bbz CRM</h1>
+                <div id="nav-links" class="hidden flex gap-4 text-sm ml-6">
+                    <button onclick="fetchCompanies()" class="bg-slate-700 px-3 py-1 rounded hover:bg-slate-600">Firmen</button>
+                    <button class="px-3 py-1 opacity-50 cursor-not-allowed">Kontakte</button>
+                </div>
             </div>
-            <div>
-              <div class="text-slate-500">Benutzer</div>
-              <div id="userInfo" class="font-medium">nicht angemeldet</div>
+            <div id="auth-area">
+                <button id="login-btn" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm transition">Login mit M365</button>
+                <div id="user-info" class="hidden flex items-center gap-3">
+                    <span id="username" class="text-sm border-r pr-3 border-slate-600"></span>
+                    <button onclick="logout()" class="text-xs text-slate-400 hover:text-white underline">Logout</button>
+                </div>
             </div>
-            <div>
-              <div class="text-slate-500">Letzte Aktion</div>
-              <div id="actionInfo" class="font-medium">bereit</div>
+        </div>
+    </nav>
+
+    <main class="container mx-auto mt-8 p-4">
+        <div id="status-msg"></div>
+        
+        <div id="dashboard" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div id="view-header" class="flex justify-between items-center mb-6">
+                <h2 id="view-title" class="text-2xl font-semibold text-gray-800">Willkommen</h2>
             </div>
-            <div>
-              <div class="text-slate-500">Gewählte Firma</div>
-              <div id="selectedCompanyInfo" class="font-medium">alle</div>
+            
+            <div id="data-table" class="overflow-x-auto text-gray-600">
+                Bitte loggen Sie sich ein, um die CRM-Daten aus SharePoint zu laden.
             </div>
-          </div>
         </div>
+    </main>
 
-        <div class="bg-white rounded-2xl shadow p-5">
-          <div class="flex items-center justify-between mb-4">
-            <h2 class="text-xl font-semibold">Firmen</h2>
-            <div id="companiesMeta" class="text-xs text-slate-500">0</div>
-          </div>
+    <script>
+        // --- AUTH KONFIGURATION (VON DEINEM SCREENSHOT) ---
+        const msalConfig = {
+            auth: {
+                clientId: "43485d45-3642-4f81-9f93-4a6f203666b6",
+                authority: "https://login.microsoftonline.com/6401031d-b672-4d06-9c4c-7c08127387d8",
+                redirectUri: "https://markusbaechler.github.io/crm-spa/"
+            },
+            cache: { cacheLocation: "sessionStorage" }
+        };
 
-          <input
-            id="companySearchInput"
-            type="text"
-            placeholder="Firma suchen..."
-            class="w-full border border-slate-300 rounded-xl px-3 py-2 mb-4"
-          />
+        // Deine spezifische Site-ID
+        const siteId = "bbzsg.sharepoint.com,6123e75e-8557-4f6c-9f68-18e404bc0448,53f08f87-a068-45a9-bc26-216979603f5f";
+        
+        const loginRequest = { scopes: ["User.Read", "Sites.ReadWrite.All"] };
+        const msalInstance = new msal.PublicClientApplication(msalConfig);
 
-          <div id="companyList" class="space-y-2 max-h-[50vh] overflow-auto">
-            <div class="text-slate-500 text-sm">Noch keine Daten geladen.</div>
-          </div>
-        </div>
+        // Login Funktion
+        document.getElementById('login-btn').onclick = async () => {
+            try {
+                const response = await msalInstance.loginPopup(loginRequest);
+                msalInstance.setActiveAccount(response.account);
+                handleAfterLogin();
+            } catch (err) {
+                console.error("Login fehlgeschlagen:", err);
+                alert("Fehler beim Login: " + err.message);
+            }
+        };
 
-        <div class="bg-white rounded-2xl shadow p-5">
-          <h3 class="text-lg font-semibold mb-2">Debug Log</h3>
-          <div id="logBox" class="bg-slate-900 text-slate-100 rounded-xl p-3 text-xs h-80 overflow-auto font-mono"></div>
-        </div>
-      </div>
-
-      <div class="xl:col-span-9 bg-white rounded-2xl shadow p-5">
-        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-4">
-          <div>
-            <h2 class="text-xl font-semibold">Kontakte</h2>
-            <div id="contactsMeta" class="text-sm text-slate-500">Noch keine Daten geladen.</div>
-          </div>
-
-          <input
-            id="searchInput"
-            type="text"
-            placeholder="Suche Name, E-Mail, Telefon..."
-            class="border border-slate-300 rounded-xl px-3 py-2 w-full lg:w-80"
-          />
-        </div>
-
-        <div class="overflow-auto border border-slate-200 rounded-2xl">
-          <table class="min-w-full text-sm">
-            <thead class="bg-slate-100">
-              <tr>
-                <th class="text-left px-4 py-3">ID</th>
-                <th class="text-left px-4 py-3">Name</th>
-                <th class="text-left px-4 py-3">Firma</th>
-                <th class="text-left px-4 py-3">E-Mail</th>
-                <th class="text-left px-4 py-3">Telefon</th>
-              </tr>
-            </thead>
-            <tbody id="contactsBody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    const CONFIG = {
-      clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a",
-      tenantId: "3643e7ab-d166-4e27-bd5f-c5bbfcd282d7",
-      siteUrl: "https://bbzsg.sharepoint.com/sites/CRM",
-      tenantHost: "https://bbzsg.sharepoint.com",
-      loginScopes: ["openid", "profile", "offline_access"],
-      sharePointScopes: ["https://bbzsg.sharepoint.com/AllSites.Read"],
-
-      lists: {
-        companies: "Firmen",
-        contacts: "Kontakte",
-        contactNotes: "Kontaktnotizen",
-        communicationEvents: "KommEreignisse",
-        tasks: "Tasks",
-        history: "History"
-      },
-
-     fields: {
-  companies: {
-    id: "ID",
-    title: "Title",
-    abc: null,
-    tags: "Tags"
-  },
-        contacts: {
-          id: "ID",
-          title: "Title",
-          companyLookup: "CompanyLookup",
-          email: "E_x002d_Mail",
-          phone: "Telefon"
-        },
-        history: {
-          contactId: "ContactID",
-          contactLookup: "ContactLookup",
-          date: "Datum",
-          type: "TypEintrag",
-          notes: "Notizen",
-          project: "Projektbezug"
-        },
-        tasks: {
-          title: "Title",
-          contactLookup: "ContactLookup",
-          dueDate: "DueDate",
-          status: "Status"
+        function handleAfterLogin() {
+            const account = msalInstance.getActiveAccount();
+            if (account) {
+                document.getElementById('login-btn').classList.add('hidden');
+                document.getElementById('user-info').classList.remove('hidden');
+                document.getElementById('nav-links').classList.remove('hidden');
+                document.getElementById('username').innerText = account.name;
+                fetchCompanies(); // Automatisch Firmen laden
+            }
         }
-      }
-    };
 
-    const $ = (id) => document.getElementById(id);
-
-    let msalInstance = null;
-    let activeAccount = null;
-
-    let contactsCache = [];
-    let companiesCache = [];
-
-    const state = {
-      selectedCompanyId: null,
-      contactSearch: "",
-      companySearch: ""
-    };
-
-    function log(message, data) {
-      const time = new Date().toLocaleTimeString("de-CH");
-      $("logBox").textContent += `[${time}] ${message}` + (data ? `\n${JSON.stringify(data, null, 2)}` : "") + "\n\n";
-      $("logBox").scrollTop = $("logBox").scrollHeight;
-      console.log(message, data || "");
-    }
-
-    function setAction(text) {
-      $("actionInfo").textContent = text;
-    }
-
-    function showAlert(msg, kind = "warn") {
-      const box = $("alertBox");
-      box.hidden = false;
-      box.textContent = msg;
-      box.className = "mb-4 rounded-2xl px-4 py-3 border";
-
-      if (kind === "error") {
-        box.classList.add("border-rose-700", "bg-rose-50", "text-rose-800");
-      } else if (kind === "success") {
-        box.classList.add("border-emerald-700", "bg-emerald-50", "text-emerald-800");
-      } else {
-        box.classList.add("border-amber-700", "bg-amber-50", "text-amber-800");
-      }
-    }
-
-    function clearAlert() {
-      $("alertBox").hidden = true;
-      $("alertBox").textContent = "";
-    }
-
-    function escapeHtml(value) {
-      return String(value ?? "")
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;");
-    }
-
-    function asTags(value) {
-      if (!value) return [];
-      if (Array.isArray(value)) return value.filter(Boolean);
-      if (value?.results && Array.isArray(value.results)) return value.results.filter(Boolean);
-      return String(value)
-        .split(",")
-        .map(x => x.trim())
-        .filter(Boolean);
-    }
-
-    function refreshUi() {
-      const loggedIn = !!activeAccount;
-      $("btnLogin").classList.toggle("hidden", loggedIn);
-      $("btnLoad").classList.toggle("hidden", !loggedIn);
-      $("btnLogout").classList.toggle("hidden", !loggedIn);
-      $("userInfo").textContent = loggedIn
-        ? `${activeAccount.name || "-"} (${activeAccount.username})`
-        : "nicht angemeldet";
-    }
-
-    async function initAuth() {
-      if (typeof window.msal === "undefined") {
-        throw new Error("MSAL konnte nicht geladen werden.");
-      }
-
-      msalInstance = new msal.PublicClientApplication({
-        auth: {
-          clientId: CONFIG.clientId,
-          authority: `https://login.microsoftonline.com/${CONFIG.tenantId}`,
-          redirectUri: "https://markusbaechler.github.io/crm-spa/",
-          postLogoutRedirectUri: "https://markusbaechler.github.io/crm-spa/",
-          navigateToLoginRequestUrl: false
-        },
-        cache: {
-          cacheLocation: "localStorage",
-          storeAuthStateInCookie: false
+        async function getValidToken() {
+            const request = { 
+                scopes: ["Sites.ReadWrite.All"], 
+                account: msalInstance.getActiveAccount() 
+            };
+            const response = await msalInstance.acquireTokenSilent(request);
+            return response.accessToken;
         }
-      });
 
-      await msalInstance.initialize();
+        // --- SHAREPOINT DATEN LADEN ---
+        async function fetchCompanies() {
+            const tableDiv = document.getElementById('data-table');
+            tableDiv.innerHTML = "<p class='animate-pulse text-blue-600'>Verbindung zu SharePoint wird hergestellt...</p>";
+            
+            try {
+                const token = await getValidToken();
+                // Wir nutzen den Listennamen 'Firmen' laut deiner Excel
+                const url = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Firmen/items?expand=fields`;
+                
+                const response = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
 
-      const accounts = msalInstance.getAllAccounts();
-      if (accounts.length) {
-        activeAccount = accounts[0];
-        msalInstance.setActiveAccount(activeAccount);
-      }
+                if (!response.ok) throw new Error("Liste 'Firmen' nicht gefunden oder Zugriff verweigert.");
 
-      refreshUi();
-    }
-
-    async function login() {
-      try {
-        clearAlert();
-        setAction("Login läuft");
-
-        const result = await msalInstance.loginPopup({
-          scopes: CONFIG.loginScopes,
-          prompt: "select_account"
-        });
-
-        activeAccount = result.account;
-        msalInstance.setActiveAccount(activeAccount);
-
-        refreshUi();
-        log("Login erfolgreich", { user: activeAccount.username });
-        setAction("Login erfolgreich");
-        showAlert("Login erfolgreich.", "success");
-      } catch (err) {
-        console.error("LOGIN ERROR", err);
-        const msg = err?.message || err?.errorMessage || err?.errorCode || String(err);
-        log("Login Fehler", { message: msg });
-        setAction("Login fehlgeschlagen");
-        showAlert(`Login fehlgeschlagen: ${msg}`, "error");
-      }
-    }
-
-    async function logout() {
-      try {
-        await msalInstance.logoutPopup({
-          account: activeAccount
-        });
-      } catch (err) {
-        log("Logout Fehler", { message: err?.message || String(err) });
-      } finally {
-        activeAccount = null;
-        contactsCache = [];
-        companiesCache = [];
-        state.selectedCompanyId = null;
-        renderCompanies([]);
-        renderContacts([]);
-        refreshUi();
-        setSelectedCompanyInfo();
-        setAction("Abgemeldet");
-      }
-    }
-
-    async function getAccessToken() {
-      if (!activeAccount) {
-        throw new Error("Nicht angemeldet.");
-      }
-
-      const request = {
-        account: activeAccount,
-        scopes: CONFIG.sharePointScopes
-      };
-
-      try {
-        const response = await msalInstance.acquireTokenSilent(request);
-        return response.accessToken;
-      } catch (silentErr) {
-        log("Silent Token fehlgeschlagen", {
-          message: silentErr?.message || String(silentErr)
-        });
-
-        const response = await msalInstance.acquireTokenPopup(request);
-        return response.accessToken;
-      }
-    }
-
-    async function spFetchListItems(listTitle, query = "") {
-      const token = await getAccessToken();
-      const url = `${CONFIG.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(listTitle)}')/items${query}`;
-      log("REST Request", { listTitle, url });
-
-      const response = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json;odata=nometadata"
+                const data = await response.json();
+                renderTable(data.value);
+            } catch (err) {
+                tableDiv.innerHTML = `
+                    <div class='bg-red-50 p-4 rounded text-red-700'>
+                        <strong>Fehler beim Laden:</strong> ${err.message}<br>
+                        <small>Tipp: Stelle sicher, dass die Liste exakt "Firmen" heißt.</small>
+                    </div>`;
+            }
         }
-      });
 
-      const text = await response.text();
-      let data = null;
+        function renderTable(items) {
+            if (items.length === 0) {
+                document.getElementById('data-table').innerHTML = "Keine Daten in der Liste 'Firmen' gefunden.";
+                return;
+            }
 
-      try {
-        data = text ? JSON.parse(text) : null;
-      } catch {
-        throw new Error(`Unerwartete Antwort: ${text}`);
-      }
+            let html = `
+                <table class='w-full text-left border-collapse mt-4'>
+                    <thead>
+                        <tr class='border-b bg-gray-50 text-gray-500 text-xs uppercase tracking-wider'>
+                            <th class='p-3 font-semibold'>Firmenname</th>
+                            <th class='p-3 font-semibold'>Ort</th>
+                            <th class='p-3 font-semibold'>Priorität</th>
+                        </tr>
+                    </thead>
+                    <tbody class='text-sm text-gray-700'>`;
+            
+            items.forEach(item => {
+                const f = item.fields;
+                // Falls die Spaltennamen in SharePoint anders sind (interner Name), hier anpassen
+                html += `
+                    <tr class='border-b hover:bg-blue-50 transition-colors'>
+                        <td class='p-3 font-bold text-gray-900'>${f.Title || 'Unbekannt'}</td>
+                        <td class='p-3'>${f.Ort || '-'}</td>
+                        <td class='p-3'>
+                            <span class='px-2 py-1 rounded-full text-[10px] font-bold ${f.Priorit_x005f_x00e4_t === 'A' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'}'>
+                                ${f.Priorit_x005f_x00e4_t || '-'}
+                            </span>
+                        </td>
+                    </tr>`;
+            });
+            
+            html += "</tbody></table>";
+            document.getElementById('view-title').innerText = "Firmenübersicht";
+            document.getElementById('data-table').innerHTML = html;
+        }
 
-      if (!response.ok) {
-        throw new Error(`REST ${response.status}: ${JSON.stringify(data)}`);
-      }
+        function logout() {
+            msalInstance.logoutPopup().then(() => location.reload());
+        }
 
-      return data?.value || [];
-    }
-
-   function mapCompany(item) {
-  const f = CONFIG.fields.companies;
-  return {
-    id: item[f.id] ?? item.Id ?? item.ID ?? "",
-    title: item[f.title] ?? "",
-    abc: item[f.abc] ?? item.ABC ?? item.ABCSegment ?? item["ABC_x002d_Segment"] ?? "",
-    tags: asTags(item[f.tags]),
-    raw: item
-  };
-}
-
-    function mapContact(item) {
-      const f = CONFIG.fields.contacts;
-      return {
-        id: item[f.id] ?? item.Id ?? item.ID ?? "",
-        name: item[f.title] ?? "",
-        companyId:
-          item[`${f.companyLookup}Id`] ??
-          item[f.companyLookup]?.Id ??
-          item[f.companyLookup]?.ID ??
-          null,
-        companyTitle:
-          item[f.companyLookup]?.Title ??
-          "",
-        email: item[f.email] ?? item.EMail ?? item.Email ?? "",
-        phone: item[f.phone] ?? item.Phone ?? "",
-        raw: item
-      };
-    }
-
-    async function loadContacts() {
-      const f = CONFIG.fields.contacts;
-      const items = await spFetchListItems(
-        CONFIG.lists.contacts,
-        `?$top=500&$select=ID,${f.title},${f.email},${f.phone},${f.companyLookup}/Id,${f.companyLookup}/Title&$expand=${f.companyLookup}&$orderby=ID desc`
-      );
-
-      contactsCache = items.map(mapContact);
-
-      log("Kontakte geladen", {
-        count: contactsCache.length,
-        firstItem: contactsCache[0] || null
-      });
-    }
-
-   async function loadCompanies() {
-  const f = CONFIG.fields.companies;
-
-  const items = await spFetchListItems(
-    CONFIG.lists.companies,
-    `?$top=500&$select=ID,${f.title},${f.tags}&$orderby=ID desc`
-  );
-
-  companiesCache = items.map(item => ({
-    id: item.ID,
-    title: item[f.title] || "",
-    abc: "", // bewusst leer
-    tags: asTags(item[f.tags]),
-    raw: item
-  }));
-
-  log("Firmen geladen", {
-    count: companiesCache.length,
-    firstItem: companiesCache[0] || null
-  });
-}
-
-  companiesCache = items.map(item => mapCompany(item));
-
-  log("Firmen geladen", {
-    count: companiesCache.length,
-    firstItem: companiesCache[0] || null
-  });
-}
-
-    async function loadAllBaseData() {
-      try {
-        clearAlert();
-        setAction("Daten laden");
-
-        await loadCompanies();
-        await loadContacts();
-
-        renderCompanies(companiesCache);
-        renderContacts(getVisibleContacts());
-
-        $("companiesMeta").textContent = `${companiesCache.length}`;
-        $("contactsMeta").textContent = `${getVisibleContacts().length} Kontakte sichtbar`;
-
-        setSelectedCompanyInfo();
-        setAction("Daten erfolgreich geladen");
-        showAlert("Firmen und Kontakte erfolgreich geladen.", "success");
-      } catch (err) {
-        console.error(err);
-        const msg = err?.message || String(err);
-        log("Fehler beim Laden", { message: msg });
-        setAction("Laden fehlgeschlagen");
-        showAlert(`Daten konnten nicht geladen werden. ${msg}`, "error");
-      }
-    }
-
-    function getSelectedCompany() {
-      return companiesCache.find(c => String(c.id) === String(state.selectedCompanyId)) || null;
-    }
-
-    function setSelectedCompanyInfo() {
-      const company = getSelectedCompany();
-      $("selectedCompanyInfo").textContent = company ? company.title : "alle";
-    }
-
-    function getVisibleCompanies() {
-      const q = state.companySearch.trim().toLowerCase();
-      if (!q) return companiesCache;
-
-      return companiesCache.filter(company => {
-        return [
-          company.id,
-          company.title,
-          company.abc,
-          ...(company.tags || [])
-        ].join(" ").toLowerCase().includes(q);
-      });
-    }
-
-    function getVisibleContacts() {
-      let items = [...contactsCache];
-
-      if (state.selectedCompanyId) {
-        items = items.filter(c => String(c.companyId) === String(state.selectedCompanyId));
-      }
-
-      const q = state.contactSearch.trim().toLowerCase();
-      if (!q) return items;
-
-      return items.filter(c => {
-        const companyName =
-          c.companyTitle ||
-          companiesCache.find(x => String(x.id) === String(c.companyId))?.title ||
-          "";
-
-        return [
-          c.id,
-          c.name,
-          companyName,
-          c.email,
-          c.phone
-        ].join(" ").toLowerCase().includes(q);
-      });
-    }
-
-    function renderCompanies(items) {
-      const visibleCompanies = getVisibleCompanies();
-      const container = $("companyList");
-      container.innerHTML = "";
-
-      const allButton = document.createElement("button");
-      allButton.className = `w-full text-left rounded-xl border px-3 py-3 transition ${
-        state.selectedCompanyId == null
-          ? "border-sky-500 bg-sky-50 text-sky-900"
-          : "border-slate-200 bg-white hover:bg-slate-50"
-      }`;
-      allButton.innerHTML = `
-        <div class="font-medium">Alle Firmen</div>
-        <div class="text-xs text-slate-500">${contactsCache.length} Kontakte</div>
-      `;
-      allButton.addEventListener("click", () => {
-        state.selectedCompanyId = null;
-        setSelectedCompanyInfo();
-        renderCompanies(companiesCache);
-        renderContacts(getVisibleContacts());
-      });
-      container.appendChild(allButton);
-
-      if (!visibleCompanies.length) {
-        const div = document.createElement("div");
-        div.className = "text-slate-500 text-sm pt-2";
-        div.textContent = "Keine Firmen gefunden.";
-        container.appendChild(div);
-        return;
-      }
-
-      visibleCompanies.forEach(company => {
-        const contactCount = contactsCache.filter(c => String(c.companyId) === String(company.id)).length;
-        const selected = String(state.selectedCompanyId) === String(company.id);
-
-        const btn = document.createElement("button");
-        btn.className = `w-full text-left rounded-xl border px-3 py-3 transition ${
-          selected
-            ? "border-sky-500 bg-sky-50 text-sky-900"
-            : "border-slate-200 bg-white hover:bg-slate-50"
-        }`;
-
-        btn.innerHTML = `
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <div class="font-medium">${escapeHtml(company.title)}</div>
-              <div class="text-xs text-slate-500">${contactCount} Kontakte</div>
-            </div>
-            <div class="text-xs rounded-lg px-2 py-1 ${
-              company.abc === "A" ? "bg-emerald-100 text-emerald-800" :
-              company.abc === "B" ? "bg-amber-100 text-amber-800" :
-              "bg-slate-100 text-slate-700"
-            }">
-              ${escapeHtml(company.abc || "-")}
-            </div>
-          </div>
-          ${company.tags.length ? `
-            <div class="mt-2 flex flex-wrap gap-1">
-              ${company.tags.map(tag => `<span class="text-xs bg-slate-100 text-slate-700 rounded-full px-2 py-1">${escapeHtml(tag)}</span>`).join("")}
-            </div>
-          ` : ""}
-        `;
-
-        btn.addEventListener("click", () => {
-          state.selectedCompanyId = company.id;
-          setSelectedCompanyInfo();
-          renderCompanies(companiesCache);
-          renderContacts(getVisibleContacts());
-        });
-
-        container.appendChild(btn);
-      });
-    }
-
-    function renderContacts(items) {
-      const body = $("contactsBody");
-      body.innerHTML = "";
-
-      if (!items.length) {
-        body.innerHTML = `
-          <tr>
-            <td colspan="5" class="px-4 py-6 text-center text-slate-500">Keine Daten vorhanden</td>
-          </tr>
-        `;
-        return;
-      }
-
-      items.forEach(row => {
-        const companyName =
-          row.companyTitle ||
-          companiesCache.find(x => String(x.id) === String(row.companyId))?.title ||
-          "";
-
-        const tr = document.createElement("tr");
-        tr.className = "border-t border-slate-200 hover:bg-slate-50";
-        tr.innerHTML = `
-          <td class="px-4 py-3">${escapeHtml(row.id)}</td>
-          <td class="px-4 py-3 font-medium">${escapeHtml(row.name)}</td>
-          <td class="px-4 py-3">${escapeHtml(companyName)}</td>
-          <td class="px-4 py-3">${escapeHtml(row.email)}</td>
-          <td class="px-4 py-3">${escapeHtml(row.phone)}</td>
-        `;
-        body.appendChild(tr);
-      });
-
-      $("contactsMeta").textContent = `${items.length} Kontakte sichtbar`;
-    }
-
-    $("btnLogin").addEventListener("click", login);
-    $("btnLogout").addEventListener("click", logout);
-    $("btnLoad").addEventListener("click", loadAllBaseData);
-
-    $("searchInput").addEventListener("input", (e) => {
-      state.contactSearch = e.target.value;
-      renderContacts(getVisibleContacts());
-    });
-
-    $("companySearchInput").addEventListener("input", (e) => {
-      state.companySearch = e.target.value;
-      renderCompanies(companiesCache);
-    });
-
-    window.addEventListener("load", async () => {
-      try {
-        await initAuth();
-        log("App initialisiert");
-        setAction("App bereit");
-        setSelectedCompanyInfo();
-      } catch (err) {
-        console.error("INIT ERROR", err);
-        const msg = err?.message || String(err);
-        log("Init Fehler", { message: msg });
-        setAction("Initialisierung fehlgeschlagen");
-        showAlert(`Initialisierung fehlgeschlagen. ${msg}`, "error");
-      }
-    });
-  </script>
+        // Auto-Check beim Laden der Seite
+        const accounts = msalInstance.getAllAccounts();
+        if (accounts.length > 0) {
+            msalInstance.setActiveAccount(accounts[0]);
+            handleAfterLogin();
+        }
+    </script>
 </body>
 </html>
