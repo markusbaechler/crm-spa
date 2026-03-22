@@ -13,8 +13,6 @@
         .prio-B { border-left: 4px solid #3b82f6; }
         .prio-C { border-left: 4px solid #64748b; }
         .timeline-line { border-left: 2px solid #334155; margin-left: 10px; }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
     </style>
 </head>
 <body class="min-h-screen font-sans italic">
@@ -26,28 +24,20 @@
                 <button id="login-btn" class="bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded-lg text-sm font-bold transition">Login</button>
                 <div id="user-info" class="hidden flex items-center gap-3">
                     <span id="username" class="text-sm text-slate-400"></span>
-                    <button id="logout-btn" class="text-xs text-slate-500 hover:text-white underline font-sans">Logout</button>
+                    <button id="logout-btn" class="text-xs text-slate-400 hover:text-white underline">Logout</button>
                 </div>
             </div>
         </div>
     </nav>
-
-    <div class="container mx-auto mt-6 px-4 grid grid-cols-2 md:grid-cols-4 gap-4" id="stats-area">
-        <div class="card-dark p-4 rounded-xl text-center border-b-2 border-b-amber-500"><p class="text-[10px] text-slate-400 uppercase font-bold">A-Kunden</p><p class="text-2xl font-black" id="stat-a">0</p></div>
-        <div class="card-dark p-4 rounded-xl text-center border-b-2 border-b-blue-500"><p class="text-[10px] text-slate-400 uppercase font-bold">B-Kunden</p><p class="text-2xl font-black" id="stat-b">0</p></div>
-        <div class="card-dark p-4 rounded-xl text-center border-b-2 border-b-slate-500"><p class="text-[10px] text-slate-400 uppercase font-bold">C-Kunden</p><p class="text-2xl font-black" id="stat-c">0</p></div>
-        <div class="card-dark p-4 rounded-xl text-center border-b-2 border-b-red-500"><p class="text-[10px] text-slate-400 uppercase font-bold">Top Kunden ★</p><p class="text-2xl font-black" id="stat-top">0</p></div>
-    </div>
 
     <main class="container mx-auto mt-6 p-4">
         <div id="main-content" class="grid grid-cols-1 lg:grid-cols-12 gap-6">
             
             <div class="lg:col-span-4 space-y-4">
                 <div class="card-dark p-3 rounded-xl flex items-center gap-3">
-                    <span class="text-slate-500">🔍</span>
-                    <input type="text" id="company-search" placeholder="Firma suchen..." class="bg-transparent border-none text-sm w-full outline-none text-white font-bold">
+                    <input type="text" id="company-search" placeholder="Firma suchen..." class="bg-transparent border-none text-sm w-full outline-none text-white font-bold italic">
                 </div>
-                <div id="company-list" class="space-y-2 max-h-[700px] overflow-y-auto pr-2">
+                <div id="company-list" class="space-y-2 max-h-[750px] overflow-y-auto pr-2">
                     </div>
             </div>
 
@@ -76,10 +66,6 @@
             await msalInstance.initialize();
             const response = await msalInstance.handleRedirectPromise();
             if (response) msalInstance.setActiveAccount(response.account);
-            else {
-                const accounts = msalInstance.getAllAccounts();
-                if (accounts.length > 0) msalInstance.setActiveAccount(accounts[0]);
-            }
             updateUI();
         }
 
@@ -89,41 +75,35 @@
                 document.getElementById('login-btn').classList.add('hidden');
                 document.getElementById('user-info').classList.remove('hidden');
                 document.getElementById('username').innerText = account.name;
-                loadData();
+                loadInitialData();
             }
         }
 
         document.getElementById('login-btn').onclick = () => msalInstance.loginRedirect({ scopes: ["Sites.ReadWrite.All"] });
         document.getElementById('logout-btn').onclick = () => msalInstance.logoutRedirect();
 
-        async function loadData() {
+        async function loadInitialData() {
             try {
                 const account = msalInstance.getActiveAccount();
                 const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: account });
-                
+                const token = tokenRes.accessToken;
+
                 const siteRes = await fetch("https://graph.microsoft.com/v1.0/sites/bbzsg.sharepoint.com:/sites/CRM", {
-                    headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` }
+                    headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const siteData = await siteRes.json();
                 siteId = siteData.id;
 
                 const compRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Firmen/items?expand=fields`, {
-                    headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` }
+                    headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const compData = await compRes.json();
-                allCompanies = compData.value || [];
+                // Dubletten in der Firmenliste verhindern (SharePoint API Eigenheit)
+                const uniqueCompanies = Array.from(new Map(compData.value.map(item => [item.fields.id, item])).values());
+                allCompanies = uniqueCompanies;
                 
                 renderCompanies(allCompanies);
-                renderStats(allCompanies);
             } catch (err) { console.error(err); }
-        }
-
-        function renderStats(items) {
-            const getCount = (val) => items.filter(i => i.fields.Priorit_x00e4_t == val).length;
-            document.getElementById('stat-a').innerText = getCount('1') || getCount('A');
-            document.getElementById('stat-b').innerText = getCount('2') || getCount('B');
-            document.getElementById('stat-c').innerText = getCount('3') || getCount('C');
-            document.getElementById('stat-top').innerText = items.filter(i => i.fields.TopKunde).length;
         }
 
         function renderCompanies(items) {
@@ -134,17 +114,17 @@
                 return `
                 <div onclick="loadCompanyDetails('${item.id}')" class="card-dark p-3 rounded-xl cursor-pointer hover:bg-slate-700 transition flex justify-between items-center prio-${p}">
                     <div>
-                        <p class="text-sm font-bold text-white">${f.Title} ${f.TopKunde ? '★' : ''}</p>
-                        <p class="text-[10px] text-slate-500 uppercase font-black tracking-widest">${f.Ort || ''}</p>
+                        <p class="text-sm font-bold text-white italic">${f.Title}</p>
+                        <p class="text-[10px] text-slate-500 uppercase font-black">${f.Ort || ''}</p>
                     </div>
-                    <span class="text-[10px] font-black text-slate-500">${p}</span>
+                    <span class="text-[10px] font-black text-slate-600">${p}</span>
                 </div>`;
             }).join('');
         }
 
         async function loadCompanyDetails(companyId) {
             const detailPane = document.getElementById('detail-pane');
-            detailPane.innerHTML = `<div class="animate-pulse text-center p-20 text-blue-400 font-bold">Daten werden konsolidiert...</div>`;
+            detailPane.innerHTML = `<div class="p-20 text-center text-blue-400 italic font-bold">Lade Präzisions-Daten...</div>`;
 
             try {
                 const account = msalInstance.getActiveAccount();
@@ -153,14 +133,16 @@
 
                 const company = allCompanies.find(c => c.id == companyId).fields;
 
-                // 1. Kontakte laden
+                // 1. Kontakte mit Dubletten-Check
                 const contRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontakte/items?expand=fields`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const contData = await contRes.json();
-                const contacts = contData.value.filter(c => c.fields.FirmaId == companyId || c.fields.FirmaLookupId == companyId);
+                const filteredContacts = contData.value.filter(c => c.fields.FirmaId == companyId || (c.fields.Firma && c.fields.Firma.LookupId == companyId));
+                // Dubletten nach ID entfernen
+                const contacts = Array.from(new Map(filteredContacts.map(c => [c.fields.id, c])).values());
 
-                // 2. Notizen laden
+                // 2. Notizen
                 const noteRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Kontaktnotizen/items?expand=fields`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
@@ -174,44 +156,36 @@
         function renderDetailView(firma, contacts, notes) {
             const container = document.getElementById('detail-pane');
             container.innerHTML = `
-                <div class="space-y-6">
-                    <div class="card-dark p-6 rounded-2xl flex justify-between items-start border-l-4 border-l-blue-500">
-                        <div>
-                            <h2 class="text-3xl font-black text-white tracking-tighter">${firma.Title}</h2>
-                            <p class="text-slate-400 text-sm mt-1 uppercase tracking-widest font-black">${firma.Ort || ''} | ${firma.PLZ || ''}</p>
-                        </div>
-                        <div class="text-right">
-                            <span class="bg-blue-600 text-[10px] font-black px-3 py-1 rounded-full uppercase italic">Segment ${firma.Priorit_x00e4_t || '-'}</span>
-                        </div>
+                <div class="space-y-6 animate-in fade-in duration-500">
+                    <div class="card-dark p-6 rounded-2xl border-l-4 border-l-blue-500">
+                        <h2 class="text-3xl font-black text-white italic tracking-tighter">${firma.Title}</h2>
+                        <p class="text-slate-400 text-sm mt-1 uppercase tracking-widest font-black italic">${firma.Ort || ''} ${firma.PLZ || ''}</p>
                     </div>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         ${contacts.map(c => `
-                            <div class="card-dark p-4 rounded-xl border border-slate-700 relative overflow-hidden group">
-                                <div class="absolute right-0 top-0 w-16 h-16 bg-blue-500/5 rounded-full -mr-8 -mt-8"></div>
-                                <p class="text-blue-400 font-black italic text-lg">${c.fields.Vorname} ${c.fields.Title}</p>
-                                <p class="text-[10px] text-slate-500 font-black uppercase tracking-widest">${c.fields.Funktion || '-'}</p>
-                                <div class="mt-4 space-y-1 text-xs text-slate-300 font-bold">
+                            <div class="card-dark p-4 rounded-xl border border-slate-700">
+                                <p class="text-blue-400 font-black italic text-lg">${c.fields.Vorname || ''} ${c.fields.Title || ''}</p>
+                                <p class="text-[10px] text-slate-500 font-black uppercase tracking-widest italic">${c.fields.Funktion || '-'}</p>
+                                <div class="mt-4 space-y-1 text-[11px] text-slate-300 font-bold italic">
                                     <p>📧 ${c.fields.E_x002d_Mail || '-'}</p>
-                                    <p>📱 ${c.fields.Mobile || '-'}</p>
-                                    <p>🎂 ${c.fields.Geburtsdatum ? new Date(c.fields.Geburtsdatum).toLocaleDateString() : '-'}</p>
+                                    <p>📱 ${c.fields.Mobile || c.fields.TelefonMobil || '-'}</p>
                                 </div>
                             </div>
                         `).join('')}
                     </div>
 
                     <div class="card-dark p-6 rounded-2xl">
-                        <h3 class="text-sm font-black uppercase tracking-widest text-slate-500 mb-6">Timeline & Kontaktnotizen</h3>
+                        <h3 class="text-sm font-black uppercase tracking-widest text-slate-500 mb-6 italic">Historie & Timeline</h3>
                         <div class="timeline-line space-y-8">
                             ${notes.sort((a,b) => new Date(b.fields.Datum) - new Date(a.fields.Datum)).map(n => `
                                 <div class="relative pl-8">
-                                    <div class="absolute left-[-6px] top-1.5 w-3 h-3 bg-blue-500 rounded-full border-2 border-slate-900 shadow-lg shadow-blue-500/20"></div>
-                                    <p class="text-[10px] text-slate-500 font-black">${new Date(n.fields.Datum || n.fields.Created).toLocaleDateString('de-DE')}</p>
-                                    <p class="text-sm font-black text-white mt-1">${n.fields.Title || 'Notiz'}</p>
-                                    <p class="text-xs text-slate-400 mt-2 leading-relaxed italic">${n.fields.Details_x002f_Kontext || '-'}</p>
+                                    <div class="absolute left-[-6px] top-1.5 w-3 h-3 bg-blue-500 rounded-full border-2 border-slate-900"></div>
+                                    <p class="text-[10px] text-slate-500 font-black italic">${new Date(n.fields.Datum || n.fields.Created).toLocaleDateString('de-DE')}</p>
+                                    <p class="text-sm font-black text-white italic">${n.fields.Title || 'Notiz'}</p>
+                                    <p class="text-xs text-slate-400 mt-1 italic">${n.fields.Details_x002f_Kontext || '-'}</p>
                                 </div>
                             `).join('')}
-                            ${notes.length === 0 ? '<p class="text-slate-600 italic text-sm pl-8">Noch keine Historie vorhanden.</p>' : ''}
                         </div>
                     </div>
                 </div>
@@ -219,7 +193,7 @@
         }
 
         function showListView() { 
-            document.getElementById('detail-pane').innerHTML = `<div class="card-dark p-20 rounded-2xl text-center text-slate-500 italic">Wähle ein Unternehmen aus der Liste aus.</div>`;
+            document.getElementById('detail-pane').innerHTML = `<div class="card-dark p-20 rounded-2xl text-center text-slate-500 italic">Firma wählen...</div>`;
         }
 
         init();
