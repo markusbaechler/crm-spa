@@ -1,5 +1,5 @@
 // --- CONFIG & VERSION ---
-const appVersion = "V2.3";
+const appVersion = "V2.4";
 console.log(`CRM App ${appVersion} wird geladen...`);
 
 const config = {
@@ -26,15 +26,16 @@ let allFirms = [];
 
 // --- INITIALISIERUNG ---
 window.onload = async () => {
-    updateFooter(); 
+    updateFooter(); // <--- Schreibt die Version sofort beim Laden
     await msalInstance.handleRedirectPromise();
     checkAuthState();
 };
 
 function updateFooter() {
-    const footer = document.querySelector('footer p');
-    if (footer) {
-        footer.innerHTML = `© 2026 bbz CRM Light | Status: Etappe D | <strong>Version: ${appVersion}</strong>`;
+    // Sucht gezielt nach der ID 'footer-text'
+    const footerText = document.getElementById('footer-text');
+    if (footerText) {
+        footerText.innerHTML = `© 2026 bbz CRM Light | Status: Etappe D | <span class="font-black text-slate-600">Version: ${appVersion}</span>`;
     }
 }
 
@@ -52,43 +53,28 @@ function checkAuthState() {
     }
 }
 
-// --- DATEN LADEN ---
+// --- DATEN LADEN & UI (Rest bleibt gleich wie V2.3) ---
 async function loadFirms() {
     const content = document.getElementById('app-content');
     const accounts = msalInstance.getAllAccounts();
     if (accounts.length === 0) return;
-
-    content.innerHTML = '<p class="p-10 text-center animate-pulse text-blue-600 font-bold">Synchronisiere Daten...</p>';
+    content.innerHTML = '<p class="p-10 text-center animate-pulse text-blue-600 font-bold font-mono text-xs">Syncing with SharePoint...</p>';
 
     try {
         const tokenRes = await msalInstance.acquireTokenSilent({ ...loginRequest, account: accounts[0] })
             .catch(() => msalInstance.acquireTokenRedirect(loginRequest));
-
-        const siteRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${config.siteSearch}`, {
-            headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` }
-        });
+        const siteRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${config.siteSearch}`, { headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` } });
         const siteData = await siteRes.json();
-        
-        const listsRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteData.id}/lists`, {
-            headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` }
-        });
+        const listsRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteData.id}/lists`, { headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` } });
         const listsData = await listsRes.json();
         const targetList = listsData.value.find(l => l.displayName === "CRMFirms");
-
-        const itemsRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteData.id}/lists/${targetList.id}/items?expand=fields`, {
-            headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` }
-        });
+        const itemsRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteData.id}/lists/${targetList.id}/items?expand=fields`, { headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` } });
         const itemsData = await itemsRes.json();
         allFirms = itemsData.value;
-
         renderUI(siteData.id, targetList.id);
-
-    } catch (err) {
-        content.innerHTML = `<div class="p-4 bg-red-50 text-red-700">Fehler: ${err.message}</div>`;
-    }
+    } catch (err) { content.innerHTML = `<div class="p-4 bg-red-50 text-red-700">Fehler: ${err.message}</div>`; }
 }
 
-// --- UI RENDERING ---
 function renderUI(siteId, listId) {
     const content = document.getElementById('app-content');
     content.innerHTML = `
@@ -102,7 +88,6 @@ function renderUI(siteId, listId) {
                     + NEUE FIRMA
                 </button>
             </div>
-
             <div id="addForm" class="hidden mb-8 p-6 bg-slate-50 rounded-2xl border-2 border-white shadow-inner">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                     <input type="text" id="fName" placeholder="Firmenname" class="p-3 rounded-xl border-none shadow-sm focus:ring-2 focus:ring-blue-500">
@@ -123,10 +108,7 @@ function renderUI(siteId, listId) {
                     <button onclick="toggleForm()" class="text-slate-400 px-4 font-bold">Abbrechen</button>
                 </div>
             </div>
-
-            <input type="text" onkeyup="filterFirms(this.value)" placeholder="Suchen nach Name oder Ort..." 
-                class="w-full p-4 mb-6 rounded-2xl bg-slate-50 border-none shadow-inner focus:ring-2 focus:ring-blue-500 text-lg">
-
+            <input type="text" onkeyup="filterFirms(this.value)" placeholder="Suchen nach Name oder Ort..." class="w-full p-4 mb-6 rounded-2xl bg-slate-50 border-none shadow-inner focus:ring-2 focus:ring-blue-500 text-lg">
             <div id="firmList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 ${generateFirmCards(allFirms)}
             </div>
@@ -138,29 +120,21 @@ function generateFirmCards(firms) {
     return firms.map(item => {
         const f = item.fields;
         const rawClass = f.Klassifizierung || 'leer';
-        
         let displayClass = rawClass;
         if (rawClass === 'A') displayClass = 'A-Kunde';
         if (rawClass === 'B') displayClass = 'B-Kunde';
         if (rawClass === 'C') displayClass = 'C-Kunde';
-
         let colorStyle = "text-slate-400 bg-slate-100 border-slate-200";
         if (displayClass.startsWith('A')) colorStyle = "text-emerald-600 bg-emerald-50 border border-emerald-100";
         if (displayClass.startsWith('B')) colorStyle = "text-blue-600 bg-blue-50 border border-blue-100";
         if (displayClass.startsWith('C')) colorStyle = "text-orange-600 bg-orange-50 border border-orange-100";
-
         return `
             <div class="p-5 bg-slate-50 border border-white rounded-3xl shadow-sm hover:shadow-md transition-all group">
-                <div class="flex justify-between items-start mb-2">
+                <div class="flex justify-between items-start mb-2 text-sm">
                     <span class="font-bold text-slate-700 text-lg group-hover:text-blue-600 transition-colors">${f.Title || 'Unbenannt'}</span>
-                    <span class="px-2 py-1 rounded-lg text-[10px] font-black shadow-sm italic uppercase border ${colorStyle}">
-                        ${displayClass}
-                    </span>
+                    <span class="px-2 py-1 rounded-lg text-[10px] font-black shadow-sm italic uppercase border ${colorStyle}">${displayClass}</span>
                 </div>
-                <div class="text-[11px] text-slate-400 font-medium">
-                    ${f.Adresse ? f.Adresse + '<br>' : ''}
-                    ${f.PLZ || ''} ${f.Ort || ''}
-                </div>
+                <div class="text-[11px] text-slate-400 font-medium">${f.Adresse ? f.Adresse + '<br>' : ''}${f.PLZ || ''} ${f.Ort || ''}</div>
             </div>
         `;
     }).join('');
@@ -168,10 +142,7 @@ function generateFirmCards(firms) {
 
 function filterFirms(query) {
     const q = query.toLowerCase();
-    const filtered = allFirms.filter(f => 
-        f.fields.Title?.toLowerCase().includes(q) || 
-        f.fields.Ort?.toLowerCase().includes(q)
-    );
+    const filtered = allFirms.filter(f => f.fields.Title?.toLowerCase().includes(q) || f.fields.Ort?.toLowerCase().includes(q));
     document.getElementById('firmList').innerHTML = generateFirmCards(filtered);
 }
 
@@ -183,22 +154,14 @@ async function saveFirm(siteId, listId) {
     const street = document.getElementById('fStreet').value;
     const zip = document.getElementById('fZip').value;
     const city = document.getElementById('fCity').value;
-
     if(!name) return alert("Name fehlt!");
-
     const tokenRes = await msalInstance.acquireTokenSilent({ ...loginRequest, account: msalInstance.getAllAccounts()[0] });
     await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${tokenRes.accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields: { 
-            Title: name, 
-            Klassifizierung: klasse,
-            Adresse: street, PLZ: zip, Ort: city, Land: "Schweiz" 
-        } })
+        body: JSON.stringify({ fields: { Title: name, Klassifizierung: klasse, Adresse: street, PLZ: zip, Ort: city, Land: "Schweiz" } })
     });
-
-    toggleForm(); 
-    loadFirms(); 
+    toggleForm(); loadFirms(); 
 }
 
 function showView(v) { if(v === 'dashboard') location.reload(); if(v === 'firms') loadFirms(); }
