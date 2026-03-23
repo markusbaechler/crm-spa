@@ -3,73 +3,51 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CRM bbz Login-Test</title>
+    <title>CRM bbz Light</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
 </head>
-<body class="bg-slate-50 min-h-screen flex items-center justify-center font-sans text-slate-800">
+<body class="bg-gray-50 font-sans text-gray-800">
 
-    <div class="bg-white p-10 rounded-2xl shadow-xl max-w-md w-full text-center border border-slate-200">
-        <h1 class="text-3xl font-black text-blue-900 mb-2">CRM bbz</h1>
-        <p class="text-slate-500 mb-8 font-medium text-sm uppercase tracking-widest">Auth-Check V1</p>
-        
-        <div id="auth-area">
-            <button id="loginBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-xl transition-all shadow-lg active:scale-95">
-                Mit Microsoft 365 anmelden
-            </button>
-        </div>
-
-        <div id="user-info" class="hidden">
-            <div class="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
-                <p class="text-green-700 font-bold">Verbindung steht!</p>
+    <nav class="bg-slate-900 text-white shadow-lg">
+        <div class="container mx-auto px-6 py-4 flex justify-between items-center">
+            <div class="flex items-center space-x-4">
+                <span class="text-2xl font-bold tracking-tight text-blue-400">CRM</span>
+                <span class="text-xl font-light text-slate-300">bbz Light</span>
             </div>
-            <p id="userName" class="text-xl font-bold"></p>
-            <p id="userEmail" class="text-slate-500 mb-8"></p>
-            <button id="logoutBtn" class="text-slate-400 hover:text-red-500 text-sm font-medium transition">Abmelden</button>
+            
+            <div class="hidden md:flex space-x-8 text-sm font-medium">
+                <button onclick="showView('dashboard')" class="hover:text-blue-400 transition">Dashboard</button>
+                <button onclick="loadFirms()" class="hover:text-blue-400 transition text-lg font-bold border-b-2 border-blue-500">🏢 Firmen</button>
+                <button onclick="showView('contacts')" class="hover:text-blue-400 transition">Kontakte</button>
+            </div>
+
+            <div>
+                <button id="authBtn" onclick="handleAuth()" class="bg-blue-600 hover:bg-blue-500 px-5 py-2 rounded-full text-sm font-semibold transition shadow-md">
+                    Login
+                </button>
+            </div>
         </div>
-    </div>
+    </nav>
 
-    <script>
-        const msalConfig = {
-            auth: {
-                clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a",
-                authority: "https://login.microsoftonline.com/3643e7ab-d166-4e27-bd5f-c5bbfcd282d7",
-                redirectUri: "https://markusbaechler.github.io/crm-spa/"
-            }
-        };
+    <main class="container mx-auto mt-10 px-6">
+        <div id="app-content" class="bg-white p-8 rounded-xl shadow-sm border border-gray-100 min-h-[400px]">
+            <div class="text-center py-12">
+                <h2 class="text-3xl font-bold text-gray-900 mb-4">Willkommen im CRM</h2>
+                <p class="text-gray-500 mb-8">Bitte loggen Sie sich oben rechts ein und klicken Sie auf "Firmen", um die Daten zu laden.</p>
+                <div class="flex justify-center space-x-4">
+                    <div class="w-12 h-1 bg-blue-500 rounded"></div>
+                    <div class="w-12 h-1 bg-slate-300 rounded"></div>
+                    <div class="w-12 h-1 bg-slate-300 rounded"></div>
+                </div>
+            </div>
+        </div>
+    </main>
 
-        const msalInstance = new msal.PublicClientApplication(msalConfig);
+    <footer class="container mx-auto mt-12 mb-8 px-6 text-center text-gray-400 text-xs">
+        &copy; 2026 bbz CRM Light | Status: Etappe D (CRUD Entwicklung)
+    </footer>
 
-        const loginBtn = document.getElementById('loginBtn');
-        const logoutBtn = document.getElementById('logoutBtn');
-        const authArea = document.getElementById('auth-area');
-        const userInfo = document.getElementById('user-info');
-
-        function updateUI(account) {
-            if (account) {
-                authArea.classList.add('hidden');
-                userInfo.classList.remove('hidden');
-                document.getElementById('userName').innerText = account.name;
-                document.getElementById('userEmail').innerText = account.username;
-            }
-        }
-
-        loginBtn.onclick = async () => {
-            try {
-                const response = await msalInstance.loginPopup({
-                    scopes: ["User.Read", "Sites.Read.All"]
-                });
-                updateUI(response.account);
-            } catch (err) {
-                console.error(err);
-                alert("Fehler: " + err.message);
-            }
-        };
-
-        logoutBtn.onclick = () => { msalInstance.logout(); };
-
-        const accounts = msalInstance.getAllAccounts();
-        if (accounts.length > 0) { updateUI(accounts[0]); }
-    </script>
+    <script src="app.js"></script>
 </body>
 </html>
