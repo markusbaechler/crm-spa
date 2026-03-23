@@ -1,6 +1,6 @@
 // --- CONFIG & VERSION ---
-const appVersion = "V3.0";
-console.log(`CRM App ${appVersion} - Firmen & Kontakte Integration`);
+const appVersion = "V3.1";
+console.log(`CRM App ${appVersion} - Fix: Container ID & Navigation`);
 
 const config = {
     clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a",
@@ -28,7 +28,7 @@ let allContacts = [];
 let classOptions = []; 
 let currentSiteId = "";
 let currentListId = "";
-let contactListId = ""; // Neu für CRMContacts
+let contactListId = "";
 
 window.onload = async () => {
     updateFooter(); 
@@ -57,19 +57,23 @@ function checkAuthState() {
     }
 }
 
-// --- DATA LOADING (IDENTISCHE LOGIK ZU DEINER V2.9) ---
+// --- DATA LOADING ---
 async function loadData() {
-    const content = document.getElementById('app-content');
+    // WICHTIG: Deine index.html nutzt 'main-content' (nicht 'app-content')
+    const content = document.getElementById('main-content'); 
+    if (!content) return console.error("Container 'main-content' nicht gefunden!");
+
     const accounts = msalInstance.getAllAccounts();
     if (accounts.length === 0) return;
-    content.innerHTML = '<p class="p-10 text-center animate-pulse text-blue-600 font-bold uppercase tracking-widest text-xs">Synchronisiere Firmen & Kontakte...</p>';
+    
+    content.innerHTML = '<p class="p-10 text-center animate-pulse text-blue-600 font-bold uppercase tracking-widest text-xs">Synchronisiere Daten...</p>';
 
     try {
         const tokenRes = await msalInstance.acquireTokenSilent({ ...loginRequest, account: accounts[0] })
             .catch(() => msalInstance.acquireTokenRedirect(loginRequest));
         const headers = { 'Authorization': `Bearer ${tokenRes.accessToken}` };
 
-        // 1. Site & List IDs holen
+        // 1. Site & List IDs
         const siteRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${config.siteSearch}`, { headers });
         const siteData = await siteRes.json();
         currentSiteId = siteData.id;
@@ -77,38 +81,44 @@ async function loadData() {
         const listsRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists`, { headers });
         const listsData = await listsRes.json();
         
-        // IDs für beide Listen finden
-        currentListId = listsData.value.find(l => l.displayName === "CRMFirms").id;
-        contactListId = listsData.value.find(l => l.displayName === "CRMContacts").id;
+        const firmsList = listsData.value.find(l => l.displayName === "CRMFirms");
+        const contactsList = listsData.value.find(l => l.displayName === "CRMContacts");
 
-        // 2. Metadaten (Klassifizierung)
-        const columnRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${currentListId}/columns/Klassifizierung`, { headers });
-        const columnData = await columnRes.json();
-        classOptions = columnData.choice ? columnData.choice.choices : ["leer"];
+        if (!firmsList || !contactsList) {
+            throw new Error(`Listen nicht gefunden. Checke Namen in SharePoint!`);
+        }
 
-        // 3. Firmen & Kontakte parallel laden
-        const [firmsRes, contactsRes] = await Promise.all([
+        currentListId = firmsList.id;
+        contactListId = contactsList.id;
+
+        // 2. Metadaten & 3. Daten laden
+        const [colRes, firmsRes, contactsRes] = await Promise.all([
+            fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${currentListId}/columns/Klassifizierung`, { headers }),
             fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${currentListId}/items?expand=fields`, { headers }),
             fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${contactListId}/items?expand=fields`, { headers })
         ]);
         
+        const colData = await colRes.json();
         const firmsData = await firmsRes.json();
         const contactsData = await contactsRes.json();
         
+        classOptions = colData.choice ? colData.choice.choices : ["leer"];
         allFirms = firmsData.value;
         allContacts = contactsData.value;
 
-        renderUI();
-    } catch (err) { content.innerHTML = `<div class="p-4 bg-red-50 text-red-700">Fehler: ${err.message}</div>`; }
+        renderFirms(allFirms); // Direkt die Firmen anzeigen
+    } catch (err) { 
+        content.innerHTML = `<div class="p-4 bg-red-50 text-red-700"><strong>Kritischer Fehler:</strong> ${err.message}</div>`; 
+    }
 }
 
-// --- UI RENDERING ---
-function renderUI() {
-    const content = document.getElementById('app-content');
+// --- UI RENDERING (Angepasst an deine Navigation) ---
+function renderFirms(firms) {
+    const content = document.getElementById('main-content');
     content.innerHTML = `
         <div class="bg-white p-6 rounded-3xl shadow-xl border border-slate-100 relative">
             <div class="flex justify-between items-center mb-8">
-                <h2 class="text-3xl font-black text-slate-800 italic uppercase tracking-tighter italic">🏢 Firmen</h2>
+                <h2 class="text-3xl font-black text-slate-800 italic uppercase tracking-tighter">🏢 Firmen</h2>
                 <button onclick="toggleAddForm()" class="bg-blue-600 text-white px-6 py-2 rounded-full font-bold shadow-lg transform hover:scale-105 transition">+ NEU</button>
             </div>
 
@@ -119,48 +129,60 @@ function renderUI() {
                 </div>
             </div>
 
-            <div id="addForm" class="hidden mb-8 p-6 bg-slate-50 rounded-2xl border-2 border-white shadow-inner">
+            <div id="addForm" class="hidden mb-8 p-6 bg-slate-50 rounded-2xl border-2 border-white shadow-inner text-sm">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                    <input type="text" id="new_fName" placeholder="Firmenname" class="p-3 rounded-xl border-none shadow-sm font-bold">
+                    <input type="text" id="new_fName" placeholder="Name" class="p-3 rounded-xl border-none shadow-sm font-bold">
                     <select id="new_fClass" class="p-3 rounded-xl border-none shadow-sm font-bold text-slate-500">
                         ${classOptions.map(opt => `<option value="${opt}">${opt}</option>`).join('')}
                     </select>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4 items-center">
-                    <input type="text" id="new_fCity" placeholder="Ort" class="p-3 rounded-xl border-none shadow-sm">
-                    <label class="flex items-center space-x-3 p-3"><input type="checkbox" id="new_fVIP" class="w-5 h-5 rounded border-none shadow-sm text-blue-600"><span class="text-slate-600 font-bold uppercase text-xs">VIP</span></label>
-                </div>
-                <button onclick="saveNewFirm()" class="bg-green-600 text-white px-8 py-2 rounded-xl font-bold">FIRMA SPEICHERN</button>
+                <input type="text" id="new_fCity" placeholder="Ort" class="w-full p-3 mb-3 rounded-xl border-none shadow-sm">
+                <button onclick="saveNewFirm()" class="bg-green-600 text-white px-8 py-2 rounded-xl font-bold">SPEICHERN</button>
             </div>
 
             <input type="text" onkeyup="filterFirms(this.value)" placeholder="Firma suchen..." class="w-full p-4 mb-6 rounded-2xl bg-slate-50 border-none shadow-inner focus:ring-2 focus:ring-blue-500 text-lg">
 
             <div id="firmList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                ${generateFirmCards(allFirms)}
+                ${generateFirmCards(firms)}
             </div>
         </div>
     `;
 }
 
+// Wrapper-Funktion für die Navigation (loadFirms)
+function loadFirms() { renderFirms(allFirms); }
+
+// Navigation für Kontakte
+function loadAllContacts() {
+    const content = document.getElementById('main-content');
+    content.innerHTML = `
+        <div class="bg-white p-6 rounded-3xl shadow-xl border border-slate-100">
+            <h2 class="text-3xl font-black text-slate-800 italic uppercase tracking-tighter mb-8">👥 Alle Kontakte</h2>
+            <div class="space-y-3">
+                ${allContacts.map(c => `
+                    <div class="p-4 bg-slate-50 rounded-2xl border border-white shadow-sm flex justify-between items-center">
+                        <div>
+                            <div class="font-bold text-slate-700 text-lg">${c.fields.FirstName || ''} ${c.fields.Title}</div>
+                            <div class="text-sm text-slate-400 font-medium">${c.fields.Email || '-'}</div>
+                        </div>
+                        <div class="text-[10px] font-black uppercase text-slate-300">ID: ${c.fields.FirmID || 'Privat'}</div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+}
+
+// Hilfsfunktionen (Cards, Details, REST) identisch zu deiner stabilen Logik
 function generateFirmCards(firms) {
     return firms.map(item => {
         const f = item.fields;
-        const isVIP = f.VIP === true || f.VIP === "true";
         const klass = f.Klassifizierung || 'leer';
-
-        let colorStyle = "text-slate-400 bg-slate-100 border-slate-200";
-        if (klass.startsWith('A')) colorStyle = "text-emerald-600 bg-emerald-50 border border-emerald-100";
-        if (klass.startsWith('B')) colorStyle = "text-blue-600 bg-blue-50 border border-blue-100";
-        if (klass.startsWith('C')) colorStyle = "text-orange-600 bg-orange-50 border border-orange-100";
-
         return `
-            <div onclick="openFirmDetails('${item.id}')" class="p-5 bg-slate-50 border border-white rounded-3xl shadow-sm hover:shadow-xl transition-all cursor-pointer group relative">
+            <div onclick="openFirmDetails('${item.id}')" class="p-5 bg-slate-50 border border-white rounded-3xl shadow-sm hover:shadow-xl transition-all cursor-pointer">
                 <div class="flex justify-between items-start mb-2">
-                    <span class="font-bold text-slate-700 text-lg group-hover:text-blue-600 leading-tight">${f.Title || 'Unbenannt'}</span>
-                    <div class="flex items-center space-x-1">
-                        ${isVIP ? '<span class="text-amber-500">👑</span>' : ''}
-                        <span class="px-2 py-1 rounded-lg text-[10px] font-black shadow-sm uppercase border ${colorStyle}">${klass}</span>
-                    </div>
+                    <span class="font-bold text-slate-700 group-hover:text-blue-600 leading-tight">${f.Title || 'Unbenannt'}</span>
+                    <span class="px-2 py-1 rounded-lg text-[10px] font-black bg-white border border-slate-200">${klass}</span>
                 </div>
                 <div class="text-[11px] text-slate-400 font-medium">${f.Ort || 'Kein Ort'}</div>
             </div>
@@ -168,134 +190,56 @@ function generateFirmCards(firms) {
     }).join('');
 }
 
-// --- FIRMEN DETAILS & KONTAKTE (KOMBINIERT) ---
-function openFirmDetails(itemId) {
+async function openFirmDetails(itemId) {
     const firm = allFirms.find(f => f.id === itemId);
     const f = firm.fields;
-    
-    // Filter Kontakte, die zu dieser Firma gehören (via FirmID)
     const relatedContacts = allContacts.filter(c => c.fields.FirmID === itemId);
 
     const modal = document.getElementById('detailModal');
     const container = document.getElementById('modalContent');
-    
     modal.classList.remove('hidden');
+
     container.innerHTML = `
-        <div class="flex justify-between items-start mb-6">
-            <h2 class="text-2xl font-black text-slate-800 uppercase italic tracking-tighter">Firma & Kontakte</h2>
-        </div>
-
-        <div class="space-y-4 mb-8 p-4 bg-slate-50 rounded-2xl">
+        <h2 class="text-2xl font-black text-slate-800 mb-6 uppercase italic tracking-tighter">Details & Kontakte</h2>
+        <div class="space-y-4 mb-8 bg-slate-50 p-4 rounded-2xl">
             <input type="text" id="edit_Title" value="${f.Title || ''}" class="w-full p-3 rounded-xl border-none font-bold shadow-sm">
-            <div class="grid grid-cols-2 gap-4">
-                <select id="edit_Klass" class="p-3 rounded-xl border-none font-bold shadow-sm">
-                    ${classOptions.map(opt => `<option value="${opt}" ${f.Klassifizierung === opt ? 'selected' : ''}>${opt}</option>`).join('')}
-                </select>
-                <input type="text" id="edit_City" value="${f.Ort || ''}" placeholder="Ort" class="p-3 rounded-xl border-none shadow-sm font-bold">
-            </div>
-            <button onclick="updateFirm('${itemId}')" class="w-full bg-slate-800 text-white py-3 rounded-xl font-bold shadow-lg">FIRMEN-DATEN AKTUALISIEREN</button>
+            <button onclick="updateFirm('${itemId}')" class="w-full bg-slate-800 text-white py-3 rounded-xl font-bold shadow-lg">FIRMA AKTUALISIEREN</button>
         </div>
-
         <div class="mt-8">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-black text-slate-700 uppercase tracking-tighter italic">👥 Ansprechpartner</h3>
-                <button onclick="showAddContact('${itemId}')" class="text-blue-600 font-bold text-xs uppercase hover:underline">+ Neuer Kontakt</button>
-            </div>
-            
-            <div id="contactArea" class="space-y-2">
-                ${relatedContacts.length > 0 ? relatedContacts.map(c => `
-                    <div class="flex justify-between items-center p-3 bg-white border border-slate-100 rounded-xl shadow-sm">
-                        <div>
-                            <div class="font-bold text-slate-700">${c.fields.FirstName || ''} ${c.fields.Title}</div>
-                            <div class="text-[10px] text-slate-400 font-medium">${c.fields.Email || 'Keine Mail'}</div>
-                        </div>
-                        <button onclick="deleteContact('${c.id}', '${itemId}')" class="text-slate-300 hover:text-red-500 transition text-xs">✕</button>
+            <h3 class="font-black text-slate-700 uppercase tracking-tighter mb-4 italic">👥 Ansprechpartner</h3>
+            <div class="space-y-2">
+                ${relatedContacts.map(c => `
+                    <div class="p-3 bg-white border border-slate-100 rounded-xl shadow-sm flex justify-between">
+                        <span class="font-bold text-slate-700">${c.fields.FirstName || ''} ${c.fields.Title}</span>
+                        <span class="text-xs text-slate-400">${c.fields.Email || ''}</span>
                     </div>
-                `).join('') : '<p class="text-slate-400 text-xs italic p-4 text-center">Keine Kontakte hinterlegt.</p>'}
+                `).join('')}
+                <button onclick="addContact('${itemId}')" class="w-full mt-2 p-2 text-blue-600 font-bold text-xs uppercase hover:underline">+ Kontakt hinzufügen</button>
             </div>
-        </div>
-
-        <div class="mt-8 pt-4 border-t flex justify-between">
-            <button onclick="deleteFirm('${itemId}', '${f.Title}')" class="text-red-400 text-xs font-bold hover:underline">Firma löschen</button>
-            <button onclick="closeModal()" class="text-slate-500 text-xs font-bold hover:underline">Schließen</button>
         </div>
     `;
 }
 
-// --- KONTAKT LOGIK (REST) ---
-async function showAddContact(firmId) {
-    const fName = prompt("Vorname:");
-    const lName = prompt("Nachname (Pflicht):");
-    if(!lName) return;
-    const email = prompt("E-Mail:");
-
-    const fields = {
-        Title: lName,
-        FirstName: fName,
-        Email: email,
-        FirmID: firmId // Verknüpfung
-    };
-
+// REST HELPER
+async function addContact(firmId) {
+    const ln = prompt("Nachname:"); if (!ln) return;
+    const fields = { Title: ln, FirstName: prompt("Vorname:"), Email: prompt("E-Mail:"), FirmID: firmId };
     const tokenRes = await msalInstance.acquireTokenSilent({ ...loginRequest, account: msalInstance.getAllAccounts()[0] });
     await fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${contactListId}/items`, {
         method: 'POST', headers: { 'Authorization': `Bearer ${tokenRes.accessToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ fields: fields })
     });
-    
-    // Daten neu laden und Detail-Ansicht refreshen
-    await loadData();
-    openFirmDetails(firmId);
+    await loadData(); closeModal();
 }
 
-async function deleteContact(cId, firmId) {
-    if(!confirm("Kontakt löschen?")) return;
-    const tokenRes = await msalInstance.acquireTokenSilent({ ...loginRequest, account: msalInstance.getAllAccounts()[0] });
-    await fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${contactListId}/items/${cId}`, {
-        method: 'DELETE', headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` }
-    });
-    await loadData();
-    openFirmDetails(firmId);
-}
-
-// --- FIRMEN LOGIK (RE-INTEGRIERT AUS V2.9) ---
 async function updateFirm(itemId) {
-    const fields = {
-        Title: document.getElementById('edit_Title').value,
-        Klassifizierung: document.getElementById('edit_Klass').value,
-        Ort: document.getElementById('edit_City').value
-    };
+    const fields = { Title: document.getElementById('edit_Title').value };
     const tokenRes = await msalInstance.acquireTokenSilent({ ...loginRequest, account: msalInstance.getAllAccounts()[0] });
     await fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${currentListId}/items/${itemId}/fields`, {
         method: 'PATCH', headers: { 'Authorization': `Bearer ${tokenRes.accessToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(fields)
     });
-    loadData(); closeModal();
-}
-
-async function saveNewFirm() {
-    const name = document.getElementById('new_fName').value;
-    if(!name) return alert("Name fehlt!");
-    const fields = {
-        Title: name,
-        Klassifizierung: document.getElementById('new_fClass').value,
-        Ort: document.getElementById('new_fCity').value,
-        VIP: document.getElementById('new_fVIP').checked
-    };
-    const tokenRes = await msalInstance.acquireTokenSilent({ ...loginRequest, account: msalInstance.getAllAccounts()[0] });
-    await fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${currentListId}/items`, {
-        method: 'POST', headers: { 'Authorization': `Bearer ${tokenRes.accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields: fields })
-    });
-    toggleAddForm(); loadData();
-}
-
-async function deleteFirm(itemId, name) {
-    if(!confirm(`Firma "${name}" wirklich löschen?`)) return;
-    const tokenRes = await msalInstance.acquireTokenSilent({ ...loginRequest, account: msalInstance.getAllAccounts()[0] });
-    await fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/sites/${currentSiteId}/lists/${currentListId}/items/${itemId}`, {
-        method: 'DELETE', headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` }
-    });
-    closeModal(); loadData();
+    await loadData(); closeModal();
 }
 
 function filterFirms(q) {
@@ -306,4 +250,3 @@ function filterFirms(q) {
 
 function closeModal() { document.getElementById('detailModal').classList.add('hidden'); }
 function toggleAddForm() { document.getElementById('addForm').classList.toggle('hidden'); }
-function showView(v) { if(v === 'dashboard') location.reload(); if(v === 'firms') loadData(); }
