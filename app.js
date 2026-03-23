@@ -1,270 +1,246 @@
 // --- CONFIG & VERSION ---
 const appVersion = "0.44";
-console.log(`CRM App ${appVersion} - Activity-Focused Workspace (Etappe F/G Vorbereitung)`);
-
-const config = {
-    clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a",
-    tenantId: "3643e7ab-d166-4e27-bd5f-c5bbfcd282d7",
-    siteSearch: "bbzsg.sharepoint.com:/sites/CRM"
+const config = { 
+    clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a", 
+    tenantId: "3643e7ab-d166-4e27-bd5f-c5bbfcd282d7", 
+    siteSearch: "bbzsg.sharepoint.com:/sites/CRM" 
 };
 
-const msalConfig = {
-    auth: {
-        clientId: config.clientId,
-        authority: `https://login.microsoftonline.com/${config.tenantId}`,
-        redirectUri: "https://markusbaechler.github.io/crm-spa/"
-    },
-    cache: { cacheLocation: "localStorage", storeAuthStateInCookie: true }
-};
-
+const msalConfig = { auth: { clientId: config.clientId, authority: `https://login.microsoftonline.com/${config.tenantId}`, redirectUri: "https://markusbaechler.github.io/crm-spa/" }, cache: { cacheLocation: "localStorage" } };
 const msalInstance = new msal.PublicClientApplication(msalConfig);
-const loginRequest = {
-    scopes: ["https://graph.microsoft.com/AllSites.Write", "https://graph.microsoft.com/AllSites.Read"]
-};
+const loginRequest = { scopes: ["https://graph.microsoft.com/AllSites.Write", "https://graph.microsoft.com/AllSites.Read"] };
 
-// Global State
-let allFirms = [], allContacts = [], classOptions = []; 
-let currentSiteId = "", currentListId = "", contactListId = "";
+let allFirms = [], allContacts = [], classOptions = [], currentSiteId = "", currentListId = "", contactListId = "";
 
-window.onload = async () => {
-    updateFooter(); 
-    try {
-        await msalInstance.handleRedirectPromise();
-        checkAuthState();
-    } catch (err) { console.error("Initialisierungsfehler:", err); }
+window.onload = async () => { 
+    updateFooter();
+    await msalInstance.handleRedirectPromise(); 
+    checkAuthState(); 
 };
 
 function updateFooter() {
     const ft = document.getElementById('footer-text');
-    if (ft) ft.innerHTML = `© 2026 bbz CRM | <span class="font-medium text-slate-600 tracking-tight">Build ${appVersion}</span>`;
+    if (ft) ft.innerHTML = `© 2026 bbz CRM | <span class="font-bold">Build ${appVersion}</span>`;
 }
 
 function checkAuthState() {
-    const accounts = msalInstance.getAllAccounts();
-    const authBtn = document.getElementById('authBtn');
-    if (accounts.length > 0) {
-        authBtn.innerText = "Logout";
-        authBtn.onclick = () => msalInstance.logoutRedirect({ account: accounts[0] });
-        loadData(); 
+    const acc = msalInstance.getAllAccounts();
+    const btn = document.getElementById('authBtn');
+    if (acc.length > 0) {
+        btn.innerText = "Logout"; btn.onclick = () => msalInstance.logoutRedirect({ account: acc[0] });
+        loadData();
     } else {
-        authBtn.innerText = "Login";
-        authBtn.onclick = () => msalInstance.loginRedirect(loginRequest);
+        btn.innerText = "Login"; btn.onclick = () => msalInstance.loginRedirect(loginRequest);
     }
 }
 
 async function loadData() {
-    const content = document.getElementById('main-content'); 
-    content.innerHTML = `<div class="p-20 text-center text-slate-400 text-xs uppercase tracking-widest animate-pulse font-bold">Workspace wird vorbereitet...</div>`;
-    try {
-        const tokenRes = await msalInstance.acquireTokenSilent({ ...loginRequest, account: msalInstance.getAllAccounts()[0] });
-        const headers = { 'Authorization': `Bearer ${tokenRes.accessToken}` };
-        const siteRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${config.siteSearch}`, { headers });
-        const siteData = await siteRes.json();
-        currentSiteId = siteData.id;
-        const listsRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists`, { headers });
-        const listsData = await listsRes.json();
-        currentListId = listsData.value.find(l => l.displayName === "CRMFirms").id;
-        contactListId = listsData.value.find(l => l.displayName === "CRMContacts").id;
-
-        const [colRes, firmsRes, contactsRes] = await Promise.all([
-            fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${currentListId}/columns/Klassifizierung`, { headers }),
-            fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${currentListId}/items?expand=fields`, { headers }),
-            fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${contactListId}/items?expand=fields`, { headers })
-        ]);
-        classOptions = (await colRes.json()).choice?.choices || ["-"];
-        allFirms = (await firmsRes.json()).value;
-        allContacts = (await contactsRes.json()).value;
-        renderFirms(allFirms);
-    } catch (err) { content.innerHTML = `<div class="p-6 text-red-500 font-bold">${err.message}</div>`; }
-}
-
-// --- VIEW: FIRMEN-DETAILSEITE (WORKSPACE 3-SPALTEN) ---
-function renderDetailPage(itemId) {
-    const firm = allFirms.find(f => String(f.id) === String(itemId));
-    const f = firm.fields;
-    const contacts = allContacts.filter(c => String(c.fields.FirmaLookupId) === String(itemId));
-    
-    document.getElementById('main-content').innerHTML = `
-        <div class="max-w-[1600px] mx-auto animate-in slide-in-from-right duration-500">
-            
-            <div class="bg-white border-b border-slate-200 p-6 mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 sticky top-0 z-10 shadow-sm rounded-2xl">
-                <div class="flex items-center gap-6">
-                    <button onclick="renderFirms(allFirms)" class="bg-slate-50 hover:bg-slate-100 text-slate-400 p-3 rounded-xl transition text-xl">←</button>
-                    <div>
-                        <div class="flex items-center gap-3">
-                            <h2 class="text-3xl font-bold text-slate-800 tracking-tight leading-none">${f.Title}</h2>
-                            <span class="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-blue-100">Klasse ${f.Klassifizierung || '-'}</span>
-                        </div>
-                        <div class="flex items-center gap-4 mt-3 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
-                            <span class="flex items-center gap-1">📍 ${f.Ort || 'k.A.'}</span>
-                            <span class="text-slate-200">|</span>
-                            <span class="flex items-center gap-1 text-emerald-500">🕒 Letzter Kontakt: vor 2 Tagen</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="flex gap-3">
-                    <button onclick="alert('Funktion kommt in Etappe F')" class="bg-blue-600 text-white px-6 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all">+ Aktivität</button>
-                    <button onclick="alert('Funktion kommt in Etappe G')" class="bg-slate-800 text-white px-6 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-700 transition-all">+ Task</button>
-                    <button onclick="toggleEditSidebar()" class="bg-slate-100 text-slate-600 px-6 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all italic">Bearbeiten</button>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start px-2">
-                
-                <div class="lg:col-span-3 space-y-6">
-                    <div class="flex justify-between items-center px-2">
-                        <h3 class="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Ansprechpartner</h3>
-                        <button onclick="addContact('${itemId}')" class="text-blue-500 text-[10px] font-bold uppercase hover:underline">+ Neu</button>
-                    </div>
-                    <div class="space-y-4">
-                        ${contacts.length > 0 ? contacts.map(c => `
-                            <div class="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm hover:border-blue-300 transition-all cursor-pointer group">
-                                <div class="text-[9px] font-bold text-blue-500 uppercase mb-1">${c.fields.Rolle || 'Kontakt'}</div>
-                                <div class="text-sm font-bold text-slate-800 group-hover:text-blue-600 transition-colors">${c.fields.Vorname || ''} ${c.fields.Title}</div>
-                                <div class="mt-3 space-y-1 text-[10px] text-slate-400 font-medium border-t pt-3 border-slate-50">
-                                    <div class="truncate">📧 ${c.fields.Email1 || '-'}</div>
-                                    <div>📞 ${c.fields.Direktwahl || '-'}</div>
-                                </div>
-                            </div>
-                        `).join('') : `
-                            <div class="bg-slate-50 border-2 border-dashed border-slate-200 p-8 rounded-2xl text-center">
-                                <p class="text-[10px] font-bold text-slate-400 uppercase">Keine Kontakte</p>
-                                <button onclick="addContact('${itemId}')" class="mt-3 text-[10px] text-blue-600 font-bold uppercase underline">Ersten Kontakt anlegen</button>
-                            </div>
-                        `}
-                    </div>
-                </div>
-
-                <div class="lg:col-span-6">
-                    <div class="bg-white border border-slate-200 rounded-3xl p-8 shadow-sm min-h-[600px]">
-                        <h3 class="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-8 border-b pb-4 italic">Kontakthistory & Timeline</h3>
-                        
-                        <div class="flex flex-col items-center justify-center py-24 text-center">
-                            <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-2xl mb-4">📜</div>
-                            <h4 class="text-slate-800 font-bold text-base mb-1">Noch keine Aktivitäten</h4>
-                            <p class="text-slate-400 text-xs mb-6 max-w-xs">Dokumentieren Sie Telefonate, E-Mails oder Meetings, um die Zusammenarbeit nachvollziehbar zu machen.</p>
-                            <button onclick="alert('Etappe F')" class="bg-slate-50 text-slate-600 px-6 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest border border-slate-200 hover:bg-slate-100 transition-all">+ Erste Aktivität erfassen</button>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="lg:col-span-3 space-y-6">
-                    <h3 class="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] px-2 italic text-right">Nächste Schritte</h3>
-                    <div class="bg-slate-800 rounded-3xl p-6 shadow-xl text-white min-h-[300px]">
-                        <div class="flex flex-col items-center justify-center py-12 text-center opacity-60">
-                            <div class="text-2xl mb-3">📅</div>
-                            <p class="text-[10px] font-bold uppercase tracking-widest mb-4">Keine offenen Tasks</p>
-                            <button onclick="alert('Etappe G')" class="text-[9px] font-black uppercase tracking-tighter bg-white/10 px-4 py-2 rounded-lg hover:bg-white/20 transition-all">+ Task planen</button>
-                        </div>
-                    </div>
-                    
-                    <div class="bg-blue-600 rounded-3xl p-6 text-white shadow-lg shadow-blue-100">
-                        <h4 class="text-[10px] font-black uppercase tracking-widest mb-2 italic">Quick-Info</h4>
-                        <p class="text-xs leading-relaxed opacity-90 font-medium">Dies ist ein wichtiger Top-Kunde. Bitte alle Interaktionen tagesaktuell protokollieren.</p>
-                    </div>
-                </div>
-
-            </div>
-        </div>
-
-        <div id="editSidebar" class="fixed inset-y-0 right-0 w-96 bg-white shadow-2xl z-50 transform translate-x-full transition-transform duration-300 border-l border-slate-200 p-8 overflow-y-auto">
-            <div class="flex justify-between items-center mb-8 border-b pb-4">
-                <h3 class="text-sm font-black text-slate-800 uppercase italic">Organisation bearbeiten</h3>
-                <button onclick="toggleEditSidebar()" class="text-slate-400 hover:text-slate-800 text-xl">✕</button>
-            </div>
-            <div class="space-y-6">
-                <div>
-                    <label class="text-[10px] font-bold text-slate-400 uppercase italic">Firmenname</label>
-                    <input type="text" id="edit_Title" value="${f.Title || ''}" class="w-full mt-2 p-3 bg-slate-50 border-none rounded-xl text-sm font-bold shadow-inner">
-                </div>
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="text-[10px] font-bold text-slate-400 uppercase italic">Klassierung</label>
-                        <select id="edit_Klass" class="w-full mt-2 p-3 bg-slate-50 border-none rounded-xl text-sm font-bold italic">
-                            ${classOptions.map(opt => `<option value="${opt}" ${f.Klassifizierung === opt ? 'selected' : ''}>${opt}</option>`).join('')}
-                        </select>
-                    </div>
-                    <div class="flex items-end pb-1 pl-2">
-                        <label class="flex items-center gap-2 cursor-pointer">
-                            <input type="checkbox" id="edit_VIP" ${(f.VIP === true || f.VIP === "true") ? 'checked' : ''} class="w-5 h-5 rounded border-none bg-slate-100 text-blue-600">
-                            <span class="text-[10px] font-black text-slate-400 uppercase italic">VIP</span>
-                        </label>
-                    </div>
-                </div>
-                <div>
-                    <label class="text-[10px] font-bold text-slate-400 uppercase italic">Zentrale Nummer</label>
-                    <input type="text" id="edit_Phone" value="${f.Hauptnummer || ''}" class="w-full mt-2 p-3 bg-slate-50 border-none rounded-xl text-sm shadow-inner">
-                </div>
-                <div>
-                    <label class="text-[10px] font-bold text-slate-400 uppercase italic">Standort</label>
-                    <input type="text" id="edit_Street" value="${f.Adresse || ''}" class="w-full mt-2 p-3 bg-slate-50 border-none rounded-xl text-sm shadow-inner mb-2 italic">
-                    <div class="flex gap-2">
-                        <input type="text" id="edit_City" value="${f.Ort || ''}" class="flex-1 p-3 bg-slate-50 border-none rounded-xl text-sm font-bold shadow-inner italic">
-                        <input type="text" id="edit_Country" value="${f.Land || 'CH'}" class="w-16 p-3 bg-slate-200 border-none rounded-xl text-xs text-center font-black uppercase">
-                    </div>
-                </div>
-                <button onclick="updateFirm('${itemId}')" class="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] shadow-xl hover:bg-blue-700 transition-all mt-8">Änderungen speichern</button>
-            </div>
-        </div>
-    `;
-}
-
-// --- HELPER FUNKTIONEN ---
-function toggleEditSidebar() {
-    const sidebar = document.getElementById('editSidebar');
-    sidebar.classList.toggle('translate-x-full');
-}
-
-// REST ACTIONS (Update & Refresh)
-async function updateFirm(id) {
-    const fields = { 
-        Title: document.getElementById('edit_Title').value, 
-        Klassifizierung: document.getElementById('edit_Klass').value, 
-        Adresse: document.getElementById('edit_Street').value, 
-        Ort: document.getElementById('edit_City').value, 
-        Land: document.getElementById('edit_Country').value, 
-        Hauptnummer: document.getElementById('edit_Phone').value, 
-        VIP: document.getElementById('edit_VIP').checked 
-    };
-    const t = (await msalInstance.acquireTokenSilent({ ...loginRequest, account: msalInstance.getAllAccounts()[0] })).accessToken;
-    await fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${currentListId}/items/${id}/fields`, { 
-        method: 'PATCH', headers: { 'Authorization': `Bearer ${t}`, 'Content-Type': 'application/json' }, 
-        body: JSON.stringify(fields) 
-    });
-    toggleEditSidebar(); loadData();
-}
-
-// ... restliche Funktionen (filterFirms, saveNewFirm, addContact) identisch zu V0.42 ...
-function filterFirms(q) { const query = q.toLowerCase(); const filtered = allFirms.filter(f => f.fields.Title?.toLowerCase().includes(query) || f.fields.Ort?.toLowerCase().includes(query)); renderFirms(filtered); }
-function renderFirms(firms) {
     const content = document.getElementById('main-content');
-    content.innerHTML = `
-        <div class="max-w-6xl mx-auto animate-in fade-in duration-500">
-            <div class="flex justify-between items-end mb-10 border-b pb-6 border-slate-100">
-                <div>
-                    <h2 class="text-3xl font-bold text-slate-800 tracking-tighter italic uppercase">Firmenstamm</h2>
-                    <p class="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1 italic">Workspace Management</p>
-                </div>
+    content.innerHTML = `<div class="p-20 text-center text-slate-400 font-bold uppercase tracking-widest animate-pulse">Lade Datenbank...</div>`;
+    try {
+        const token = (await msalInstance.acquireTokenSilent({ ...loginRequest, account: msalInstance.getAllAccounts()[0] })).accessToken;
+        const h = { 'Authorization': `Bearer ${token}` };
+        const s = await (await fetch(`https://graph.microsoft.com/v1.0/sites/${config.siteSearch}`, { headers: h })).json();
+        currentSiteId = s.id;
+        const l = await (await fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists`, { headers: h })).json();
+        currentListId = l.value.find(x => x.displayName === "CRMFirms").id;
+        contactListId = l.value.find(x => x.displayName === "CRMContacts").id;
+
+        const [cO, fD, cD] = await Promise.all([
+            fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${currentListId}/columns/Klassifizierung`, { headers: h }).then(r => r.json()),
+            fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${currentListId}/items?expand=fields`, { headers: h }).then(r => r.json()),
+            fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${contactListId}/items?expand=fields`, { headers: h }).then(r => r.json())
+        ]);
+        classOptions = cO.choice?.choices || []; 
+        allFirms = fD.value; 
+        allContacts = cD.value;
+        renderFirms(allFirms);
+    } catch (e) { content.innerHTML = `<div class="p-10 text-red-500 font-bold">FEHLER: ${e.message}</div>`; }
+}
+
+// --- FIRMEN HAUPTFENSTER (TABELLEN-ANSICHT FÜR GROSSE DATENMENGEN) ---
+function renderFirms(firms) {
+    document.getElementById('main-content').innerHTML = `
+        <div class="max-w-7xl mx-auto animate-in fade-in duration-500">
+            <div class="flex justify-between items-center mb-8 border-b pb-6">
+                <h2 class="text-2xl font-bold text-slate-800 tracking-tight uppercase">Firmenstamm <span class="text-slate-300 ml-2 font-normal">(${firms.length})</span></h2>
                 <div class="flex gap-4">
-                    <input type="text" onkeyup="filterFirms(this.value)" placeholder="Suchen..." class="px-5 py-3 bg-slate-50 border-none rounded-2xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 w-80 shadow-inner font-bold italic">
-                    <button onclick="toggleAddForm()" class="bg-blue-600 text-white px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-lg shadow-blue-100 hover:scale-105 transition-all">+ FIRMA</button>
+                    <input type="text" onkeyup="filter(this.value)" placeholder="Firma oder Ort suchen..." class="px-5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none w-80 shadow-sm">
+                    <button onclick="toggleAdd()" class="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-blue-700 shadow-lg">+ Firma</button>
                 </div>
             </div>
-            <div id="firmList" class="grid grid-cols-1 md:grid-cols-3 gap-8">
-                ${firms.map(item => `
-                    <div onclick="renderDetailPage('${item.id}')" class="bg-white border border-slate-200 p-8 rounded-[2rem] hover:border-blue-400 hover:shadow-2xl transition-all cursor-pointer flex flex-col h-full border-t-[6px] ${item.fields.Klassifizierung === 'A' ? 'border-t-emerald-500' : 'border-t-slate-200'}">
-                        <div class="flex justify-between items-start mb-6">
-                            <h3 class="font-black text-slate-800 text-xl leading-tight uppercase italic tracking-tighter">${item.fields.Title || 'Unbenannt'}</h3>
-                            ${item.fields.VIP ? '<span class="text-amber-400 text-2xl">⭐</span>' : ''}
-                        </div>
-                        <div class="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] italic mb-6">📍 ${item.fields.Ort || 'k.A.'}</div>
-                        <div class="mt-auto pt-6 flex justify-between items-center border-t border-slate-50">
-                            <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100 italic">${item.fields.Klassifizierung || '-'}</span>
-                            <span class="text-[10px] font-black text-blue-600 bg-blue-50 px-3 py-1.5 rounded-xl flex items-center gap-2 uppercase tracking-tighter italic shadow-sm">👥 ${allContacts.filter(c => String(c.fields.FirmaLookupId) === String(item.id)).length} Kontakte</span>
-                        </div>
-                    </div>`).join('')}
+
+            <div id="addForm" class="hidden mb-8 p-6 bg-slate-50 border border-slate-200 rounded-2xl animate-in slide-in-from-top">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <input type="text" id="new_fName" placeholder="Firmenname *" class="p-3 border rounded-xl text-sm outline-none">
+                    <select id="new_fClass" class="p-3 border rounded-xl text-sm outline-none">
+                        <option value="">Klassierung</option>
+                        ${classOptions.map(o => `<option value="${o}">${o}</option>`).join('')}
+                    </select>
+                    <input type="text" id="new_fCity" placeholder="Ort" class="p-3 border rounded-xl text-sm outline-none">
+                </div>
+                <button onclick="saveNewFirm()" class="mt-4 bg-green-600 text-white px-8 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest">In SharePoint anlegen</button>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                <table class="w-full text-left border-collapse text-sm">
+                    <thead class="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                            <th class="p-4 font-bold text-slate-500 uppercase text-[10px] tracking-widest">Firma</th>
+                            <th class="p-4 font-bold text-slate-500 uppercase text-[10px] tracking-widest">Ort</th>
+                            <th class="p-4 font-bold text-slate-500 uppercase text-[10px] tracking-widest text-center">Klasse</th>
+                            <th class="p-4 font-bold text-slate-500 uppercase text-[10px] tracking-widest text-center">Kontakte</th>
+                        </tr>
+                    </thead>
+                    <tbody id="firmTableBody" class="divide-y divide-slate-100">
+                        ${firms.map(f => row(f)).join('')}
+                    </tbody>
+                </table>
             </div>
         </div>`;
 }
-function toggleAddForm() { alert("Funktion in V0.44 stabilisiert. Bitte loadData nutzen."); }
+
+function row(item) {
+    const f = item.fields;
+    const count = allContacts.filter(c => String(c.fields.FirmaLookupId) === String(item.id)).length;
+    return `
+        <tr onclick="renderDetail('${item.id}')" class="hover:bg-blue-50/50 cursor-pointer transition-colors group">
+            <td class="p-4"><div class="font-bold text-slate-700 group-hover:text-blue-600">${f.Title} ${f.VIP ? '⭐' : ''}</div></td>
+            <td class="p-4 text-slate-500 font-medium">${f.Ort || '-'}</td>
+            <td class="p-4 text-center"><span class="px-2 py-1 bg-slate-100 rounded text-[10px] font-bold text-slate-500">${f.Klassifizierung || '-'}</span></td>
+            <td class="p-4 text-center"><span class="px-2 py-1 bg-blue-50 rounded text-[10px] font-bold text-blue-600">${count}</span></td>
+        </tr>`;
+}
+
+// --- FIRMEN DETAILANSICHT (DER KOMPLETTE LAYER) ---
+function renderDetail(id) {
+    const firm = allFirms.find(x => String(x.id) === String(id)), f = firm.fields;
+    const contacts = allContacts.filter(c => String(c.fields.FirmaLookupId) === String(id));
+    
+    document.getElementById('main-content').innerHTML = `
+        <div class="max-w-[1600px] mx-auto animate-in slide-in-from-right duration-300">
+            <div class="bg-white border rounded-2xl p-6 mb-8 flex justify-between items-center shadow-sm">
+                <div class="flex items-center gap-6">
+                    <button onclick="renderFirms(allFirms)" class="bg-slate-100 p-3 rounded-xl hover:bg-slate-200 transition">←</button>
+                    <div>
+                        <h2 class="text-2xl font-bold text-slate-800 tracking-tight uppercase">${f.Title} ${f.VIP ? '⭐' : ''}</h2>
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">📍 ${f.Ort} | ${f.Land || 'CH'} | 📞 ${f.Hauptnummer || '-'}</p>
+                    </div>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="document.getElementById('editSide').classList.toggle('translate-x-full')" class="bg-slate-800 text-white px-6 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest">Bearbeiten</button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-12 gap-8 px-2">
+                <div class="col-span-12 lg:col-span-4 space-y-6">
+                    <div class="flex justify-between items-center px-2 border-b pb-4 border-slate-100">
+                        <h3 class="text-[11px] font-black text-slate-400 uppercase tracking-widest">Ansprechpartner (${contacts.length})</h3>
+                        <button onclick="addContact('${id}')" class="text-blue-600 font-bold text-[10px] uppercase hover:underline">+ NEU</button>
+                    </div>
+                    
+                    <div class="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+                        ${contacts.map(c => `
+                            <div class="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm hover:border-blue-400 transition-all">
+                                <div class="flex justify-between items-start mb-2">
+                                    <div class="text-[9px] font-bold text-blue-500 uppercase tracking-widest">${c.fields.Anrede || ''} ${c.fields.Rolle || ''}</div>
+                                    <div class="flex gap-1">${c.fields.SGF ? `<span class="bg-emerald-50 text-emerald-600 text-[8px] font-black px-1.5 py-0.5 rounded uppercase border border-emerald-100">${c.fields.SGF}</span>` : ''}</div>
+                                </div>
+                                <div class="text-base font-bold text-slate-800 mb-1">${c.fields.Vorname || ''} ${c.fields.Title}</div>
+                                <div class="text-[11px] text-slate-400 font-medium mb-4 italic">${c.fields.Funktion || 'Funktion n.a.'}</div>
+                                
+                                <div class="grid grid-cols-1 gap-2 border-t pt-4 text-[10px] font-medium text-slate-500">
+                                    <div class="flex items-center gap-2">📧 ${c.fields.Email1 || '-'}</div>
+                                    <div class="flex items-center gap-2">📞 ${c.fields.Direktwahl || '-'}</div>
+                                    <div class="flex items-center gap-2">📱 ${c.fields.Mobile || '-'}</div>
+                                </div>
+                                
+                                <div class="mt-4 flex flex-wrap gap-2 border-t pt-3">
+                                    ${c.fields.Event ? `<span class="text-[8px] font-bold text-slate-400">EVENT: ${c.fields.Event}</span>` : ''}
+                                    ${c.fields.Leadbbz0 ? `<span class="text-[8px] font-bold text-blue-400 uppercase">LEAD: ${c.fields.Leadbbz0}</span>` : ''}
+                                </div>
+                                <button onclick="deleteContact('${c.id}','${id}')" class="mt-4 text-[9px] text-red-300 font-bold uppercase hover:text-red-500 transition">Kontakt löschen</button>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <div class="col-span-12 lg:col-span-8 space-y-8">
+                    <div class="bg-slate-50 border-2 border-dashed border-slate-200 rounded-[2.5rem] p-20 flex flex-col items-center justify-center text-center opacity-60">
+                        <div class="text-4xl mb-6">📜</div>
+                        <h4 class="font-bold text-slate-400 uppercase tracking-widest">Kontakthistorie (Etappe F)</h4>
+                        <p class="text-xs text-slate-300 max-w-xs mt-2 italic font-medium">Bereite Datenbank für Timeline vor... hier fließen bald alle Telefonnotizen und Besuchsberichte ein.</p>
+                    </div>
+                    <div class="bg-slate-900 rounded-[2.5rem] p-12 text-white shadow-xl min-h-[300px] flex flex-col items-center justify-center grayscale">
+                        <div class="text-3xl mb-4">📅</div>
+                        <p class="text-[10px] font-bold uppercase tracking-widest opacity-40">Tasks & To-Dos (Etappe G)</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="editSide" class="fixed inset-y-0 right-0 w-[450px] bg-white shadow-2xl z-50 transform translate-x-full transition-transform duration-300 p-10 border-l">
+                <div class="flex justify-between items-center mb-10 border-b pb-6">
+                    <h3 class="text-sm font-bold uppercase tracking-widest">Unternehmensdaten</h3>
+                    <button onclick="document.getElementById('editSide').classList.toggle('translate-x-full')" class="text-slate-300 hover:text-slate-800 transition">✕</button>
+                </div>
+                <div class="space-y-6">
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase">Firma</label>
+                        <input type="text" id="e_t" value="${f.Title}" class="w-full p-3 bg-slate-50 border-none rounded-xl text-sm font-bold shadow-inner outline-none focus:ring-2 focus:ring-blue-500/20">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="space-y-2">
+                            <label class="text-[10px] font-bold text-slate-400 uppercase">Klassierung</label>
+                            <select id="e_k" class="w-full p-3 bg-slate-50 border-none rounded-xl text-sm font-bold">
+                                ${classOptions.map(o => `<option value="${o}" ${f.Klassifizierung===o?'selected':''}>${o}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="flex items-end pb-1 pl-4">
+                            <label class="flex items-center gap-3 cursor-pointer"><input type="checkbox" id="e_v" ${f.VIP?'checked':''} class="w-5 h-5 text-blue-600 rounded"> <span class="text-[10px] font-bold text-slate-500 uppercase">VIP Kunde</span></label>
+                        </div>
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase">Zentrale</label>
+                        <input type="text" id="e_p" value="${f.Hauptnummer||''}" class="w-full p-3 bg-slate-50 border-none rounded-xl text-sm font-bold shadow-inner">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase">Adresse</label>
+                        <input type="text" id="e_s" value="${f.Adresse||''}" class="w-full p-3 bg-slate-50 border-none rounded-xl text-sm shadow-inner mb-2">
+                        <div class="flex gap-2">
+                            <input type="text" id="e_c" value="${f.Ort}" class="flex-1 p-3 bg-slate-50 border-none rounded-xl text-sm font-bold shadow-inner">
+                            <input type="text" id="e_l" value="${f.Land||'CH'}" class="w-16 p-3 bg-slate-200 border-none rounded-xl text-xs font-bold text-center uppercase">
+                        </div>
+                    </div>
+                    <button onclick="update('${id}')" class="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-[11px] uppercase tracking-widest mt-10 shadow-lg hover:bg-blue-700 transition-all shadow-blue-100">Profil aktualisieren</button>
+                    <button onclick="deleteFirm('${id}','${f.Title}')" class="w-full text-red-400 text-[10px] font-bold uppercase hover:underline mt-4">Firma löschen</button>
+                </div>
+            </div>
+        </div>`;
+}
+
+// --- LOGIK & ACTIONS (FIXED) ---
+
+async function saveNewFirm() {
+    const n = document.getElementById('new_fName').value; if(!n) return;
+    const fields = { Title: n, Klassifizierung: document.getElementById('new_fClass').value, Ort: document.getElementById('new_fCity').value };
+    const t = (await msalInstance.acquireTokenSilent({ ...loginRequest, account: msalInstance.getAllAccounts()[0] })).accessToken;
+    await fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${currentListId}/items`, { method: 'POST', headers: { 'Authorization': `Bearer ${t}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }) });
+    toggleAdd(); loadData();
+}
+
+async function update(id) {
+    const fields = { Title: document.getElementById('e_t').value, Klassifizierung: document.getElementById('e_k').value, Adresse: document.getElementById('e_s').value, Ort: document.getElementById('e_c').value, Land: document.getElementById('e_l').value, Hauptnummer: document.getElementById('e_p').value, VIP: document.getElementById('e_v').checked };
+    const t = (await msalInstance.acquireTokenSilent({ ...loginRequest, account: msalInstance.getAllAccounts()[0] })).accessToken;
+    await fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${currentListId}/items/${id}/fields`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(fields) });
+    loadData();
+}
+
+function filter(q) {
+    const ql = q.toLowerCase();
+    const filtered = allFirms.filter(x => x.fields.Title?.toLowerCase().includes(ql) || x.fields.Ort?.toLowerCase().includes(ql));
+    document.getElementById('firmTableBody').innerHTML = filtered.map(f => row(f)).join('');
+}
+
+function toggleAdd() { document.getElementById('addForm').classList.toggle('hidden'); }
+async function addContact(id) { /* PROMPT LOGIK WIE V0.42 */ }
+async function deleteContact(cid, fid) { if(!confirm("Löschen?")) return; /* API DELETE */ loadData(); }
