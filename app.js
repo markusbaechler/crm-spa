@@ -1,5 +1,5 @@
-// VERSIONSMARKER: V2.0 - MODERNE ANSICHT MIT SUCHE
-console.log("CRM App V2.0 wird geladen...");
+// VERSIONSMARKER: V2.1 - EINHEITLICHE KLASSIFIZIERUNG & ADRESSEN
+console.log("CRM App V2.1 wird geladen...");
 
 const config = {
     clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a",
@@ -35,7 +35,6 @@ function checkAuthState() {
         authBtn.innerText = "Logout";
         authBtn.onclick = () => msalInstance.logoutRedirect({ account: accounts[0] });
         authBtn.classList.replace('bg-blue-600', 'bg-red-600');
-        // Automatisches Laden beim Start, wenn eingeloggt
         loadFirms();
     } else {
         authBtn.innerText = "Login";
@@ -46,10 +45,9 @@ function checkAuthState() {
 async function loadFirms() {
     const content = document.getElementById('app-content');
     const accounts = msalInstance.getAllAccounts();
-
     if (accounts.length === 0) return;
 
-    content.innerHTML = '<p class="p-10 text-center animate-pulse text-blue-600 font-bold">Synchronisiere mit SharePoint...</p>';
+    content.innerHTML = '<p class="p-10 text-center animate-pulse text-blue-600 font-bold">Synchronisiere Daten...</p>';
 
     try {
         const tokenRes = await msalInstance.acquireTokenSilent({ ...loginRequest, account: accounts[0] })
@@ -86,7 +84,7 @@ function renderUI(siteId, listId) {
             <div class="flex justify-between items-center mb-8">
                 <div>
                     <h2 class="text-3xl font-black text-slate-800 tracking-tighter italic">🏢 FIRMEN</h2>
-                    <p class="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">bbz CRM System</p>
+                    <p class="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1 italic">${allFirms.length} Einträge gefunden</p>
                 </div>
                 <button onclick="toggleForm()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-full font-bold shadow-lg transition-all transform hover:scale-105">
                     + NEUE FIRMA
@@ -94,18 +92,26 @@ function renderUI(siteId, listId) {
             </div>
 
             <div id="addForm" class="hidden mb-8 p-6 bg-slate-50 rounded-2xl border-2 border-white shadow-inner">
-                <input type="text" id="fName" placeholder="Name der Firma" class="w-full p-3 mb-3 rounded-xl border-none shadow-sm focus:ring-2 focus:ring-blue-500 text-lg">
-                <div class="flex gap-2">
-                    <select id="fClass" class="flex-1 p-3 rounded-xl border-none shadow-sm font-bold text-slate-600">
-                        <option value="A">Klasse A</option>
-                        <option value="B">Klasse B</option>
-                        <option value="C">Klasse C</option>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                    <input type="text" id="fName" placeholder="Firmenname" class="p-3 rounded-xl border-none shadow-sm focus:ring-2 focus:ring-blue-500">
+                    <select id="fClass" class="p-3 rounded-xl border-none shadow-sm font-bold text-slate-600">
+                        <option value="A">A-Kunde</option>
+                        <option value="B">B-Kunde</option>
+                        <option value="C">C-Kunde</option>
                     </select>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <input type="text" id="fStreet" placeholder="Strasse" class="p-3 rounded-xl border-none shadow-sm">
+                    <input type="text" id="fZip" placeholder="PLZ" class="p-3 rounded-xl border-none shadow-sm">
+                    <input type="text" id="fCity" placeholder="Ort" class="p-3 rounded-xl border-none shadow-sm">
+                </div>
+                <div class="mt-4 flex gap-2">
                     <button onclick="saveFirm('${siteId}', '${listId}')" class="bg-green-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-green-700">SPEICHERN</button>
+                    <button onclick="toggleForm()" class="text-slate-400 px-4">Abbrechen</button>
                 </div>
             </div>
 
-            <input type="text" onkeyup="filterFirms(this.value)" placeholder="Suchen..." 
+            <input type="text" onkeyup="filterFirms(this.value)" placeholder="Suchen nach Name oder Ort..." 
                 class="w-full p-4 mb-6 rounded-2xl bg-slate-50 border-none shadow-inner focus:ring-2 focus:ring-blue-500 text-lg">
 
             <div id="firmList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -116,18 +122,44 @@ function renderUI(siteId, listId) {
 }
 
 function generateFirmCards(firms) {
-    return firms.map(item => `
-        <div class="p-5 bg-slate-50 border border-white rounded-3xl shadow-sm hover:shadow-md transition-all group">
-            <div class="flex justify-between items-start">
-                <span class="font-bold text-slate-700 text-lg group-hover:text-blue-600 transition-colors">${item.fields.Title || 'Unbenannt'}</span>
-                <span class="px-2 py-1 bg-white rounded-lg text-[10px] font-black shadow-sm text-blue-500 italic uppercase">${item.fields.Klassifizierung || '-'}</span>
+    return firms.map(item => {
+        const f = item.fields;
+        const rawClass = f.Klassifizierung || '-';
+        
+        // MAPPING: Macht aus "A" -> "A-Kunde"
+        let displayClass = rawClass;
+        if (rawClass === 'A') displayClass = 'A-Kunde';
+        if (rawClass === 'B') displayClass = 'B-Kunde';
+        if (rawClass === 'C') displayClass = 'C-Kunde';
+
+        let colorStyle = "text-slate-400 bg-slate-100";
+        if (displayClass.startsWith('A')) colorStyle = "text-emerald-600 bg-emerald-50 border border-emerald-100";
+        if (displayClass.startsWith('B')) colorStyle = "text-blue-600 bg-blue-50 border border-blue-100";
+        if (displayClass.startsWith('C')) colorStyle = "text-orange-600 bg-orange-50 border border-orange-100";
+
+        return `
+            <div class="p-5 bg-slate-50 border border-white rounded-3xl shadow-sm hover:shadow-md transition-all group">
+                <div class="flex justify-between items-start mb-2">
+                    <span class="font-bold text-slate-700 text-lg group-hover:text-blue-600 transition-colors">${f.Title || 'Unbenannt'}</span>
+                    <span class="px-2 py-1 rounded-lg text-[10px] font-black shadow-sm italic uppercase ${colorStyle}">
+                        ${displayClass}
+                    </span>
+                </div>
+                <div class="text-[11px] text-slate-400 font-medium">
+                    ${f.Adresse ? f.Adresse + '<br>' : ''}
+                    ${f.PLZ || ''} ${f.Ort || ''}
+                </div>
             </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 function filterFirms(query) {
-    const filtered = allFirms.filter(f => f.fields.Title?.toLowerCase().includes(query.toLowerCase()));
+    const q = query.toLowerCase();
+    const filtered = allFirms.filter(f => 
+        f.fields.Title?.toLowerCase().includes(q) || 
+        f.fields.Ort?.toLowerCase().includes(q)
+    );
     document.getElementById('firmList').innerHTML = generateFirmCards(filtered);
 }
 
@@ -136,16 +168,28 @@ function toggleForm() { document.getElementById('addForm').classList.toggle('hid
 async function saveFirm(siteId, listId) {
     const name = document.getElementById('fName').value;
     const klasse = document.getElementById('fClass').value;
-    if(!name) return;
+    const street = document.getElementById('fStreet').value;
+    const zip = document.getElementById('fZip').value;
+    const city = document.getElementById('fCity').value;
+
+    if(!name) return alert("Name fehlt!");
 
     const tokenRes = await msalInstance.acquireTokenSilent({ ...loginRequest, account: msalInstance.getAllAccounts()[0] });
-    const response = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items`, {
+    await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${tokenRes.accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields: { Title: name, Klassifizierung: klasse } })
+        body: JSON.stringify({ fields: { 
+            Title: name, 
+            Klassifizierung: klasse,
+            Adresse: street,
+            PLZ: zip,
+            Ort: city,
+            Land: "Schweiz" 
+        } })
     });
 
-    if(response.ok) { toggleForm(); loadFirms(); }
+    toggleForm(); 
+    loadFirms(); 
 }
 
 function showView(v) { if(v === 'dashboard') location.reload(); if(v === 'firms') loadFirms(); }
