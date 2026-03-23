@@ -132,23 +132,9 @@
 
     filters: {
       route: CONFIG.defaults.route,
-
-      firms: {
-        search: "",
-        klassifizierung: "",
-        vip: ""
-      },
-
-      contacts: {
-        search: "",
-        archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden
-      },
-
-      planning: {
-        search: "",
-        onlyOpen: CONFIG.defaults.planningShowOnlyOpen,
-        onlyOverdue: false
-      }
+      firms: { search: "", klassifizierung: "", vip: "" },
+      contacts: { search: "", archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden },
+      planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, onlyOverdue: false }
     },
 
     selection: {
@@ -185,12 +171,8 @@
       if (Array.isArray(value)) return value;
       if (value === null || value === undefined || value === "") return [];
       if (typeof value === "string") {
-        if (value.includes(";#")) {
-          return value.split(";#").map(v => v.trim()).filter(Boolean);
-        }
-        if (value.includes(",")) {
-          return value.split(",").map(v => v.trim()).filter(Boolean);
-        }
+        if (value.includes(";#")) return value.split(";#").map(v => v.trim()).filter(Boolean);
+        if (value.includes(",")) return value.split(",").map(v => v.trim()).filter(Boolean);
         return [value.trim()].filter(Boolean);
       }
       return [value];
@@ -309,7 +291,6 @@
       if (!CONFIG.graph.redirectUri) missing.push("redirectUri");
       if (!CONFIG.sharePoint.siteHostname) missing.push("sharePoint.siteHostname");
       if (!CONFIG.sharePoint.sitePath) missing.push("sharePoint.sitePath");
-
       if (missing.length) {
         throw new Error(`Konfiguration unvollständig: ${missing.join(", ")}`);
       }
@@ -334,81 +315,43 @@
       this.els.btnRefresh = document.getElementById("btn-refresh");
       this.els.navButtons = [...document.querySelectorAll(".bbz-nav-btn")];
 
-      this.els.btnLogin.addEventListener("click", () => controller.handleLogin());
-      this.els.btnRefresh.addEventListener("click", () => controller.handleRefresh());
+      if (this.els.btnLogin) this.els.btnLogin.addEventListener("click", () => controller.handleLogin());
+      if (this.els.btnRefresh) this.els.btnRefresh.addEventListener("click", () => controller.handleRefresh());
 
       this.els.navButtons.forEach(btn => {
-        btn.addEventListener("click", () => {
-          controller.navigate(btn.dataset.route);
-        });
+        btn.addEventListener("click", () => controller.navigate(btn.dataset.route));
       });
 
       document.addEventListener("click", (event) => {
         const openFirm = event.target.closest("[data-action='open-firm']");
-        if (openFirm) {
-          controller.openFirm(openFirm.dataset.id);
-          return;
-        }
+        if (openFirm) return controller.openFirm(openFirm.dataset.id);
 
         const openContact = event.target.closest("[data-action='open-contact']");
-        if (openContact) {
-          controller.openContact(openContact.dataset.id);
-          return;
-        }
+        if (openContact) return controller.openContact(openContact.dataset.id);
 
         const backToFirms = event.target.closest("[data-action='back-to-firms']");
-        if (backToFirms) {
-          controller.navigate("firms");
-          return;
-        }
+        if (backToFirms) return controller.navigate("firms");
 
         const backToContacts = event.target.closest("[data-action='back-to-contacts']");
-        if (backToContacts) {
-          controller.navigate("contacts");
-          return;
-        }
+        if (backToContacts) return controller.navigate("contacts");
       });
 
       document.addEventListener("input", (event) => {
         const el = event.target;
-
-        if (el.matches("[data-filter='firms-search']")) {
-          state.filters.firms.search = el.value;
-          controller.render();
-        }
-        if (el.matches("[data-filter='contacts-search']")) {
-          state.filters.contacts.search = el.value;
-          controller.render();
-        }
-        if (el.matches("[data-filter='planning-search']")) {
-          state.filters.planning.search = el.value;
-          controller.render();
-        }
+        if (el.matches("[data-filter='firms-search']")) state.filters.firms.search = el.value;
+        if (el.matches("[data-filter='contacts-search']")) state.filters.contacts.search = el.value;
+        if (el.matches("[data-filter='planning-search']")) state.filters.planning.search = el.value;
+        controller.render();
       });
 
       document.addEventListener("change", (event) => {
         const el = event.target;
-
-        if (el.matches("[data-filter='firms-klassifizierung']")) {
-          state.filters.firms.klassifizierung = el.value;
-          controller.render();
-        }
-        if (el.matches("[data-filter='firms-vip']")) {
-          state.filters.firms.vip = el.value;
-          controller.render();
-        }
-        if (el.matches("[data-filter='contacts-archiviert']")) {
-          state.filters.contacts.archiviertAusblenden = el.checked;
-          controller.render();
-        }
-        if (el.matches("[data-filter='planning-open']")) {
-          state.filters.planning.onlyOpen = el.checked;
-          controller.render();
-        }
-        if (el.matches("[data-filter='planning-overdue']")) {
-          state.filters.planning.onlyOverdue = el.checked;
-          controller.render();
-        }
+        if (el.matches("[data-filter='firms-klassifizierung']")) state.filters.firms.klassifizierung = el.value;
+        if (el.matches("[data-filter='firms-vip']")) state.filters.firms.vip = el.value;
+        if (el.matches("[data-filter='contacts-archiviert']")) state.filters.contacts.archiviertAusblenden = el.checked;
+        if (el.matches("[data-filter='planning-open']")) state.filters.planning.onlyOpen = el.checked;
+        if (el.matches("[data-filter='planning-overdue']")) state.filters.planning.onlyOverdue = el.checked;
+        controller.render();
       });
     },
 
@@ -419,6 +362,8 @@
 
     setMessage(message, type = "info") {
       const el = this.els.globalMessage;
+      if (!el) return;
+
       if (!message) {
         el.className = "hidden mb-4";
         el.innerHTML = "";
@@ -447,13 +392,17 @@
         this.els.authStatus.textContent = "Authentifizierung wird initialisiert ...";
       }
 
-      this.els.btnLogin.textContent = state.auth.isAuthenticated ? "Erneut anmelden" : "Anmelden";
-      this.els.btnLogin.disabled = state.meta.loading || !state.auth.isReady;
-      this.els.btnRefresh.disabled = state.meta.loading || !state.auth.isReady;
+      if (this.els.btnLogin) {
+        this.els.btnLogin.textContent = state.auth.isAuthenticated ? "Erneut anmelden" : "Anmelden";
+        this.els.btnLogin.disabled = state.meta.loading || !state.auth.isReady;
+      }
+      if (this.els.btnRefresh) {
+        this.els.btnRefresh.disabled = state.meta.loading || !state.auth.isReady;
+      }
     },
 
     renderView(html) {
-      this.els.viewRoot.innerHTML = html;
+      if (this.els.viewRoot) this.els.viewRoot.innerHTML = html;
     },
 
     loadingBlock(text = "Daten werden geladen ...") {
@@ -501,7 +450,6 @@
       });
 
       await msalInstance.initialize();
-
       state.auth.msal = msalInstance;
 
       try {
@@ -524,9 +472,7 @@
     },
 
     async login() {
-      if (!state.auth.msal) {
-        throw new Error("MSAL ist nicht initialisiert.");
-      }
+      if (!state.auth.msal) throw new Error("MSAL ist nicht initialisiert.");
 
       const loginResponse = await state.auth.msal.loginPopup({
         scopes: CONFIG.graph.scopes,
@@ -544,36 +490,27 @@
     },
 
     async acquireToken() {
-      if (!state.auth.msal) {
-        throw new Error("MSAL ist nicht initialisiert.");
-      }
-
-      if (!state.auth.account) {
-        throw new Error("Kein angemeldetes Konto gefunden.");
-      }
+      if (!state.auth.msal) throw new Error("MSAL ist nicht initialisiert.");
+      if (!state.auth.account) throw new Error("Kein angemeldetes Konto gefunden.");
 
       try {
         const tokenResponse = await state.auth.msal.acquireTokenSilent({
           account: state.auth.account,
           scopes: CONFIG.graph.scopes
         });
-
         if (!tokenResponse || !tokenResponse.accessToken) {
           throw new Error("Kein Access Token aus acquireTokenSilent erhalten.");
         }
-
         state.auth.token = tokenResponse.accessToken;
         return state.auth.token;
-      } catch (silentError) {
+      } catch {
         const tokenResponse = await state.auth.msal.acquireTokenPopup({
           account: state.auth.account,
           scopes: CONFIG.graph.scopes
         });
-
         if (!tokenResponse || !tokenResponse.accessToken) {
           throw new Error("Kein Access Token aus acquireTokenPopup erhalten.");
         }
-
         state.auth.token = tokenResponse.accessToken;
         return state.auth.token;
       }
@@ -608,7 +545,6 @@
 
     async getSiteId() {
       if (state.meta.siteId) return state.meta.siteId;
-
       const siteRef = `${CONFIG.sharePoint.siteHostname}:${CONFIG.sharePoint.sitePath}`;
       const data = await this.graphRequest(`/sites/${siteRef}`);
       state.meta.siteId = data.id;
@@ -728,7 +664,7 @@
           fullName: helpers.fullName(contact),
           firmId: firm?.id || contact.firmaLookupId || null,
           firmTitle: firm?.title || contact.firmaRaw || "",
-          firm: firm
+          firm
         };
       });
 
@@ -800,17 +736,13 @@
 
   const views = {
     renderRoute() {
-      if (state.meta.loading) {
-        return ui.loadingBlock();
-      }
+      if (state.meta.loading) return ui.loadingBlock();
 
       switch (state.filters.route) {
         case "firms":
-          if (state.selection.firmId) return this.firmDetail();
-          return this.firms();
+          return state.selection.firmId ? this.firmDetail() : this.firms();
         case "contacts":
-          if (state.selection.contactId) return this.contactDetail();
-          return this.contacts();
+          return state.selection.contactId ? this.contactDetail() : this.contacts();
         case "planning":
           return this.planning();
         default:
@@ -835,13 +767,8 @@
             ...firm.contacts.map(c => c.fullName)
           ].some(v => helpers.textIncludes(v, search));
 
-        const klassifizierungMatch =
-          !filters.klassifizierung || firm.klassifizierung === filters.klassifizierung;
-
-        const vipMatch =
-          !filters.vip ||
-          (filters.vip === "yes" && firm.vip) ||
-          (filters.vip === "no" && !firm.vip);
+        const klassifizierungMatch = !filters.klassifizierung || firm.klassifizierung === filters.klassifizierung;
+        const vipMatch = !filters.vip || (filters.vip === "yes" && firm.vip) || (filters.vip === "no" && !firm.vip);
 
         return searchMatch && klassifizierungMatch && vipMatch;
       });
@@ -854,35 +781,17 @@
       return `
         <div class="space-y-4">
           <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-            <div class="bbz-kpi">
-              <div class="bbz-kpi-label">Firmen gesamt</div>
-              <div class="bbz-kpi-value">${state.enriched.firms.length}</div>
-            </div>
-            <div class="bbz-kpi">
-              <div class="bbz-kpi-label">A / B / C</div>
-              <div class="bbz-kpi-value">${aCount} / ${bCount} / ${cCount}</div>
-            </div>
-            <div class="bbz-kpi">
-              <div class="bbz-kpi-label">Kontakte gesamt</div>
-              <div class="bbz-kpi-value">${state.enriched.contacts.length}</div>
-            </div>
-            <div class="bbz-kpi">
-              <div class="bbz-kpi-label">Überfällige Tasks</div>
-              <div class="bbz-kpi-value">${overdueTasks}</div>
-            </div>
+            <div class="bbz-kpi"><div class="bbz-kpi-label">Firmen gesamt</div><div class="bbz-kpi-value">${state.enriched.firms.length}</div></div>
+            <div class="bbz-kpi"><div class="bbz-kpi-label">A / B / C</div><div class="bbz-kpi-value">${aCount} / ${bCount} / ${cCount}</div></div>
+            <div class="bbz-kpi"><div class="bbz-kpi-label">Kontakte gesamt</div><div class="bbz-kpi-value">${state.enriched.contacts.length}</div></div>
+            <div class="bbz-kpi"><div class="bbz-kpi-label">Überfällige Tasks</div><div class="bbz-kpi-value">${overdueTasks}</div></div>
           </section>
 
           <section class="bbz-card">
             <div class="bbz-card-header">Firmen</div>
             <div class="bbz-card-body space-y-4">
               <div class="grid grid-cols-1 lg:grid-cols-4 gap-3">
-                <input
-                  class="bbz-input lg:col-span-2"
-                  data-filter="firms-search"
-                  type="text"
-                  placeholder="Suche nach Firma, Ort, Ansprechpartner, Telefon ..."
-                  value="${helpers.escapeHtml(filters.search)}"
-                />
+                <input class="bbz-input lg:col-span-2" data-filter="firms-search" type="text" placeholder="Suche nach Firma, Ort, Ansprechpartner, Telefon ..." value="${helpers.escapeHtml(filters.search)}" />
                 <select class="bbz-select" data-filter="firms-klassifizierung">
                   <option value="">Alle Klassifizierungen</option>
                   <option value="A" ${filters.klassifizierung === "A" ? "selected" : ""}>A</option>
@@ -900,13 +809,7 @@
                 <table class="bbz-table">
                   <thead>
                     <tr>
-                      <th>Firma</th>
-                      <th>Ort</th>
-                      <th>Klassifizierung</th>
-                      <th>VIP</th>
-                      <th>Anzahl Kontakte</th>
-                      <th>Offene Tasks</th>
-                      <th>Nächste Deadline</th>
+                      <th>Firma</th><th>Ort</th><th>Klassifizierung</th><th>VIP</th><th>Anzahl Kontakte</th><th>Offene Tasks</th><th>Nächste Deadline</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -914,11 +817,7 @@
                       rows.length
                         ? rows.map(firm => `
                           <tr>
-                            <td>
-                              <a class="bbz-link" data-action="open-firm" data-id="${firm.id}">
-                                ${helpers.escapeHtml(firm.title)}
-                              </a>
-                            </td>
+                            <td><a class="bbz-link" data-action="open-firm" data-id="${firm.id}">${helpers.escapeHtml(firm.title)}</a></td>
                             <td>${helpers.escapeHtml(helpers.joinNonEmpty([firm.plz, firm.ort], " ")) || '<span class="bbz-muted">—</span>'}</td>
                             <td><span class="${helpers.firmBadgeClass(firm.klassifizierung)}">${helpers.escapeHtml(firm.klassifizierung || "—")}</span></td>
                             <td>${firm.vip ? '<span class="bbz-badge bbz-badge-vip">VIP</span>' : '<span class="bbz-muted">—</span>'}</td>
@@ -940,9 +839,7 @@
 
     firmDetail() {
       const firm = dataModel.getFirmById(state.selection.firmId);
-      if (!firm) {
-        return ui.emptyBlock("Die ausgewählte Firma wurde nicht gefunden.");
-      }
+      if (!firm) return ui.emptyBlock("Die ausgewählte Firma wurde nicht gefunden.");
 
       const recentHistory = [...firm.history].slice(0, 20);
       const firmTasks = [...firm.tasks];
@@ -958,29 +855,15 @@
                 ${firm.klassifizierung ? `<span class="${helpers.firmBadgeClass(firm.klassifizierung)}">${helpers.escapeHtml(firm.klassifizierung)}</span>` : ""}
                 ${firm.vip ? `<span class="bbz-badge bbz-badge-vip">VIP</span>` : ""}
               </div>
-              <div class="text-sm text-slate-500 mt-1">
-                ${helpers.escapeHtml(helpers.joinNonEmpty([firm.adresse, helpers.joinNonEmpty([firm.plz, firm.ort], " "), firm.land], " · ")) || "Keine erweiterten Stammdaten"}
-              </div>
+              <div class="text-sm text-slate-500 mt-1">${helpers.escapeHtml(helpers.joinNonEmpty([firm.adresse, helpers.joinNonEmpty([firm.plz, firm.ort], " "), firm.land], " · ")) || "Keine erweiterten Stammdaten"}</div>
             </div>
           </section>
 
           <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-            <div class="bbz-kpi">
-              <div class="bbz-kpi-label">Kontakte</div>
-              <div class="bbz-kpi-value">${firm.contactsCount}</div>
-            </div>
-            <div class="bbz-kpi">
-              <div class="bbz-kpi-label">Offene Tasks</div>
-              <div class="bbz-kpi-value">${firm.openTasksCount}</div>
-            </div>
-            <div class="bbz-kpi">
-              <div class="bbz-kpi-label">Nächste Deadline</div>
-              <div class="bbz-kpi-value text-[20px]">${helpers.formatDate(firm.nextDeadline) || "—"}</div>
-            </div>
-            <div class="bbz-kpi">
-              <div class="bbz-kpi-label">History-Einträge</div>
-              <div class="bbz-kpi-value">${firm.history.length}</div>
-            </div>
+            <div class="bbz-kpi"><div class="bbz-kpi-label">Kontakte</div><div class="bbz-kpi-value">${firm.contactsCount}</div></div>
+            <div class="bbz-kpi"><div class="bbz-kpi-label">Offene Tasks</div><div class="bbz-kpi-value">${firm.openTasksCount}</div></div>
+            <div class="bbz-kpi"><div class="bbz-kpi-label">Nächste Deadline</div><div class="bbz-kpi-value text-[20px]">${helpers.formatDate(firm.nextDeadline) || "—"}</div></div>
+            <div class="bbz-kpi"><div class="bbz-kpi-label">History-Einträge</div><div class="bbz-kpi-value">${firm.history.length}</div></div>
           </section>
 
           <section class="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -1002,26 +885,13 @@
               <div class="bbz-card-body">
                 <div class="bbz-scroll">
                   <table class="bbz-table">
-                    <thead>
-                      <tr>
-                        <th>Name</th>
-                        <th>Funktion</th>
-                        <th>Rolle</th>
-                        <th>E-Mail</th>
-                        <th>Telefon</th>
-                        <th>Archiviert</th>
-                      </tr>
-                    </thead>
+                    <thead><tr><th>Name</th><th>Funktion</th><th>Rolle</th><th>E-Mail</th><th>Telefon</th><th>Archiviert</th></tr></thead>
                     <tbody>
                       ${
                         contacts.length
                           ? contacts.map(c => `
                             <tr>
-                              <td>
-                                <a class="bbz-link" data-action="open-contact" data-id="${c.id}">
-                                  ${helpers.escapeHtml(c.fullName || c.nachname)}
-                                </a>
-                              </td>
+                              <td><a class="bbz-link" data-action="open-contact" data-id="${c.id}">${helpers.escapeHtml(c.fullName || c.nachname)}</a></td>
                               <td>${helpers.escapeHtml(c.funktion) || '<span class="bbz-muted">—</span>'}</td>
                               <td>${helpers.escapeHtml(c.rolle) || '<span class="bbz-muted">—</span>'}</td>
                               <td>${c.email1 ? `<a class="bbz-link" href="mailto:${helpers.escapeHtml(c.email1)}">${helpers.escapeHtml(c.email1)}</a>` : '<span class="bbz-muted">—</span>'}</td>
@@ -1044,25 +914,17 @@
               <div class="bbz-card-body">
                 ${
                   recentHistory.length
-                    ? `
-                      <div class="bbz-timeline">
+                    ? `<div class="bbz-timeline">
                         ${recentHistory.map(h => `
                           <div class="bbz-timeline-item">
-                            <div class="bbz-timeline-date">
-                              ${helpers.formatDateTime(h.datum) || "—"}<br>
-                              <span class="bbz-muted">${helpers.escapeHtml(h.contactName || "")}</span>
-                            </div>
+                            <div class="bbz-timeline-date">${helpers.formatDateTime(h.datum) || "—"}<br><span class="bbz-muted">${helpers.escapeHtml(h.contactName || "")}</span></div>
                             <div class="bbz-timeline-body">
-                              <div class="bbz-timeline-title">
-                                ${helpers.escapeHtml(h.typ || h.title || "Eintrag")}
-                                ${h.projektbezugBool ? '<span class="bbz-chip">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}
-                              </div>
+                              <div class="bbz-timeline-title">${helpers.escapeHtml(h.typ || h.title || "Eintrag")} ${h.projektbezugBool ? '<span class="bbz-chip">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}</div>
                               <div class="bbz-timeline-text">${helpers.escapeHtml(h.notizen || "—")}</div>
                             </div>
                           </div>
                         `).join("")}
-                      </div>
-                    `
+                      </div>`
                     : ui.emptyBlock("Keine History-Einträge vorhanden.")
                 }
               </div>
@@ -1073,14 +935,7 @@
               <div class="bbz-card-body">
                 <div class="bbz-scroll">
                   <table class="bbz-table">
-                    <thead>
-                      <tr>
-                        <th>Titel</th>
-                        <th>Deadline</th>
-                        <th>Status</th>
-                        <th>Kontaktperson</th>
-                      </tr>
-                    </thead>
+                    <thead><tr><th>Titel</th><th>Deadline</th><th>Status</th><th>Kontaktperson</th></tr></thead>
                     <tbody>
                       ${
                         firmTasks.length
@@ -1089,13 +944,7 @@
                               <td>${helpers.escapeHtml(t.title) || '<span class="bbz-muted">—</span>'}</td>
                               <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
                               <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.escapeHtml(t.status) || '<span class="bbz-muted">—</span>'}</td>
-                              <td>
-                                ${
-                                  t.contactId
-                                    ? `<a class="bbz-link" data-action="open-contact" data-id="${t.contactId}">${helpers.escapeHtml(t.contactName || "Kontakt")}</a>`
-                                    : helpers.escapeHtml(t.contactName || "—")
-                                }
-                              </td>
+                              <td>${t.contactId ? `<a class="bbz-link" data-action="open-contact" data-id="${t.contactId}">${helpers.escapeHtml(t.contactName || "Kontakt")}</a>` : helpers.escapeHtml(t.contactName || "—")}</td>
                             </tr>
                           `).join("")
                           : `<tr><td colspan="4">${ui.emptyBlock("Keine Aufgaben vorhanden.")}</td></tr>`
@@ -1132,7 +981,6 @@
           ].some(v => helpers.textIncludes(v, search));
 
         const archiveMatch = !filters.archiviertAusblenden || !contact.archiviert;
-
         return searchMatch && archiveMatch;
       });
 
@@ -1142,53 +990,23 @@
             <div class="bbz-card-header">Kontakte</div>
             <div class="bbz-card-body space-y-4">
               <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
-                <input
-                  class="bbz-input lg:col-span-2"
-                  data-filter="contacts-search"
-                  type="text"
-                  placeholder="Suche nach Name, Firma, Funktion, Rolle, E-Mail, SGF, Event ..."
-                  value="${helpers.escapeHtml(filters.search)}"
-                />
+                <input class="bbz-input lg:col-span-2" data-filter="contacts-search" type="text" placeholder="Suche nach Name, Firma, Funktion, Rolle, E-Mail, SGF, Event ..." value="${helpers.escapeHtml(filters.search)}" />
                 <label class="flex items-center gap-2 text-sm text-slate-700 h-[38px]">
-                  <input
-                    type="checkbox"
-                    data-filter="contacts-archiviert"
-                    ${filters.archiviertAusblenden ? "checked" : ""}
-                  />
+                  <input type="checkbox" data-filter="contacts-archiviert" ${filters.archiviertAusblenden ? "checked" : ""} />
                   Archivierte Kontakte ausblenden
                 </label>
               </div>
 
               <div class="bbz-scroll">
                 <table class="bbz-table">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Firma</th>
-                      <th>Funktion</th>
-                      <th>Rolle</th>
-                      <th>E-Mail</th>
-                      <th>Telefon</th>
-                      <th>Archiviert</th>
-                    </tr>
-                  </thead>
+                  <thead><tr><th>Name</th><th>Firma</th><th>Funktion</th><th>Rolle</th><th>E-Mail</th><th>Telefon</th><th>Archiviert</th></tr></thead>
                   <tbody>
                     ${
                       rows.length
                         ? rows.map(c => `
                           <tr>
-                            <td>
-                              <a class="bbz-link" data-action="open-contact" data-id="${c.id}">
-                                ${helpers.escapeHtml(c.fullName || c.nachname)}
-                              </a>
-                            </td>
-                            <td>
-                              ${
-                                c.firmId
-                                  ? `<a class="bbz-link" data-action="open-firm" data-id="${c.firmId}">${helpers.escapeHtml(c.firmTitle || "Firma")}</a>`
-                                  : `<span class="bbz-muted">—</span>`
-                              }
-                            </td>
+                            <td><a class="bbz-link" data-action="open-contact" data-id="${c.id}">${helpers.escapeHtml(c.fullName || c.nachname)}</a></td>
+                            <td>${c.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${c.firmId}">${helpers.escapeHtml(c.firmTitle || "Firma")}</a>` : `<span class="bbz-muted">—</span>`}</td>
                             <td>${helpers.escapeHtml(c.funktion) || '<span class="bbz-muted">—</span>'}</td>
                             <td>${helpers.escapeHtml(c.rolle) || '<span class="bbz-muted">—</span>'}</td>
                             <td>${c.email1 ? `<a class="bbz-link" href="mailto:${helpers.escapeHtml(c.email1)}">${helpers.escapeHtml(c.email1)}</a>` : '<span class="bbz-muted">—</span>'}</td>
@@ -1209,17 +1027,10 @@
 
     contactDetail() {
       const contact = dataModel.getContactById(state.selection.contactId);
-      if (!contact) {
-        return ui.emptyBlock("Der ausgewählte Kontakt wurde nicht gefunden.");
-      }
+      if (!contact) return ui.emptyBlock("Der ausgewählte Kontakt wurde nicht gefunden.");
 
-      const contactHistory = state.enriched.history
-        .filter(h => h.contactId === contact.id)
-        .sort((a, b) => helpers.compareDateDesc(a.datum, b.datum));
-
-      const contactTasks = state.enriched.tasks
-        .filter(t => t.contactId === contact.id)
-        .sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
+      const contactHistory = state.enriched.history.filter(h => h.contactId === contact.id).sort((a, b) => helpers.compareDateDesc(a.datum, b.datum));
+      const contactTasks = state.enriched.tasks.filter(t => t.contactId === contact.id).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
 
       return `
         <div class="space-y-4">
@@ -1228,11 +1039,7 @@
               <button class="bbz-button bbz-button-secondary mb-3" data-action="back-to-contacts">Zurück zur Kontaktliste</button>
               <div class="text-2xl text-slate-900 font-semibold">${helpers.escapeHtml(contact.fullName || contact.nachname)}</div>
               <div class="text-sm text-slate-500 mt-1">
-                ${
-                  contact.firmId
-                    ? `<a class="bbz-link" data-action="open-firm" data-id="${contact.firmId}">${helpers.escapeHtml(contact.firmTitle || "Firma")}</a>`
-                    : "Keine Firma verknüpft"
-                }
+                ${contact.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${contact.firmId}">${helpers.escapeHtml(contact.firmTitle || "Firma")}</a>` : "Keine Firma verknüpft"}
                 ${contact.funktion ? ` · ${helpers.escapeHtml(contact.funktion)}` : ""}
                 ${contact.rolle ? ` · ${helpers.escapeHtml(contact.rolle)}` : ""}
               </div>
@@ -1292,24 +1099,17 @@
               <div class="bbz-card-body">
                 ${
                   contactHistory.length
-                    ? `
-                      <div class="bbz-timeline">
+                    ? `<div class="bbz-timeline">
                         ${contactHistory.map(h => `
                           <div class="bbz-timeline-item">
-                            <div class="bbz-timeline-date">
-                              ${helpers.formatDateTime(h.datum) || "—"}
-                            </div>
+                            <div class="bbz-timeline-date">${helpers.formatDateTime(h.datum) || "—"}</div>
                             <div class="bbz-timeline-body">
-                              <div class="bbz-timeline-title">
-                                ${helpers.escapeHtml(h.typ || h.title || "Eintrag")}
-                                ${h.projektbezugBool ? '<span class="bbz-chip">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}
-                              </div>
+                              <div class="bbz-timeline-title">${helpers.escapeHtml(h.typ || h.title || "Eintrag")} ${h.projektbezugBool ? '<span class="bbz-chip">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}</div>
                               <div class="bbz-timeline-text">${helpers.escapeHtml(h.notizen || "—")}</div>
                             </div>
                           </div>
                         `).join("")}
-                      </div>
-                    `
+                      </div>`
                     : ui.emptyBlock("Keine Historie vorhanden.")
                 }
               </div>
@@ -1320,14 +1120,7 @@
               <div class="bbz-card-body">
                 <div class="bbz-scroll">
                   <table class="bbz-table">
-                    <thead>
-                      <tr>
-                        <th>Titel</th>
-                        <th>Deadline</th>
-                        <th>Status</th>
-                        <th>Firma</th>
-                      </tr>
-                    </thead>
+                    <thead><tr><th>Titel</th><th>Deadline</th><th>Status</th><th>Firma</th></tr></thead>
                     <tbody>
                       ${
                         contactTasks.length
@@ -1336,13 +1129,7 @@
                               <td>${helpers.escapeHtml(t.title) || '<span class="bbz-muted">—</span>'}</td>
                               <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
                               <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.escapeHtml(t.status) || '<span class="bbz-muted">—</span>'}</td>
-                              <td>
-                                ${
-                                  t.firmId
-                                    ? `<a class="bbz-link" data-action="open-firm" data-id="${t.firmId}">${helpers.escapeHtml(t.firmTitle || "Firma")}</a>`
-                                    : '<span class="bbz-muted">—</span>'
-                                }
-                              </td>
+                              <td>${t.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${t.firmId}">${helpers.escapeHtml(t.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
                             </tr>
                           `).join("")
                           : `<tr><td colspan="4">${ui.emptyBlock("Keine Tasks vorhanden.")}</td></tr>`
@@ -1365,13 +1152,7 @@
 
         const searchMatch =
           !search ||
-          [
-            task.title,
-            task.status,
-            task.contactName,
-            task.firmTitle,
-            task.leadbbz
-          ].some(v => helpers.textIncludes(v, search));
+          [task.title, task.status, task.contactName, task.firmTitle, task.leadbbz].some(v => helpers.textIncludes(v, search));
 
         const openMatch = !filters.onlyOpen || task.isOpen;
         const overdueMatch = !filters.onlyOverdue || task.isOverdue;
@@ -1385,64 +1166,30 @@
       return `
         <div class="space-y-4">
           <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-            <div class="bbz-kpi">
-              <div class="bbz-kpi-label">Tasks gesamt</div>
-              <div class="bbz-kpi-value">${state.enriched.tasks.length}</div>
-            </div>
-            <div class="bbz-kpi">
-              <div class="bbz-kpi-label">Offen</div>
-              <div class="bbz-kpi-value">${openTasks}</div>
-            </div>
-            <div class="bbz-kpi">
-              <div class="bbz-kpi-label">Überfällig</div>
-              <div class="bbz-kpi-value">${overdueTasks}</div>
-            </div>
-            <div class="bbz-kpi">
-              <div class="bbz-kpi-label">Erledigt / geschlossen</div>
-              <div class="bbz-kpi-value">${state.enriched.tasks.length - openTasks}</div>
-            </div>
+            <div class="bbz-kpi"><div class="bbz-kpi-label">Tasks gesamt</div><div class="bbz-kpi-value">${state.enriched.tasks.length}</div></div>
+            <div class="bbz-kpi"><div class="bbz-kpi-label">Offen</div><div class="bbz-kpi-value">${openTasks}</div></div>
+            <div class="bbz-kpi"><div class="bbz-kpi-label">Überfällig</div><div class="bbz-kpi-value">${overdueTasks}</div></div>
+            <div class="bbz-kpi"><div class="bbz-kpi-label">Erledigt / geschlossen</div><div class="bbz-kpi-value">${state.enriched.tasks.length - openTasks}</div></div>
           </section>
 
           <section class="bbz-card">
             <div class="bbz-card-header">Planung</div>
             <div class="bbz-card-body space-y-4">
               <div class="grid grid-cols-1 lg:grid-cols-4 gap-3">
-                <input
-                  class="bbz-input lg:col-span-2"
-                  data-filter="planning-search"
-                  type="text"
-                  placeholder="Suche nach Titel, Firma, Kontakt, Status ..."
-                  value="${helpers.escapeHtml(filters.search)}"
-                />
+                <input class="bbz-input lg:col-span-2" data-filter="planning-search" type="text" placeholder="Suche nach Titel, Firma, Kontakt, Status ..." value="${helpers.escapeHtml(filters.search)}" />
                 <label class="flex items-center gap-2 text-sm text-slate-700 h-[38px]">
-                  <input
-                    type="checkbox"
-                    data-filter="planning-open"
-                    ${filters.onlyOpen ? "checked" : ""}
-                  />
+                  <input type="checkbox" data-filter="planning-open" ${filters.onlyOpen ? "checked" : ""} />
                   Nur offene Tasks
                 </label>
                 <label class="flex items-center gap-2 text-sm text-slate-700 h-[38px]">
-                  <input
-                    type="checkbox"
-                    data-filter="planning-overdue"
-                    ${filters.onlyOverdue ? "checked" : ""}
-                  />
+                  <input type="checkbox" data-filter="planning-overdue" ${filters.onlyOverdue ? "checked" : ""} />
                   Nur überfällige Tasks
                 </label>
               </div>
 
               <div class="bbz-scroll">
                 <table class="bbz-table">
-                  <thead>
-                    <tr>
-                      <th>Titel</th>
-                      <th>Deadline</th>
-                      <th>Status</th>
-                      <th>Kontaktperson</th>
-                      <th>Firma</th>
-                    </tr>
-                  </thead>
+                  <thead><tr><th>Titel</th><th>Deadline</th><th>Status</th><th>Kontaktperson</th><th>Firma</th></tr></thead>
                   <tbody>
                     ${
                       rows.length
@@ -1451,20 +1198,8 @@
                             <td>${helpers.escapeHtml(t.title) || '<span class="bbz-muted">—</span>'}</td>
                             <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
                             <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.escapeHtml(t.status) || '<span class="bbz-muted">—</span>'}</td>
-                            <td>
-                              ${
-                                t.contactId
-                                  ? `<a class="bbz-link" data-action="open-contact" data-id="${t.contactId}">${helpers.escapeHtml(t.contactName || "Kontakt")}</a>`
-                                  : helpers.escapeHtml(t.contactName || "—")
-                              }
-                            </td>
-                            <td>
-                              ${
-                                t.firmId
-                                  ? `<a class="bbz-link" data-action="open-firm" data-id="${t.firmId}">${helpers.escapeHtml(t.firmTitle || "Firma")}</a>`
-                                  : '<span class="bbz-muted">—</span>'
-                              }
-                            </td>
+                            <td>${t.contactId ? `<a class="bbz-link" data-action="open-contact" data-id="${t.contactId}">${helpers.escapeHtml(t.contactName || "Kontakt")}</a>` : helpers.escapeHtml(t.contactName || "—")}</td>
+                            <td>${t.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${t.firmId}">${helpers.escapeHtml(t.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
                           </tr>
                         `).join("")
                         : `<tr><td colspan="5">${ui.emptyBlock("Keine Tasks für die aktuelle Filterung gefunden.")}</td></tr>`
@@ -1510,7 +1245,7 @@
     async handleLogin() {
       try {
         if (!state.auth.isReady) {
-          ui.setMessage("Authentifizierung ist noch nicht bereit. Bitte Seite einmal neu laden.", "warning");
+          ui.setMessage("Authentifizierung ist noch nicht bereit. Bitte Seite neu laden.", "warning");
           return;
         }
 
@@ -1584,7 +1319,13 @@
     }
   };
 
-  document.addEventListener("DOMContentLoaded", () => {
+  function startApp() {
     controller.init();
-  });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startApp, { once: true });
+  } else {
+    startApp();
+  }
 })();
