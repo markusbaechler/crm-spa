@@ -6,149 +6,705 @@
   <title>bbz CRM</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
 
   <style>
+    :root {
+      --bg: #f5f7fb;
+      --surface: rgba(255, 255, 255, 0.78);
+      --surface-solid: #ffffff;
+      --surface-2: #f8fafc;
+      --border: rgba(15, 23, 42, 0.08);
+      --border-strong: rgba(15, 23, 42, 0.14);
+      --text: #0f172a;
+      --muted: #64748b;
+      --muted-2: #94a3b8;
+      --primary: #2563eb;
+      --primary-soft: rgba(37, 99, 235, 0.08);
+      --success: #15803d;
+      --success-soft: rgba(34, 197, 94, 0.10);
+      --warning: #b45309;
+      --warning-soft: rgba(245, 158, 11, 0.12);
+      --danger: #b91c1c;
+      --danger-soft: rgba(239, 68, 68, 0.10);
+      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+      --shadow-md: 0 10px 30px rgba(15, 23, 42, 0.06);
+      --radius: 16px;
+      --radius-sm: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+      font-style: normal !important;
+    }
+
     html, body {
       margin: 0;
       padding: 0;
-      background: #f3f4f6;
-      color: #111827;
-      font-family: "Segoe UI", Arial, sans-serif;
-      font-style: normal !important;
+      min-height: 100%;
+      background:
+        radial-gradient(circle at top left, rgba(59,130,246,0.06), transparent 28%),
+        radial-gradient(circle at top right, rgba(14,165,233,0.05), transparent 22%),
+        var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", Inter, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
     }
-    * { box-sizing: border-box; font-style: normal !important; }
-    .bbz-button {
-      height: 38px;
-      border-radius: 8px;
-      border: 1px solid #d1d5db;
-      background: #ffffff;
-      padding: 0 12px;
+
+    body {
+      padding: 12px;
+    }
+
+    #app-shell {
+      max-width: 1760px;
+      margin: 0 auto;
+    }
+
+    .bbz-topbar {
+      background: rgba(255,255,255,0.75);
+      backdrop-filter: blur(18px);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      box-shadow: var(--shadow-md);
+      padding: 16px 18px;
+    }
+
+    .bbz-brand {
+      font-size: 32px;
+      line-height: 1.1;
+      font-weight: 650;
+      letter-spacing: -0.03em;
+      color: var(--text);
+    }
+
+    .bbz-subtitle {
+      margin-top: 4px;
+      color: var(--muted);
       font-size: 14px;
-      color: #111827;
+      line-height: 1.4;
+    }
+
+    .bbz-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .bbz-auth-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 42px;
+      padding: 0 14px;
+      background: rgba(248, 250, 252, 0.9);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .bbz-auth-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #22c55e;
+      box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.10);
+      flex: 0 0 auto;
+    }
+
+    .bbz-nav-wrap {
+      margin-top: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .bbz-nav {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(248, 250, 252, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 6px;
+    }
+
+    .bbz-nav-btn {
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 600;
+      padding: 10px 16px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.16s ease;
+    }
+
+    .bbz-nav-btn:hover {
+      color: var(--text);
+      background: rgba(255,255,255,0.75);
+    }
+
+    .bbz-nav-btn.active {
+      background: var(--surface-solid);
+      color: var(--text);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .bbz-main {
+      margin-top: 14px;
+    }
+
+    .bbz-banner {
+      display: none;
+      margin-bottom: 14px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      padding: 14px 16px;
+      font-size: 14px;
+      line-height: 1.45;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .bbz-banner.show {
+      display: block;
+    }
+
+    .bbz-banner-info {
+      background: rgba(248,250,252,0.9);
+      border-color: var(--border);
+      color: var(--text);
+    }
+
+    .bbz-banner-success {
+      background: rgba(240,253,244,0.92);
+      border-color: rgba(34,197,94,0.22);
+      color: var(--success);
+    }
+
+    .bbz-banner-warning {
+      background: rgba(255,251,235,0.95);
+      border-color: rgba(245,158,11,0.20);
+      color: var(--warning);
+    }
+
+    .bbz-banner-error {
+      background: rgba(254,242,242,0.95);
+      border-color: rgba(239,68,68,0.20);
+      color: var(--danger);
+    }
+
+    .bbz-section {
+      background: var(--surface);
+      backdrop-filter: blur(18px);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      box-shadow: var(--shadow-md);
+      overflow: hidden;
+    }
+
+    .bbz-section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.6);
+    }
+
+    .bbz-section-title {
+      font-size: 15px;
+      font-weight: 650;
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }
+
+    .bbz-section-subtitle {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+
+    .bbz-section-body {
+      padding: 16px 18px 18px;
+    }
+
+    .bbz-grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .bbz-grid-4 {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .bbz-grid-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .bbz-grid-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .bbz-kpis {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+
+    .bbz-kpi {
+      background: rgba(255,255,255,0.72);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: var(--shadow-sm);
+      padding: 16px 16px 14px;
+    }
+
+    .bbz-kpi-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    .bbz-kpi-value {
+      margin-top: 10px;
+      font-size: 30px;
+      line-height: 1;
+      font-weight: 680;
+      letter-spacing: -0.04em;
+      color: var(--text);
+    }
+
+    .bbz-kpi-meta {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .bbz-button,
+    .bbz-input,
+    .bbz-select {
+      appearance: none;
+      height: 42px;
+      border-radius: 12px;
+      border: 1px solid var(--border-strong);
+      background: rgba(255,255,255,0.9);
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 500;
+      padding: 0 14px;
+      transition: all 0.16s ease;
+    }
+
+    .bbz-input::placeholder {
+      color: var(--muted-2);
+    }
+
+    .bbz-input:focus,
+    .bbz-select:focus {
+      outline: none;
+      border-color: rgba(37,99,235,0.38);
+      box-shadow: 0 0 0 4px rgba(37,99,235,0.10);
+      background: rgba(255,255,255,1);
+    }
+
+    .bbz-button {
       display: inline-flex;
       align-items: center;
       justify-content: center;
       gap: 8px;
       cursor: pointer;
-      font-weight: 500;
+      font-weight: 600;
+      white-space: nowrap;
     }
+
+    .bbz-button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
     .bbz-button-primary {
-      background: #2563eb;
-      border-color: #2563eb;
+      background: linear-gradient(180deg, #3b82f6, #2563eb);
       color: white;
+      border-color: rgba(37,99,235,0.55);
+      box-shadow: 0 8px 18px rgba(37,99,235,0.18);
     }
+
+    .bbz-button-primary:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 22px rgba(37,99,235,0.22);
+    }
+
     .bbz-button-secondary {
-      background: white;
-      border-color: #d1d5db;
-      color: #111827;
+      background: rgba(255,255,255,0.88);
+      color: var(--text);
     }
-    .bbz-nav-btn {
-      border: none;
-      background: transparent;
-      padding: 10px 14px;
-      border-radius: 8px;
+
+    .bbz-button-secondary:hover:not(:disabled) {
+      background: white;
+      border-color: rgba(15,23,42,0.18);
+    }
+
+    .bbz-filters {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .bbz-checkbox {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 42px;
+      padding: 0 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.72);
+      color: var(--text);
       font-size: 14px;
       font-weight: 500;
-      color: #4b5563;
+    }
+
+    .bbz-checkbox input {
+      width: 15px;
+      height: 15px;
+      accent-color: var(--primary);
+    }
+
+    .bbz-table-wrap {
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: rgba(255,255,255,0.88);
+    }
+
+    .bbz-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      min-width: 980px;
+    }
+
+    .bbz-table th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: rgba(248,250,252,0.96);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      text-align: left;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    .bbz-table td {
+      padding: 12px 14px;
+      font-size: 14px;
+      color: var(--text);
+      border-bottom: 1px solid rgba(15,23,42,0.05);
+      vertical-align: middle;
+      background: transparent;
+    }
+
+    .bbz-table tbody tr {
+      transition: background 0.14s ease;
+    }
+
+    .bbz-table tbody tr:hover {
+      background: rgba(37,99,235,0.035);
+    }
+
+    .bbz-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    .bbz-link {
+      color: #0f172a;
+      font-weight: 600;
+      text-decoration: none;
       cursor: pointer;
     }
-    .bbz-nav-btn.active {
-      background: #e5eefc;
-      color: #1d4ed8;
+
+    .bbz-link:hover {
+      color: var(--primary);
     }
-    .bbz-card {
-      background: #ffffff;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
+
+    .bbz-subtext {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 3px;
     }
-    .bbz-card-header {
-      padding: 14px 16px;
-      border-bottom: 1px solid #e5e7eb;
-      font-size: 14px;
+
+    .bbz-value-muted,
+    .bbz-muted {
+      color: var(--muted);
+    }
+
+    .bbz-danger {
+      color: var(--danger);
       font-weight: 600;
-      color: #111827;
     }
-    .bbz-card-body {
-      padding: 16px;
+
+    .bbz-warning {
+      color: var(--warning);
+      font-weight: 600;
+    }
+
+    .bbz-success {
+      color: var(--success);
+      font-weight: 600;
+    }
+
+    .bbz-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 26px;
+      padding: 0 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.82);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .bbz-pill-a {
+      background: rgba(239, 246, 255, 0.9);
+      color: #1d4ed8;
+      border-color: rgba(59,130,246,0.18);
+    }
+
+    .bbz-pill-b {
+      background: rgba(255, 251, 235, 0.92);
+      color: #b45309;
+      border-color: rgba(245,158,11,0.18);
+    }
+
+    .bbz-pill-c {
+      background: rgba(241, 245, 249, 0.92);
+      color: #475569;
+      border-color: rgba(100,116,139,0.15);
+    }
+
+    .bbz-pill-vip {
+      background: rgba(236, 253, 245, 0.94);
+      color: #047857;
+      border-color: rgba(16,185,129,0.18);
+    }
+
+    .bbz-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 0 9px;
+      border-radius: 999px;
+      background: rgba(248,250,252,0.95);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      margin: 2px 6px 2px 0;
+    }
+
+    .bbz-detail-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+
+    .bbz-detail-title {
+      font-size: 34px;
+      line-height: 1.04;
+      font-weight: 700;
+      letter-spacing: -0.05em;
+      color: var(--text);
+    }
+
+    .bbz-detail-subtitle {
+      margin-top: 6px;
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .bbz-meta-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .bbz-kv {
+      min-height: 72px;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.66);
+    }
+
+    .bbz-kv-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 7px;
+      letter-spacing: 0.02em;
+    }
+
+    .bbz-kv-value {
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+
+    .bbz-timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .bbz-timeline-item {
+      display: grid;
+      grid-template-columns: 150px 1fr;
+      gap: 14px;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: rgba(255,255,255,0.7);
+    }
+
+    .bbz-timeline-date {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .bbz-timeline-title {
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 650;
+      margin-bottom: 6px;
+    }
+
+    .bbz-timeline-text {
+      color: #334155;
+      font-size: 14px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .bbz-empty {
+      border: 1px dashed rgba(100,116,139,0.24);
+      border-radius: 16px;
+      padding: 28px 20px;
+      text-align: center;
+      color: var(--muted);
+      background: rgba(255,255,255,0.48);
+      font-size: 14px;
+    }
+
+    .bbz-loader {
+      width: 20px;
+      height: 20px;
+      border: 2px solid rgba(37,99,235,0.14);
+      border-top-color: var(--primary);
+      border-radius: 999px;
+      animation: bbzspin 0.75s linear infinite;
+      flex: 0 0 auto;
+    }
+
+    @keyframes bbzspin {
+      to { transform: rotate(360deg); }
+    }
+
+    @media (max-width: 1280px) {
+      .bbz-kpis,
+      .bbz-grid-4 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .bbz-grid-3 {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 900px) {
+      body {
+        padding: 8px;
+      }
+
+      .bbz-filters,
+      .bbz-kpis,
+      .bbz-grid-2,
+      .bbz-grid-4,
+      .bbz-meta-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .bbz-detail-title {
+        font-size: 28px;
+      }
+
+      .bbz-timeline-item {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
 <body>
-  <div id="app" class="min-h-screen">
-    <header class="bg-white border-b border-slate-200">
-      <div class="max-w-[1800px] mx-auto px-4 py-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+  <div id="app-shell">
+    <header class="bbz-topbar">
+      <div class="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <div class="text-[22px] leading-7 text-slate-900 font-semibold">bbz CRM</div>
-          <div class="text-sm text-slate-500">Firmenzentriertes operatives CRM auf SharePoint / Microsoft Graph</div>
+          <div class="bbz-brand">bbz CRM</div>
+          <div class="bbz-subtitle">Firmenzentriertes operatives CRM auf SharePoint / Microsoft Graph</div>
         </div>
 
-        <div class="flex items-center gap-2 flex-wrap">
+        <div class="bbz-toolbar">
           <button id="btn-login" class="bbz-button bbz-button-primary">Anmelden</button>
           <button id="btn-refresh" class="bbz-button bbz-button-secondary">Neu laden</button>
-          <div id="auth-status" class="text-sm text-slate-500"></div>
+          <div id="auth-status" class="bbz-auth-pill">
+            <span class="bbz-auth-dot"></span>
+            <span>Authentifizierung wird initialisiert ...</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="bbz-nav-wrap">
+        <div class="bbz-nav">
+          <button class="bbz-nav-btn active" data-route="firms">Firmen</button>
+          <button class="bbz-nav-btn" data-route="contacts">Kontakte</button>
+          <button class="bbz-nav-btn" data-route="planning">Planung</button>
         </div>
       </div>
     </header>
 
-    <nav class="bg-white border-b border-slate-200">
-      <div class="max-w-[1800px] mx-auto px-4 py-2 flex items-center gap-2 flex-wrap">
-        <button class="bbz-nav-btn active" data-route="firms">Firmen</button>
-        <button class="bbz-nav-btn" data-route="contacts">Kontakte</button>
-        <button class="bbz-nav-btn" data-route="planning">Planung</button>
-      </div>
-    </nav>
-
-    <main class="max-w-[1800px] mx-auto px-4 py-4">
-      <div id="global-message" class="mb-4 border rounded-xl px-4 py-3 bg-amber-50 border-amber-200 text-amber-700">
-        Lade lokale MSAL-Datei...
-      </div>
+    <main class="bbz-main">
+      <div id="global-message" class="bbz-banner"></div>
       <div id="view-root"></div>
     </main>
   </div>
 
-  <script>
-    window.addEventListener("error", function (event) {
-      const box = document.getElementById("global-message");
-      if (box) {
-        box.className = "mb-4 border rounded-xl px-4 py-3 bg-red-50 border-red-200 text-red-700";
-        box.textContent = "Script-Fehler: " + (event.message || "Unbekannter Fehler");
-      }
-    });
-  </script>
-
- <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
-
-  <script>
-    (function () {
-      const box = document.getElementById("global-message");
-
-      if (!window.msal || !window.msal.PublicClientApplication) {
-        box.className = "mb-4 border rounded-xl px-4 py-3 bg-red-50 border-red-200 text-red-700";
-        box.innerHTML = `
-          <div><strong>Lokale MSAL-Datei wurde nicht geladen.</strong></div>
-          <div class="mt-2">Prüfe:</div>
-          <div>1. Datei <code>msal-browser.min.js</code> existiert wirklich</div>
-          <div>2. Datei liegt im gleichen Ordner wie <code>index.html</code></div>
-          <div>3. Dateiname ist exakt gleich</div>
-          <div>4. Die Datei ist über Browser direkt erreichbar</div>
-        `;
-        return;
-      }
-
-      box.className = "mb-4 border rounded-xl px-4 py-3 bg-green-50 border-green-200 text-green-700";
-      box.textContent = "MSAL lokal erfolgreich geladen. app.js wird jetzt gestartet.";
-
-      const s = document.createElement("script");
-      s.src = "./app.js";
-      s.onload = function () {
-        box.textContent = "MSAL lokal erfolgreich geladen. Anwendung gestartet.";
-      };
-      s.onerror = function () {
-        box.className = "mb-4 border rounded-xl px-4 py-3 bg-red-50 border-red-200 text-red-700";
-        box.textContent = "app.js konnte nicht geladen werden.";
-      };
-      document.body.appendChild(s);
-    })();
-  </script>
+  <script src="./app.js"></script>
 </body>
 </html>
