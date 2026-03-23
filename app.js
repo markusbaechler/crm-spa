@@ -127,7 +127,8 @@
       firms: [],
       contacts: [],
       history: [],
-      tasks: []
+      tasks: [],
+      events: []
     },
 
     filters: {
@@ -148,6 +149,11 @@
         search: "",
         onlyOpen: CONFIG.defaults.planningShowOnlyOpen,
         onlyOverdue: false
+      },
+
+      events: {
+        search: "",
+        onlyWithOpenTasks: false
       }
     },
 
@@ -388,6 +394,11 @@
           state.filters.planning.search = el.value;
           controller.render();
         }
+
+        if (el.matches("[data-filter='events-search']")) {
+          state.filters.events.search = el.value;
+          controller.render();
+        }
       });
 
       document.addEventListener("change", (event) => {
@@ -415,6 +426,11 @@
 
         if (el.matches("[data-filter='planning-overdue']")) {
           state.filters.planning.onlyOverdue = el.checked;
+          controller.render();
+        }
+
+        if (el.matches("[data-filter='events-open']")) {
+          state.filters.events.onlyWithOpenTasks = el.checked;
           controller.render();
         }
       });
@@ -456,12 +472,12 @@
         `;
       } else if (state.auth.isReady) {
         this.els.authStatus.innerHTML = `
-          <span class="bbz-auth-dot" style="background:#94a3b8; box-shadow:0 0 0 4px rgba(148,163,184,0.12);"></span>
+          <span class="bbz-auth-dot" style="background:#94a3b8;"></span>
           <span>Nicht angemeldet</span>
         `;
       } else {
         this.els.authStatus.innerHTML = `
-          <span class="bbz-auth-dot" style="background:#f59e0b; box-shadow:0 0 0 4px rgba(245,158,11,0.12);"></span>
+          <span class="bbz-auth-dot" style="background:#f59e0b;"></span>
           <span>Authentifizierung wird initialisiert ...</span>
         `;
       }
@@ -799,6 +815,8 @@
           .filter(t => helpers.toDate(t.deadline))
           .sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline))[0] || null;
 
+        const latestHistory = [...firmHistory].sort((a, b) => helpers.compareDateDesc(a.datum, b.datum))[0] || null;
+
         return {
           ...firm,
           contactsCount: firmContacts.length,
@@ -806,14 +824,64 @@
           tasks: firmTasks.sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline)),
           history: firmHistory.sort((a, b) => helpers.compareDateDesc(a.datum, b.datum)),
           openTasksCount: openTasks.length,
-          nextDeadline: nextDeadlineTask?.deadline || ""
+          nextDeadline: nextDeadlineTask?.deadline || "",
+          latestActivity: latestHistory?.datum || ""
         };
       });
+
+      const eventMap = new Map();
+
+      contacts.forEach(contact => {
+        const contactTasks = tasks.filter(t => t.contactId === contact.id);
+        const contactHistory = history.filter(h => h.contactId === contact.id).sort((a, b) => helpers.compareDateDesc(a.datum, b.datum));
+        const latestHistory = contactHistory[0] || null;
+        const openTasks = contactTasks.filter(t => t.isOpen);
+
+        contact.event.forEach(eventName => {
+          const key = String(eventName || "").trim();
+          if (!key) return;
+
+          if (!eventMap.has(key)) {
+            eventMap.set(key, {
+              name: key,
+              contacts: [],
+              contactCount: 0,
+              openTasksCount: 0
+            });
+          }
+
+          const group = eventMap.get(key);
+          group.contacts.push({
+            contactId: contact.id,
+            contactName: contact.fullName || contact.nachname,
+            firmId: contact.firmId,
+            firmTitle: contact.firmTitle,
+            rolle: contact.rolle,
+            funktion: contact.funktion,
+            eventhistory: contact.eventhistory,
+            latestHistoryDate: latestHistory?.datum || "",
+            latestHistoryType: latestHistory?.typ || "",
+            latestHistoryText: latestHistory?.notizen || "",
+            openTasksCount: openTasks.length,
+            email1: contact.email1
+          });
+        });
+      });
+
+      const events = [...eventMap.values()]
+        .map(group => ({
+          ...group,
+          contactCount: group.contacts.length,
+          openTasksCount: group.contacts.reduce((sum, c) => sum + c.openTasksCount, 0),
+          contacts: group.contacts.sort((a, b) => String(a.contactName).localeCompare(String(b.contactName), "de"))
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name, "de"));
 
       state.enriched.contacts = contacts.sort((a, b) => a.fullName.localeCompare(b.fullName, "de"));
       state.enriched.history = history.sort((a, b) => helpers.compareDateDesc(a.datum, b.datum));
       state.enriched.tasks = tasks.sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
       state.enriched.firms = firms.sort((a, b) => a.title.localeCompare(b.title, "de"));
+      state.enriched.events = events;
     },
 
     getFirmById(id) {
@@ -826,6 +894,26 @@
   };
 
   const views = {
+    kpiBlock(label, value, meta = "") {
+      return `
+        <div class="bbz-kpi">
+          <div class="bbz-kpi-label">${helpers.escapeHtml(label)}</div>
+          <div class="bbz-kpi-value">${helpers.escapeHtml(String(value))}</div>
+          ${meta ? `<div class="bbz-kpi-meta">${helpers.escapeHtml(meta)}</div>` : ""}
+        </div>
+      `;
+    },
+
+    miniItem(title, meta, actionHtml = "") {
+      return `
+        <div class="bbz-mini-item">
+          <div class="bbz-mini-title">${title}</div>
+          <div class="bbz-mini-meta">${meta}</div>
+          ${actionHtml ? `<div class="mt-2">${actionHtml}</div>` : ""}
+        </div>
+      `;
+    },
+
     renderRoute() {
       if (state.meta.loading) {
         return ui.loadingBlock();
@@ -843,19 +931,12 @@
         case "planning":
           return this.planning();
 
+        case "events":
+          return this.events();
+
         default:
           return this.firms();
       }
-    },
-
-    kpiBlock(label, value, meta = "") {
-      return `
-        <div class="bbz-kpi">
-          <div class="bbz-kpi-label">${helpers.escapeHtml(label)}</div>
-          <div class="bbz-kpi-value">${helpers.escapeHtml(String(value))}</div>
-          ${meta ? `<div class="bbz-kpi-meta">${helpers.escapeHtml(meta)}</div>` : ""}
-        </div>
-      `;
     },
 
     firms() {
@@ -892,95 +973,151 @@
       const cCount = state.enriched.firms.filter(f => String(f.klassifizierung).toUpperCase().includes("C")).length;
       const overdueTasks = state.enriched.tasks.filter(t => t.isOpen && t.isOverdue).length;
 
+      const urgentFirms = [...state.enriched.firms]
+        .filter(f => f.openTasksCount > 0)
+        .sort((a, b) => helpers.compareDateAsc(a.nextDeadline, b.nextDeadline))
+        .slice(0, 6);
+
+      const latestFirms = [...state.enriched.firms]
+        .filter(f => f.latestActivity)
+        .sort((a, b) => helpers.compareDateDesc(a.latestActivity, b.latestActivity))
+        .slice(0, 6);
+
       return `
         <div>
           <div class="bbz-kpis">
-            ${this.kpiBlock("Firmen gesamt", state.enriched.firms.length, "aktive Mandantenbasis")}
-            ${this.kpiBlock("A / B / C", `${aCount} / ${bCount} / ${cCount}`, "Segmentverteilung")}
-            ${this.kpiBlock("Kontakte gesamt", state.enriched.contacts.length, "operative Ansprechpartner")}
+            ${this.kpiBlock("Firmen", state.enriched.firms.length, "gesamt")}
+            ${this.kpiBlock("A / B / C", `${aCount} / ${bCount} / ${cCount}`, "Segmente")}
+            ${this.kpiBlock("Kontakte", state.enriched.contacts.length, "Ansprechpartner")}
             ${this.kpiBlock("Überfällige Tasks", overdueTasks, "sofort prüfen")}
           </div>
 
-          <section class="bbz-section">
-            <div class="bbz-section-header">
-              <div>
-                <div class="bbz-section-title">Firmen</div>
-                <div class="bbz-section-subtitle">Hauptarbeitsliste · Suche, Segmentierung, Wiedervorlagen</div>
+          <div class="bbz-grid bbz-grid-70-30">
+            <section class="bbz-section">
+              <div class="bbz-section-header">
+                <div>
+                  <div class="bbz-section-title">Firmen-Cockpit</div>
+                  <div class="bbz-section-subtitle">Hauptarbeitsliste mit Fokus auf Segment, Tasks und Fristen</div>
+                </div>
               </div>
+
+              <div class="bbz-section-body">
+                <div class="bbz-filters-3">
+                  <input
+                    class="bbz-input"
+                    data-filter="firms-search"
+                    type="text"
+                    placeholder="Suche nach Firma, Ort, Ansprechpartner, Telefon ..."
+                    value="${helpers.escapeHtml(filters.search)}"
+                  />
+
+                  <select class="bbz-select" data-filter="firms-klassifizierung">
+                    <option value="">Alle Klassifizierungen</option>
+                    <option value="A-Kunde" ${filters.klassifizierung === "A-Kunde" ? "selected" : ""}>A-Kunde</option>
+                    <option value="B-Kunde" ${filters.klassifizierung === "B-Kunde" ? "selected" : ""}>B-Kunde</option>
+                    <option value="C-Kunde" ${filters.klassifizierung === "C-Kunde" ? "selected" : ""}>C-Kunde</option>
+                    <option value="A" ${filters.klassifizierung === "A" ? "selected" : ""}>A</option>
+                    <option value="B" ${filters.klassifizierung === "B" ? "selected" : ""}>B</option>
+                    <option value="C" ${filters.klassifizierung === "C" ? "selected" : ""}>C</option>
+                  </select>
+
+                  <select class="bbz-select" data-filter="firms-vip">
+                    <option value="">VIP egal</option>
+                    <option value="yes" ${filters.vip === "yes" ? "selected" : ""}>Nur VIP</option>
+                    <option value="no" ${filters.vip === "no" ? "selected" : ""}>Nur nicht VIP</option>
+                  </select>
+                </div>
+
+                <div class="bbz-table-wrap">
+                  <table class="bbz-table">
+                    <thead>
+                      <tr>
+                        <th>Firma</th>
+                        <th>Ort</th>
+                        <th>Klassifizierung</th>
+                        <th>VIP</th>
+                        <th>Kontakte</th>
+                        <th>Offene Tasks</th>
+                        <th>Nächste Deadline</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${
+                        rows.length
+                          ? rows.map(firm => `
+                            <tr>
+                              <td>
+                                <a class="bbz-link" data-action="open-firm" data-id="${firm.id}">${helpers.escapeHtml(firm.title)}</a>
+                                <div class="bbz-subtext">${helpers.escapeHtml(firm.hauptnummer || "—")}</div>
+                              </td>
+                              <td>${helpers.escapeHtml(helpers.joinNonEmpty([firm.plz, firm.ort], " ")) || '<span class="bbz-muted">—</span>'}</td>
+                              <td>
+                                ${
+                                  firm.klassifizierung
+                                    ? `<span class="${helpers.firmBadgeClass(firm.klassifizierung)}">${helpers.escapeHtml(firm.klassifizierung)}</span>`
+                                    : '<span class="bbz-muted">—</span>'
+                                }
+                              </td>
+                              <td>${firm.vip ? '<span class="bbz-pill bbz-pill-vip">VIP</span>' : '<span class="bbz-muted">—</span>'}</td>
+                              <td>${firm.contactsCount}</td>
+                              <td>${firm.openTasksCount}</td>
+                              <td class="${firm.nextDeadline && helpers.isOverdue(firm.nextDeadline) ? 'bbz-danger' : ''}">
+                                ${helpers.formatDate(firm.nextDeadline) || '<span class="bbz-muted">—</span>'}
+                              </td>
+                            </tr>
+                          `).join("")
+                          : `<tr><td colspan="7">${ui.emptyBlock("Keine Firmen für die aktuelle Filterung gefunden.")}</td></tr>`
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+
+            <div class="bbz-cockpit-stack">
+              <section class="bbz-section">
+                <div class="bbz-section-header">
+                  <div>
+                    <div class="bbz-section-title">Dringend</div>
+                    <div class="bbz-section-subtitle">Firmen mit offenen Tasks</div>
+                  </div>
+                </div>
+                <div class="bbz-section-body">
+                  ${
+                    urgentFirms.length
+                      ? `<div class="bbz-mini-list">
+                          ${urgentFirms.map(f => this.miniItem(
+                            `<a class="bbz-link" data-action="open-firm" data-id="${f.id}">${helpers.escapeHtml(f.title)}</a>`,
+                            `${f.openTasksCount} offene Tasks · nächste Deadline ${helpers.formatDate(f.nextDeadline) || "—"}`
+                          )).join("")}
+                        </div>`
+                      : ui.emptyBlock("Keine dringenden Firmen.")
+                  }
+                </div>
+              </section>
+
+              <section class="bbz-section">
+                <div class="bbz-section-header">
+                  <div>
+                    <div class="bbz-section-title">Zuletzt aktiv</div>
+                    <div class="bbz-section-subtitle">Firmen mit jüngster History</div>
+                  </div>
+                </div>
+                <div class="bbz-section-body">
+                  ${
+                    latestFirms.length
+                      ? `<div class="bbz-mini-list">
+                          ${latestFirms.map(f => this.miniItem(
+                            `<a class="bbz-link" data-action="open-firm" data-id="${f.id}">${helpers.escapeHtml(f.title)}</a>`,
+                            `Letzte Aktivität ${helpers.formatDateTime(f.latestActivity) || "—"}`
+                          )).join("")}
+                        </div>`
+                      : ui.emptyBlock("Noch keine Aktivitäten vorhanden.")
+                  }
+                </div>
+              </section>
             </div>
-
-            <div class="bbz-section-body">
-              <div class="bbz-filters">
-                <input
-                  class="bbz-input"
-                  data-filter="firms-search"
-                  type="text"
-                  placeholder="Suche nach Firma, Ort, Ansprechpartner, Telefon ..."
-                  value="${helpers.escapeHtml(filters.search)}"
-                />
-
-                <select class="bbz-select" data-filter="firms-klassifizierung">
-                  <option value="">Alle Klassifizierungen</option>
-                  <option value="A-Kunde" ${filters.klassifizierung === "A-Kunde" ? "selected" : ""}>A-Kunde</option>
-                  <option value="B-Kunde" ${filters.klassifizierung === "B-Kunde" ? "selected" : ""}>B-Kunde</option>
-                  <option value="C-Kunde" ${filters.klassifizierung === "C-Kunde" ? "selected" : ""}>C-Kunde</option>
-                  <option value="A" ${filters.klassifizierung === "A" ? "selected" : ""}>A</option>
-                  <option value="B" ${filters.klassifizierung === "B" ? "selected" : ""}>B</option>
-                  <option value="C" ${filters.klassifizierung === "C" ? "selected" : ""}>C</option>
-                </select>
-
-                <select class="bbz-select" data-filter="firms-vip">
-                  <option value="">VIP egal</option>
-                  <option value="yes" ${filters.vip === "yes" ? "selected" : ""}>Nur VIP</option>
-                  <option value="no" ${filters.vip === "no" ? "selected" : ""}>Nur nicht VIP</option>
-                </select>
-              </div>
-
-              <div class="bbz-table-wrap">
-                <table class="bbz-table">
-                  <thead>
-                    <tr>
-                      <th>Firma</th>
-                      <th>Ort</th>
-                      <th>Klassifizierung</th>
-                      <th>VIP</th>
-                      <th>Kontakte</th>
-                      <th>Offene Tasks</th>
-                      <th>Nächste Deadline</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${
-                      rows.length
-                        ? rows.map(firm => `
-                          <tr>
-                            <td>
-                              <a class="bbz-link" data-action="open-firm" data-id="${firm.id}">${helpers.escapeHtml(firm.title)}</a>
-                              <div class="bbz-subtext">${helpers.escapeHtml(firm.hauptnummer || "—")}</div>
-                            </td>
-                            <td>${helpers.escapeHtml(helpers.joinNonEmpty([firm.plz, firm.ort], " ")) || '<span class="bbz-muted">—</span>'}</td>
-                            <td>
-                              ${
-                                firm.klassifizierung
-                                  ? `<span class="${helpers.firmBadgeClass(firm.klassifizierung)}">${helpers.escapeHtml(firm.klassifizierung)}</span>`
-                                  : '<span class="bbz-muted">—</span>'
-                              }
-                            </td>
-                            <td>${firm.vip ? '<span class="bbz-pill bbz-pill-vip">VIP</span>' : '<span class="bbz-muted">—</span>'}</td>
-                            <td>${firm.contactsCount}</td>
-                            <td>${firm.openTasksCount}</td>
-                            <td class="${firm.nextDeadline && helpers.isOverdue(firm.nextDeadline) ? 'bbz-danger' : ''}">
-                              ${helpers.formatDate(firm.nextDeadline) || '<span class="bbz-muted">—</span>'}
-                            </td>
-                          </tr>
-                        `).join("")
-                        : `<tr><td colspan="7">${ui.emptyBlock("Keine Firmen für die aktuelle Filterung gefunden.")}</td></tr>`
-                    }
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </section>
+          </div>
         </div>
       `;
     },
@@ -1015,7 +1152,7 @@
             ${this.kpiBlock("Kontakte", firm.contactsCount)}
             ${this.kpiBlock("Offene Tasks", firm.openTasksCount)}
             ${this.kpiBlock("Nächste Deadline", helpers.formatDate(firm.nextDeadline) || "—")}
-            ${this.kpiBlock("History-Einträge", firm.history.length)}
+            ${this.kpiBlock("History", firm.history.length)}
           </div>
 
           <div class="bbz-grid bbz-grid-3">
@@ -1061,11 +1198,7 @@
                         contacts.length
                           ? contacts.map(c => `
                             <tr>
-                              <td>
-                                <a class="bbz-link" data-action="open-contact" data-id="${c.id}">
-                                  ${helpers.escapeHtml(c.fullName || c.nachname)}
-                                </a>
-                              </td>
+                              <td><a class="bbz-link" data-action="open-contact" data-id="${c.id}">${helpers.escapeHtml(c.fullName || c.nachname)}</a></td>
                               <td>${helpers.escapeHtml(c.funktion) || '<span class="bbz-muted">—</span>'}</td>
                               <td>${helpers.escapeHtml(c.rolle) || '<span class="bbz-muted">—</span>'}</td>
                               <td>${c.email1 ? `<a class="bbz-link" href="mailto:${helpers.escapeHtml(c.email1)}">${helpers.escapeHtml(c.email1)}</a>` : '<span class="bbz-muted">—</span>'}</td>
@@ -1121,7 +1254,7 @@
               <div class="bbz-section-header">
                 <div>
                   <div class="bbz-section-title">Aufgaben</div>
-                  <div class="bbz-section-subtitle">Alle Tasks der Firma über Kontakte aggregiert</div>
+                  <div class="bbz-section-subtitle">Alle Tasks der Firma</div>
                 </div>
               </div>
               <div class="bbz-section-body">
@@ -1143,13 +1276,7 @@
                               <td>${helpers.escapeHtml(t.title) || '<span class="bbz-muted">—</span>'}</td>
                               <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
                               <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.escapeHtml(t.status) || '<span class="bbz-muted">—</span>'}</td>
-                              <td>
-                                ${
-                                  t.contactId
-                                    ? `<a class="bbz-link" data-action="open-contact" data-id="${t.contactId}">${helpers.escapeHtml(t.contactName || "Kontakt")}</a>`
-                                    : helpers.escapeHtml(t.contactName || "—")
-                                }
-                              </td>
+                              <td>${t.contactId ? `<a class="bbz-link" data-action="open-contact" data-id="${t.contactId}">${helpers.escapeHtml(t.contactName || "Kontakt")}</a>` : helpers.escapeHtml(t.contactName || "—")}</td>
                             </tr>
                           `).join("")
                           : `<tr><td colspan="4">${ui.emptyBlock("Keine Aufgaben vorhanden.")}</td></tr>`
@@ -1200,7 +1327,7 @@
           </div>
 
           <div class="bbz-section-body">
-            <div class="bbz-filters" style="grid-template-columns: 2fr 1fr 1fr;">
+            <div class="bbz-filters-3">
               <input
                 class="bbz-input"
                 data-filter="contacts-search"
@@ -1210,11 +1337,7 @@
               />
 
               <label class="bbz-checkbox">
-                <input
-                  type="checkbox"
-                  data-filter="contacts-archiviert"
-                  ${filters.archiviertAusblenden ? "checked" : ""}
-                />
+                <input type="checkbox" data-filter="contacts-archiviert" ${filters.archiviertAusblenden ? "checked" : ""} />
                 Archivierte ausblenden
               </label>
 
@@ -1239,18 +1362,8 @@
                     rows.length
                       ? rows.map(c => `
                         <tr>
-                          <td>
-                            <a class="bbz-link" data-action="open-contact" data-id="${c.id}">
-                              ${helpers.escapeHtml(c.fullName || c.nachname)}
-                            </a>
-                          </td>
-                          <td>
-                            ${
-                              c.firmId
-                                ? `<a class="bbz-link" data-action="open-firm" data-id="${c.firmId}">${helpers.escapeHtml(c.firmTitle || "Firma")}</a>`
-                                : `<span class="bbz-muted">—</span>`
-                            }
-                          </td>
+                          <td><a class="bbz-link" data-action="open-contact" data-id="${c.id}">${helpers.escapeHtml(c.fullName || c.nachname)}</a></td>
+                          <td>${c.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${c.firmId}">${helpers.escapeHtml(c.firmTitle || "Firma")}</a>` : `<span class="bbz-muted">—</span>`}</td>
                           <td>${helpers.escapeHtml(c.funktion) || '<span class="bbz-muted">—</span>'}</td>
                           <td>${helpers.escapeHtml(c.rolle) || '<span class="bbz-muted">—</span>'}</td>
                           <td>${c.email1 ? `<a class="bbz-link" href="mailto:${helpers.escapeHtml(c.email1)}">${helpers.escapeHtml(c.email1)}</a>` : '<span class="bbz-muted">—</span>'}</td>
@@ -1289,11 +1402,7 @@
               <button class="bbz-button bbz-button-secondary mb-3" data-action="back-to-contacts">Zurück zur Kontaktliste</button>
               <div class="bbz-detail-title">${helpers.escapeHtml(contact.fullName || contact.nachname)}</div>
               <div class="bbz-detail-subtitle">
-                ${
-                  contact.firmId
-                    ? `<a class="bbz-link" data-action="open-firm" data-id="${contact.firmId}">${helpers.escapeHtml(contact.firmTitle || "Firma")}</a>`
-                    : "Keine Firma verknüpft"
-                }
+                ${contact.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${contact.firmId}">${helpers.escapeHtml(contact.firmTitle || "Firma")}</a>` : "Keine Firma verknüpft"}
                 ${contact.funktion ? ` · ${helpers.escapeHtml(contact.funktion)}` : ""}
                 ${contact.rolle ? ` · ${helpers.escapeHtml(contact.rolle)}` : ""}
               </div>
@@ -1309,7 +1418,7 @@
           <div class="bbz-kpis">
             ${this.kpiBlock("Tasks", contactTasks.length)}
             ${this.kpiBlock("Offene Tasks", contactTasks.filter(t => t.isOpen).length)}
-            ${this.kpiBlock("History-Einträge", contactHistory.length)}
+            ${this.kpiBlock("History", contactHistory.length)}
             ${this.kpiBlock("Letzte Aktivität", helpers.formatDate(contactHistory[0]?.datum) || "—")}
           </div>
 
@@ -1359,7 +1468,7 @@
                 <div class="bbz-meta-grid">
                   ${ui.kv("Tasks", String(contactTasks.length))}
                   ${ui.kv("Offene Tasks", String(contactTasks.filter(t => t.isOpen).length))}
-                  ${ui.kv("History-Einträge", String(contactHistory.length))}
+                  ${ui.kv("History", String(contactHistory.length))}
                   ${ui.kv("Letzte Aktivität", helpers.formatDateTime(contactHistory[0]?.datum) || '<span class="bbz-muted">—</span>')}
                 </div>
               </div>
@@ -1424,13 +1533,7 @@
                               <td>${helpers.escapeHtml(t.title) || '<span class="bbz-muted">—</span>'}</td>
                               <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
                               <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.escapeHtml(t.status) || '<span class="bbz-muted">—</span>'}</td>
-                              <td>
-                                ${
-                                  t.firmId
-                                    ? `<a class="bbz-link" data-action="open-firm" data-id="${t.firmId}">${helpers.escapeHtml(t.firmTitle || "Firma")}</a>`
-                                    : '<span class="bbz-muted">—</span>'
-                                }
-                              </td>
+                              <td>${t.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${t.firmId}">${helpers.escapeHtml(t.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
                             </tr>
                           `).join("")
                           : `<tr><td colspan="4">${ui.emptyBlock("Keine Tasks vorhanden.")}</td></tr>`
@@ -1453,13 +1556,7 @@
 
         const searchMatch =
           !search ||
-          [
-            task.title,
-            task.status,
-            task.contactName,
-            task.firmTitle,
-            task.leadbbz
-          ].some(v => helpers.textIncludes(v, search));
+          [task.title, task.status, task.contactName, task.firmTitle, task.leadbbz].some(v => helpers.textIncludes(v, search));
 
         const openMatch = !filters.onlyOpen || task.isOpen;
         const overdueMatch = !filters.onlyOverdue || task.isOverdue;
@@ -1469,6 +1566,15 @@
 
       const openTasks = state.enriched.tasks.filter(t => t.isOpen).length;
       const overdueTasks = state.enriched.tasks.filter(t => t.isOpen && t.isOverdue).length;
+      const nextWeekTasks = state.enriched.tasks.filter(t => {
+        if (!t.isOpen) return false;
+        const d = helpers.toDate(t.deadline);
+        if (!d) return false;
+        const today = helpers.todayStart();
+        const in7 = new Date(today);
+        in7.setDate(in7.getDate() + 7);
+        return d >= today && d <= in7;
+      }).length;
 
       return `
         <div>
@@ -1476,19 +1582,19 @@
             ${this.kpiBlock("Tasks gesamt", state.enriched.tasks.length)}
             ${this.kpiBlock("Offen", openTasks)}
             ${this.kpiBlock("Überfällig", overdueTasks)}
-            ${this.kpiBlock("Erledigt / geschlossen", state.enriched.tasks.length - openTasks)}
+            ${this.kpiBlock("Nächste 7 Tage", nextWeekTasks)}
           </div>
 
           <section class="bbz-section">
             <div class="bbz-section-header">
               <div>
                 <div class="bbz-section-title">Planung</div>
-                <div class="bbz-section-subtitle">Aufgabenübersicht · Fokus auf offen und überfällig</div>
+                <div class="bbz-section-subtitle">Aufgabenübersicht mit Fokus auf offen und überfällig</div>
               </div>
             </div>
 
             <div class="bbz-section-body">
-              <div class="bbz-filters" style="grid-template-columns: 2fr 1fr 1fr;">
+              <div class="bbz-filters-3">
                 <input
                   class="bbz-input"
                   data-filter="planning-search"
@@ -1498,20 +1604,12 @@
                 />
 
                 <label class="bbz-checkbox">
-                  <input
-                    type="checkbox"
-                    data-filter="planning-open"
-                    ${filters.onlyOpen ? "checked" : ""}
-                  />
+                  <input type="checkbox" data-filter="planning-open" ${filters.onlyOpen ? "checked" : ""} />
                   Nur offene Tasks
                 </label>
 
                 <label class="bbz-checkbox">
-                  <input
-                    type="checkbox"
-                    data-filter="planning-overdue"
-                    ${filters.onlyOverdue ? "checked" : ""}
-                  />
+                  <input type="checkbox" data-filter="planning-overdue" ${filters.onlyOverdue ? "checked" : ""} />
                   Nur überfällige Tasks
                 </label>
               </div>
@@ -1535,20 +1633,8 @@
                             <td>${helpers.escapeHtml(t.title) || '<span class="bbz-muted">—</span>'}</td>
                             <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
                             <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.escapeHtml(t.status) || '<span class="bbz-muted">—</span>'}</td>
-                            <td>
-                              ${
-                                t.contactId
-                                  ? `<a class="bbz-link" data-action="open-contact" data-id="${t.contactId}">${helpers.escapeHtml(t.contactName || "Kontakt")}</a>`
-                                  : helpers.escapeHtml(t.contactName || "—")
-                              }
-                            </td>
-                            <td>
-                              ${
-                                t.firmId
-                                  ? `<a class="bbz-link" data-action="open-firm" data-id="${t.firmId}">${helpers.escapeHtml(t.firmTitle || "Firma")}</a>`
-                                  : '<span class="bbz-muted">—</span>'
-                              }
-                            </td>
+                            <td>${t.contactId ? `<a class="bbz-link" data-action="open-contact" data-id="${t.contactId}">${helpers.escapeHtml(t.contactName || "Kontakt")}</a>` : helpers.escapeHtml(t.contactName || "—")}</td>
+                            <td>${t.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${t.firmId}">${helpers.escapeHtml(t.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
                           </tr>
                         `).join("")
                         : `<tr><td colspan="5">${ui.emptyBlock("Keine Tasks für die aktuelle Filterung gefunden.")}</td></tr>`
@@ -1556,6 +1642,145 @@
                   </tbody>
                 </table>
               </div>
+            </div>
+          </section>
+        </div>
+      `;
+    },
+
+    events() {
+      const filters = state.filters.events;
+
+      const groups = state.enriched.events
+        .map(group => {
+          const contacts = group.contacts.filter(item => {
+            const search = filters.search.trim().toLowerCase();
+
+            const searchMatch =
+              !search ||
+              [
+                group.name,
+                item.contactName,
+                item.firmTitle,
+                item.rolle,
+                item.funktion,
+                item.eventhistory,
+                item.latestHistoryText
+              ].some(v => helpers.textIncludes(v, search));
+
+            const openMatch = !filters.onlyWithOpenTasks || item.openTasksCount > 0;
+            return searchMatch && openMatch;
+          });
+
+          return {
+            ...group,
+            contacts
+          };
+        })
+        .filter(group => group.contacts.length > 0);
+
+      const totalEventGroups = state.enriched.events.length;
+      const totalEventContacts = state.enriched.events.reduce((sum, e) => sum + e.contactCount, 0);
+      const totalEventOpenTasks = state.enriched.events.reduce((sum, e) => sum + e.openTasksCount, 0);
+
+      return `
+        <div>
+          <div class="bbz-kpis">
+            ${this.kpiBlock("Event-Kategorien", totalEventGroups)}
+            ${this.kpiBlock("Kontakt-Zuordnungen", totalEventContacts)}
+            ${this.kpiBlock("Offene Tasks", totalEventOpenTasks)}
+            ${this.kpiBlock("Sichtbare Kategorien", groups.length)}
+          </div>
+
+          <section class="bbz-section">
+            <div class="bbz-section-header">
+              <div>
+                <div class="bbz-section-title">Events</div>
+                <div class="bbz-section-subtitle">Separate Event-Sicht nach Kategorie mit Firmen- und Kontaktbezug</div>
+              </div>
+            </div>
+
+            <div class="bbz-section-body">
+              <div class="bbz-filters-3">
+                <input
+                  class="bbz-input"
+                  data-filter="events-search"
+                  type="text"
+                  placeholder="Suche nach Kategorie, Kontakt, Firma, Rolle, Eventhistory ..."
+                  value="${helpers.escapeHtml(filters.search)}"
+                />
+
+                <label class="bbz-checkbox">
+                  <input type="checkbox" data-filter="events-open" ${filters.onlyWithOpenTasks ? "checked" : ""} />
+                  Nur mit offenen Tasks
+                </label>
+
+                <div></div>
+              </div>
+
+              ${
+                groups.length
+                  ? `
+                    <div class="bbz-cockpit-stack">
+                      ${groups.map(group => `
+                        <section class="bbz-section" style="box-shadow:none;">
+                          <div class="bbz-section-header">
+                            <div>
+                              <div class="bbz-section-title">${helpers.escapeHtml(group.name)}</div>
+                              <div class="bbz-section-subtitle">${group.contacts.length} Kontakte · ${group.contacts.reduce((sum, c) => sum + c.openTasksCount, 0)} offene Tasks</div>
+                            </div>
+                          </div>
+
+                          <div class="bbz-section-body">
+                            <div class="bbz-table-wrap">
+                              <table class="bbz-table">
+                                <thead>
+                                  <tr>
+                                    <th>Kontakt</th>
+                                    <th>Firma</th>
+                                    <th>Funktion / Rolle</th>
+                                    <th>Eventhistory</th>
+                                    <th>Letzte Aktivität</th>
+                                    <th>Offene Tasks</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  ${group.contacts.map(item => `
+                                    <tr>
+                                      <td>
+                                        <a class="bbz-link" data-action="open-contact" data-id="${item.contactId}">${helpers.escapeHtml(item.contactName)}</a>
+                                        <div class="bbz-subtext">${item.email1 ? helpers.escapeHtml(item.email1) : "—"}</div>
+                                      </td>
+                                      <td>
+                                        ${
+                                          item.firmId
+                                            ? `<a class="bbz-link" data-action="open-firm" data-id="${item.firmId}">${helpers.escapeHtml(item.firmTitle || "Firma")}</a>`
+                                            : '<span class="bbz-muted">—</span>'
+                                        }
+                                      </td>
+                                      <td>${helpers.escapeHtml(helpers.joinNonEmpty([item.funktion, item.rolle], " · ")) || '<span class="bbz-muted">—</span>'}</td>
+                                      <td>${helpers.escapeHtml(item.eventhistory) || '<span class="bbz-muted">—</span>'}</td>
+                                      <td>
+                                        ${helpers.formatDateTime(item.latestHistoryDate) || '<span class="bbz-muted">—</span>'}
+                                        ${
+                                          item.latestHistoryType
+                                            ? `<div class="bbz-subtext">${helpers.escapeHtml(item.latestHistoryType)}</div>`
+                                            : ""
+                                        }
+                                      </td>
+                                      <td class="${item.openTasksCount > 0 ? 'bbz-warning' : 'bbz-muted'}">${item.openTasksCount}</td>
+                                    </tr>
+                                  `).join("")}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </section>
+                      `).join("")}
+                    </div>
+                  `
+                  : ui.emptyBlock("Keine Event-Daten für die aktuelle Filterung gefunden.")
+              }
             </div>
           </section>
         </div>
