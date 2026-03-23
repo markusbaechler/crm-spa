@@ -18,62 +18,75 @@ const msalConfig = {
 
 const msalInstance = new msal.PublicClientApplication(msalConfig);
 
-// 1. Sobald die Seite lädt: Prüfen, ob wir gerade vom Login zurückkommen
+// Redirect-Ergebnis verarbeiten
 msalInstance.handleRedirectPromise().then(response => {
     if (response) {
-        console.log("Login erfolgreich zurückgekehrt");
         document.getElementById('authBtn').innerText = "Eingeloggt ✅";
-        loadFirms(); // Direkt Firmen laden
+        loadFirms();
     }
-}).catch(err => {
-    console.error("Fehler beim Zurückkehren:", err);
 });
 
-// 2. Die Login-Funktion (NUR NOCH REDIRECT!)
 function handleAuth() {
-    const loginRequest = {
-        scopes: ["https://graph.microsoft.com/Sites.Read.All"]
-    };
-    // Keinerlei Popups mehr -> Seite springt zu Microsoft
-    msalInstance.loginRedirect(loginRequest);
+    msalInstance.loginRedirect({ scopes: ["https://graph.microsoft.com/Sites.Read.All"] });
 }
 
-// 3. Firmen laden
 async function loadFirms() {
     const content = document.getElementById('app-content');
     const accounts = msalInstance.getAllAccounts();
 
     if (accounts.length === 0) {
-        content.innerHTML = '<button onclick="handleAuth()" class="bg-blue-600 text-white p-4 rounded">Bitte einloggen</button>';
+        content.innerHTML = '<button onclick="handleAuth()" class="bg-blue-600 text-white p-4 rounded shadow-lg">Bitte Login klicken</button>';
         return;
     }
 
-    content.innerHTML = "Lade Firmen...";
+    content.innerHTML = '<p class="p-6 text-center animate-pulse">SharePoint-Daten werden gelesen...</p>';
 
     try {
         const tokenRes = await msalInstance.acquireTokenSilent({
             scopes: ["https://graph.microsoft.com/Sites.Read.All"],
             account: accounts[0]
-        }).catch(err => {
-            // Wenn der Token abgelaufen ist -> wieder Redirect
-            return msalInstance.acquireTokenRedirect({ scopes: ["https://graph.microsoft.com/Sites.Read.All"] });
-        });
+        }).catch(() => msalInstance.acquireTokenRedirect({ scopes: ["https://graph.microsoft.com/Sites.Read.All"] }));
 
         if (!tokenRes) return;
 
-        const url = `https://graph.microsoft.com/v1.0/sites/${config.siteId}/lists/${config.lists.firms}/items?expand=fields(select=Title,Klassifizierung)`;
+        // Wir holen die Rohdaten
+        const url = `https://graph.microsoft.com/v1.0/sites/${config.siteId}/lists/${config.lists.firms}/items?expand=fields`;
         const response = await fetch(url, {
             headers: { 'Authorization': 'Bearer ' + tokenRes.accessToken }
         });
 
         const data = await response.json();
-        let html = '<h2 class="text-xl font-bold mb-4 italic">🏢 Deine Firmen</h2>';
-        data.value.forEach(item => {
-            html += `<div class="p-2 border-b uppercase">${item.fields.Title || 'Unbenannt'}</div>`;
+        
+        // SICHERHEITS-CHECK: Sind Daten da?
+        const firms = data.value || []; 
+
+        if (firms.length === 0) {
+            content.innerHTML = '<div class="p-6 text-orange-600 bg-orange-50 border rounded text-center">Verbindung erfolgreich, aber die SharePoint-Liste "CRMFirms" ist momentan leer.</div>';
+            return;
+        }
+
+        let html = '<h2 class="text-2xl font-bold mb-6 text-slate-800 border-b pb-2">🏢 Firmenverzeichnis</h2><div class="grid gap-3">';
+        
+        firms.forEach(item => {
+            const f = item.fields || {};
+            html += `<div class="p-4 bg-white border rounded shadow-sm flex justify-between items-center hover:bg-slate-50">
+                        <span class="font-bold text-slate-700">${f.Title || 'Unbenannt'}</span>
+                        <span class="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-bold">${f.Klassifizierung || '-'}</span>
+                     </div>`;
         });
-        content.innerHTML = html;
+        
+        content.innerHTML = html + "</div>";
 
     } catch (err) {
-        content.innerHTML = "Fehler: " + err.message;
+        content.innerHTML = `<div class="p-4 bg-red-50 text-red-700 border rounded">Technischer Fehler: ${err.message}</div>`;
     }
 }
+
+// Button-Status
+window.onload = () => {
+    if(msalInstance.getAllAccounts().length > 0) {
+        document.getElementById('authBtn').innerText = "Eingeloggt ✅";
+    }
+};
+
+function showView(v) { if(v === 'dashboard') location.reload(); }
