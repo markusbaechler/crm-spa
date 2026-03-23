@@ -3,49 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>bbz CRM - Real Lookup Edition</title>
+    <title>CRM bbz Login-Test</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
-    <style>
-        body { background-color: #0f172a; color: #f1f5f9; font-family: sans-serif; }
-        .card-dark { background-color: #1e293b; border: 1px solid #334155; }
-        .prio-1, .prio-A { border-left: 4px solid #f59e0b; }
-        .prio-2, .prio-B { border-left: 4px solid #3b82f6; }
-        .timeline-line { border-left: 2px solid #334155; margin-left: 10px; }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
-    </style>
 </head>
-<body class="min-h-screen italic">
+<body class="bg-slate-50 min-h-screen flex items-center justify-center font-sans text-slate-800">
 
-    <nav class="bg-slate-900 border-b border-slate-800 p-4 sticky top-0 z-50">
-        <div class="container mx-auto flex justify-between items-center">
-            <h1 class="text-xl font-black text-blue-400 tracking-tighter cursor-pointer" onclick="location.reload()">bbz CRM</h1>
-            <div id="auth-area" class="flex items-center gap-4">
-                <span id="username" class="text-xs text-slate-400 font-bold"></span>
-                <button id="login-btn" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-lg text-sm font-bold">Login</button>
-                <button id="logout-btn" class="hidden text-xs text-slate-500 underline">Logout</button>
+    <div class="bg-white p-10 rounded-2xl shadow-xl max-w-md w-full text-center border border-slate-200">
+        <h1 class="text-3xl font-black text-blue-900 mb-2">CRM bbz</h1>
+        <p class="text-slate-500 mb-8 font-medium text-sm uppercase tracking-widest">Auth-Check V1</p>
+        
+        <div id="auth-area">
+            <button id="loginBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-xl transition-all shadow-lg active:scale-95">
+                Mit Microsoft 365 anmelden
+            </button>
+        </div>
+
+        <div id="user-info" class="hidden">
+            <div class="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
+                <p class="text-green-700 font-bold">Verbindung steht!</p>
             </div>
+            <p id="userName" class="text-xl font-bold"></p>
+            <p id="userEmail" class="text-slate-500 mb-8"></p>
+            <button id="logoutBtn" class="text-slate-400 hover:text-red-500 text-sm font-medium transition">Abmelden</button>
         </div>
-    </nav>
-
-    <div class="container mx-auto mt-6 px-4 grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div class="card-dark p-4 rounded-xl text-center"><p class="text-[10px] uppercase text-slate-500 font-bold">A-Kunden</p><p id="stat-a" class="text-2xl font-black">-</p></div>
-        <div class="card-dark p-4 rounded-xl text-center"><p class="text-[10px] uppercase text-slate-500 font-bold">B-Kunden</p><p id="stat-b" class="text-2xl font-black">-</p></div>
-        <div class="card-dark p-4 rounded-xl text-center"><p class="text-[10px] uppercase text-slate-500 font-bold">C-Kunden</p><p id="stat-c" class="text-2xl font-black">-</p></div>
-        <div class="card-dark p-4 rounded-xl text-center border-b-2 border-b-red-500"><p class="text-[10px] uppercase text-red-400 font-bold italic">Tasks</p><p id="stat-tasks" class="text-2xl font-black">-</p></div>
-        <div class="card-dark p-4 rounded-xl text-center border-b-2 border-b-blue-500"><p class="text-[10px] uppercase text-blue-400 font-bold">Top ★</p><p id="stat-top" class="text-2xl font-black">-</p></div>
     </div>
-
-    <main class="container mx-auto mt-6 p-4 grid grid-cols-1 lg:grid-cols-12 gap-6 font-sans">
-        <div class="lg:col-span-3 space-y-4">
-            <input type="text" id="comp-search" placeholder="Firma oder Kontakt suchen..." class="card-dark w-full rounded-xl px-4 py-2 text-sm outline-none text-white italic">
-            <div id="company-list" class="space-y-2 max-h-[600px] overflow-y-auto pr-2 text-sm font-bold"></div>
-        </div>
-        <div id="detail-view" class="lg:col-span-9 space-y-6">
-            <div class="card-dark p-20 rounded-2xl text-center text-slate-500 italic">Warte auf Datenabgleich...</div>
-        </div>
-    </main>
 
     <script>
         const msalConfig = {
@@ -53,162 +35,41 @@
                 clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a",
                 authority: "https://login.microsoftonline.com/3643e7ab-d166-4e27-bd5f-c5bbfcd282d7",
                 redirectUri: "https://markusbaechler.github.io/crm-spa/"
-            },
-            cache: { cacheLocation: "localStorage", storeAuthStateInCookie: true }
+            }
         };
 
         const msalInstance = new msal.PublicClientApplication(msalConfig);
-        let db = { firmen: [], kontakte: [], notizen: [], tasks: [], history: [] };
-        let siteId = "";
 
-        async function init() {
-            const res = await msalInstance.handleRedirectPromise();
-            if (res) msalInstance.setActiveAccount(res.account);
-            else if (msalInstance.getAllAccounts().length > 0) msalInstance.setActiveAccount(msalInstance.getAllAccounts()[0]);
-            updateUI();
-        }
+        const loginBtn = document.getElementById('loginBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const authArea = document.getElementById('auth-area');
+        const userInfo = document.getElementById('user-info');
 
-        function updateUI() {
-            const acc = msalInstance.getActiveAccount();
-            if (acc) {
-                document.getElementById('login-btn').classList.add('hidden');
-                document.getElementById('logout-btn').classList.remove('hidden');
-                document.getElementById('username').innerText = acc.name;
-                loadAllData();
+        function updateUI(account) {
+            if (account) {
+                authArea.classList.add('hidden');
+                userInfo.classList.remove('hidden');
+                document.getElementById('userName').innerText = account.name;
+                document.getElementById('userEmail').innerText = account.username;
             }
         }
 
-        document.getElementById('login-btn').onclick = () => msalInstance.loginRedirect({ scopes: ["Sites.Read.All"] });
-        document.getElementById('logout-btn').onclick = () => { localStorage.clear(); location.reload(); };
-
-        async function loadAllData() {
+        loginBtn.onclick = async () => {
             try {
-                const acc = msalInstance.getActiveAccount();
-                const tokenRes = await msalInstance.acquireTokenSilent({ scopes: ["Sites.Read.All"], account: acc });
-                const token = tokenRes.accessToken;
-
-                const siteRes = await fetch("https://graph.microsoft.com/v1.0/sites/bbzsg.sharepoint.com:/sites/CRM", { headers: { 'Authorization': `Bearer ${token}` } });
-                const site = await siteRes.json();
-                siteId = site.id;
-
-                const endpoints = ["Firmen", "Kontakte", "Kontaktnotizen", "Tasks", "History"];
-                const results = await Promise.all(endpoints.map(ep => 
-                    fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${ep}/items?expand=fields&$top=5000`, { 
-                        headers: { 'Authorization': `Bearer ${token}` } 
-                    }).then(r => r.json())
-                ));
-
-                db.firmen = results[0].value || [];
-                db.kontakte = results[1].value || [];
-                db.notizen = results[2].value || [];
-                db.tasks = results[3].value || [];
-                db.history = results[4].value || [];
-
-                renderStats();
-                renderList(db.firmen);
-            } catch (err) { console.error(err); }
-        }
-
-        function renderStats() {
-            const count = (p) => db.firmen.filter(f => f.fields.Priorit_x00e4_t == p).length;
-            document.getElementById('stat-a').innerText = count('1') || count('A');
-            document.getElementById('stat-b').innerText = count('2') || count('B');
-            document.getElementById('stat-c').innerText = count('3') || count('C');
-            document.getElementById('stat-tasks').innerText = db.tasks.filter(t => t.fields.Status !== "Erledigt").length;
-            document.getElementById('stat-top').innerText = db.firmen.filter(f => f.fields.TopKunde).length;
-        }
-
-        function renderList(items) {
-            document.getElementById('company-list').innerHTML = items.sort((a,b) => a.fields.Title.localeCompare(b.fields.Title)).map(item => `
-                <div onclick="showDetail('${item.id}')" class="card-dark p-3 rounded-xl cursor-pointer hover:bg-slate-800 transition prio-${item.fields.Priorit_x00e4_t}">
-                    ${item.fields.Title}
-                </div>
-            `).join('');
-        }
-
-        function showDetail(cId) {
-            const firmaObj = db.firmen.find(f => String(f.id) === String(cId));
-            const targetName = firmaObj.fields.Title.trim();
-
-            // DER "NO BULLSHIT" TEXT-MATCH: 
-            // Wir suchen in den Kontakten nach dem Namen der Firma.
-            // Wir prüfen das Feld "Firma" (Lookup-Text) UND machen zur Sicherheit einen Brute-Force Check im gesamten Datensatz.
-            const contacts = db.kontakte.filter(c => {
-                const f = c.fields;
-                const contactFirmaText = f.Firma || ""; // SharePoint liefert hier oft direkt den Text
-                
-                // Falls SharePoint nur IDs schickt, suchen wir den Namen in der Firmen-DB via der ID, die im Kontakt steht
-                const linkedFirmaName = db.firmen.find(fir => String(fir.id) === String(f.FirmaId))?.fields?.Title || "";
-
-                return contactFirmaText.includes(targetName) || linkedFirmaName.includes(targetName);
-            });
-
-            const contactIds = contacts.map(c => String(c.id));
-
-            // Timeline & Tasks über Kontakt-IDs
-            const timeline = [
-                ...db.history.filter(h => contactIds.includes(String(h.fields.ContactLookupId))),
-                ...db.notizen.filter(n => contactIds.includes(String(n.fields.KontaktpersonId)))
-            ].sort((a,b) => new Date(b.fields.Datum || b.createdDateTime) - new Date(a.fields.Datum || a.createdDateTime));
-
-            const tasks = db.tasks.filter(t => contactIds.includes(String(t.fields.ContactID)));
-
-            renderUI(firmaObj.fields, contacts, timeline, tasks);
-        }
-
-        function renderUI(firma, contacts, timeline, tasks) {
-            document.getElementById('detail-view').innerHTML = `
-                <div class="grid grid-cols-1 md:grid-cols-12 gap-6 animate-in fade-in duration-300">
-                    <div class="md:col-span-12 card-dark p-6 rounded-2xl border-l-4 border-l-blue-500">
-                        <h2 class="text-3xl font-black text-blue-400 italic">${firma.Title}</h2>
-                        <p class="text-slate-400 text-xs font-bold mt-1 uppercase italic">${firma.Ort || ''} | ${firma.Adresse || ''}</p>
-                    </div>
-                    <div class="md:col-span-5 space-y-6">
-                        <section>
-                            <h3 class="text-[10px] font-black uppercase text-slate-500 italic mb-3">Kontakte (${contacts.length})</h3>
-                            <div class="space-y-3">
-                                ${contacts.map(c => `
-                                    <div class="card-dark p-4 rounded-xl border-b-4 border-b-blue-600/50">
-                                        <p class="text-white font-black italic font-sans">${c.fields.Vorname || ''} ${c.fields.Title || ''}</p>
-                                        <p class="text-[10px] text-slate-500 uppercase italic">${c.fields.Funktion || '-'}</p>
-                                    </div>
-                                `).join('')}
-                                ${contacts.length === 0 ? '<p class="text-red-400 text-xs italic">Keine Kontakte über Namensabgleich gefunden.</p>' : ''}
-                            </div>
-                        </section>
-                        <section>
-                            <h3 class="text-[10px] font-black uppercase text-red-500 italic mb-3">Offene Tasks</h3>
-                            ${tasks.filter(t => t.fields.Status !== "Erledigt").map(t => `
-                                <div class="card-dark p-3 rounded-lg text-xs border-l-2 border-l-red-500 italic mb-2 font-sans font-bold">
-                                    <p class="text-white">${t.fields.Title}</p>
-                                </div>
-                            `).join('')}
-                        </section>
-                    </div>
-                    <div class="md:col-span-7 card-dark p-6 rounded-2xl">
-                        <h3 class="text-[10px] font-black uppercase text-slate-500 italic mb-6">Timeline</h3>
-                        <div class="timeline-line space-y-6">
-                            ${timeline.map(h => `
-                                <div class="relative pl-6">
-                                    <div class="absolute left-[-15px] top-1.5 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-slate-900 shadow-lg"></div>
-                                    <p class="text-[9px] text-slate-500 font-black">${new Date(h.fields.Datum || h.createdDateTime).toLocaleDateString()}</p>
-                                    <p class="text-xs font-black text-white italic mt-0.5">${h.fields.TypEintrag || h.fields.Title || 'Notiz'}</p>
-                                    <p class="text-[11px] text-slate-400 italic mt-1 font-sans">${h.fields.Details_x002f_Kontext || h.fields.Notizen || ''}</p>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                </div>`;
-        }
-
-        // Suche-Funktion (Live-Filter)
-        document.getElementById('comp-search').oninput = (e) => {
-            const val = e.target.value.toLowerCase();
-            const filtered = db.firmen.filter(f => f.fields.Title.toLowerCase().includes(val));
-            renderList(filtered);
+                const response = await msalInstance.loginPopup({
+                    scopes: ["User.Read", "Sites.Read.All"]
+                });
+                updateUI(response.account);
+            } catch (err) {
+                console.error(err);
+                alert("Fehler: " + err.message);
+            }
         };
 
-        init();
+        logoutBtn.onclick = () => { msalInstance.logout(); };
+
+        const accounts = msalInstance.getAllAccounts();
+        if (accounts.length > 0) { updateUI(accounts[0]); }
     </script>
 </body>
 </html>
