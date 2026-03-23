@@ -106,7 +106,8 @@
       msal: null,
       account: null,
       token: null,
-      isAuthenticated: false
+      isAuthenticated: false,
+      isReady: false
     },
 
     meta: {
@@ -164,10 +165,6 @@
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#039;");
-    },
-
-    safe(value, fallback = "") {
-      return value === null || value === undefined ? fallback : value;
     },
 
     bool(value) {
@@ -296,6 +293,26 @@
       const list = helpers.normalizeChoiceList(values);
       if (!list.length) return '<span class="bbz-muted">—</span>';
       return list.map(v => `<span class="bbz-chip">${helpers.escapeHtml(v)}</span>`).join("");
+    },
+
+    ensureMsalAvailable() {
+      if (!window.msal || !window.msal.PublicClientApplication) {
+        throw new Error("MSAL-Bibliothek wurde nicht geladen. Prüfe index.html und die Script-Referenz.");
+      }
+    },
+
+    validateConfig() {
+      const missing = [];
+      if (!CONFIG.graph.clientId) missing.push("clientId");
+      if (!CONFIG.graph.tenantId) missing.push("tenantId");
+      if (!CONFIG.graph.authority) missing.push("authority");
+      if (!CONFIG.graph.redirectUri) missing.push("redirectUri");
+      if (!CONFIG.sharePoint.siteHostname) missing.push("sharePoint.siteHostname");
+      if (!CONFIG.sharePoint.sitePath) missing.push("sharePoint.sitePath");
+
+      if (missing.length) {
+        throw new Error(`Konfiguration unvollständig: ${missing.join(", ")}`);
+      }
     }
   };
 
@@ -317,8 +334,8 @@
       this.els.btnRefresh = document.getElementById("btn-refresh");
       this.els.navButtons = [...document.querySelectorAll(".bbz-nav-btn")];
 
-      this.els.btnLogin.addEventListener("click", controller.handleLogin);
-      this.els.btnRefresh.addEventListener("click", controller.handleRefresh);
+      this.els.btnLogin.addEventListener("click", () => controller.handleLogin());
+      this.els.btnRefresh.addEventListener("click", () => controller.handleRefresh());
 
       this.els.navButtons.forEach(btn => {
         btn.addEventListener("click", () => {
@@ -327,12 +344,6 @@
       });
 
       document.addEventListener("click", (event) => {
-        const routeBtn = event.target.closest("[data-action='route']");
-        if (routeBtn) {
-          controller.navigate(routeBtn.dataset.target);
-          return;
-        }
-
         const openFirm = event.target.closest("[data-action='open-firm']");
         if (openFirm) {
           controller.openFirm(openFirm.dataset.id);
@@ -430,14 +441,15 @@
 
       if (state.auth.isAuthenticated && state.auth.account) {
         this.els.authStatus.textContent = `Angemeldet: ${state.auth.account.username || state.auth.account.name || ""}`;
-        this.els.btnLogin.textContent = "Erneut anmelden";
-      } else {
+      } else if (state.auth.isReady) {
         this.els.authStatus.textContent = "Nicht angemeldet";
-        this.els.btnLogin.textContent = "Anmelden";
+      } else {
+        this.els.authStatus.textContent = "Authentifizierung wird initialisiert ...";
       }
 
-      this.els.btnRefresh.disabled = state.meta.loading;
-      this.els.btnLogin.disabled = state.meta.loading;
+      this.els.btnLogin.textContent = state.auth.isAuthenticated ? "Erneut anmelden" : "Anmelden";
+      this.els.btnLogin.disabled = state.meta.loading || !state.auth.isReady;
+      this.els.btnRefresh.disabled = state.meta.loading || !state.auth.isReady;
     },
 
     renderView(html) {
@@ -471,7 +483,13 @@
 
   const api = {
     async initAuth() {
-      state.auth.msal = new msal.PublicClientApplication({
+      helpers.ensureMsalAvailable();
+      helpers.validateConfig();
+
+      state.auth.isReady = false;
+      state.auth.msal = null;
+
+      const msalInstance = new window.msal.PublicClientApplication({
         auth: {
           clientId: CONFIG.graph.clientId,
           authority: CONFIG.graph.authority,
@@ -482,11 +500,13 @@
         }
       });
 
-      await state.auth.msal.initialize();
+      await msalInstance.initialize();
+
+      state.auth.msal = msalInstance;
 
       try {
         const redirectResponse = await state.auth.msal.handleRedirectPromise();
-        if (redirectResponse?.account) {
+        if (redirectResponse && redirectResponse.account) {
           state.auth.account = redirectResponse.account;
           state.auth.isAuthenticated = true;
         }
@@ -495,17 +515,27 @@
       }
 
       const accounts = state.auth.msal.getAllAccounts();
-      if (accounts.length > 0) {
+      if (accounts.length > 0 && !state.auth.account) {
         state.auth.account = accounts[0];
         state.auth.isAuthenticated = true;
       }
+
+      state.auth.isReady = true;
     },
 
     async login() {
+      if (!state.auth.msal) {
+        throw new Error("MSAL ist nicht initialisiert.");
+      }
+
       const loginResponse = await state.auth.msal.loginPopup({
         scopes: CONFIG.graph.scopes,
         prompt: "select_account"
       });
+
+      if (!loginResponse || !loginResponse.account) {
+        throw new Error("Keine Kontoinformation aus dem Login erhalten.");
+      }
 
       state.auth.account = loginResponse.account;
       state.auth.isAuthenticated = true;
@@ -514,6 +544,10 @@
     },
 
     async acquireToken() {
+      if (!state.auth.msal) {
+        throw new Error("MSAL ist nicht initialisiert.");
+      }
+
       if (!state.auth.account) {
         throw new Error("Kein angemeldetes Konto gefunden.");
       }
@@ -523,6 +557,11 @@
           account: state.auth.account,
           scopes: CONFIG.graph.scopes
         });
+
+        if (!tokenResponse || !tokenResponse.accessToken) {
+          throw new Error("Kein Access Token aus acquireTokenSilent erhalten.");
+        }
+
         state.auth.token = tokenResponse.accessToken;
         return state.auth.token;
       } catch (silentError) {
@@ -530,6 +569,11 @@
           account: state.auth.account,
           scopes: CONFIG.graph.scopes
         });
+
+        if (!tokenResponse || !tokenResponse.accessToken) {
+          throw new Error("Kein Access Token aus acquireTokenPopup erhalten.");
+        }
+
         state.auth.token = tokenResponse.accessToken;
         return state.auth.token;
       }
@@ -537,6 +581,7 @@
 
     async graphRequest(path, options = {}) {
       const token = state.auth.token || await this.acquireToken();
+
       const response = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
         method: options.method || "GET",
         headers: {
@@ -1438,16 +1483,17 @@
     async init() {
       ui.init();
       ui.renderShell();
+      ui.setMessage("");
+      ui.renderView(ui.loadingBlock("Authentifizierung wird vorbereitet ..."));
 
       try {
         ui.setLoading(true);
-        ui.setMessage("");
-
         await api.initAuth();
 
         if (state.auth.isAuthenticated) {
           await api.acquireToken();
           await api.loadAll();
+          ui.setMessage("Anmeldung erkannt. Daten wurden geladen.", "success");
         } else {
           ui.setMessage("Bitte anmelden, um die SharePoint-Listen über Microsoft Graph zu laden.", "warning");
         }
@@ -1463,6 +1509,11 @@
 
     async handleLogin() {
       try {
+        if (!state.auth.isReady) {
+          ui.setMessage("Authentifizierung ist noch nicht bereit. Bitte Seite einmal neu laden.", "warning");
+          return;
+        }
+
         ui.setLoading(true);
         ui.setMessage("");
 
@@ -1475,11 +1526,16 @@
         ui.setMessage(`Anmeldung fehlgeschlagen: ${error.message}`, "error");
       } finally {
         ui.setLoading(false);
-        controller.render();
+        this.render();
       }
     },
 
     async handleRefresh() {
+      if (!state.auth.isReady) {
+        ui.setMessage("Authentifizierung ist noch nicht bereit.", "warning");
+        return;
+      }
+
       if (!state.auth.isAuthenticated) {
         ui.setMessage("Bitte zuerst anmelden.", "warning");
         return;
@@ -1498,7 +1554,7 @@
         ui.setMessage(`Fehler beim Laden: ${error.message}`, "error");
       } finally {
         ui.setLoading(false);
-        controller.render();
+        this.render();
       }
     },
 
