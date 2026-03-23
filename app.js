@@ -1,5 +1,6 @@
-// VERSIONSMARKER: V2.1 - EINHEITLICHE KLASSIFIZIERUNG & ADRESSEN
-console.log("CRM App V2.1 wird geladen...");
+// --- CONFIG & VERSION ---
+const appVersion = "V2.2"; // <--- Hier ändern wir die Version
+console.log(`CRM App ${appVersion} wird geladen...`);
 
 const config = {
     clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a",
@@ -23,10 +24,19 @@ const loginRequest = {
 
 let allFirms = []; 
 
+// --- INITIALISIERUNG ---
 window.onload = async () => {
+    updateFooter(); // Setzt die Version in der Fußzeile
     await msalInstance.handleRedirectPromise();
     checkAuthState();
 };
+
+function updateFooter() {
+    const footer = document.querySelector('footer p');
+    if (footer) {
+        footer.innerHTML = `© 2026 bbz CRM Light | Status: Etappe D | <strong>Version: ${appVersion}</strong>`;
+    }
+}
 
 function checkAuthState() {
     const accounts = msalInstance.getAllAccounts();
@@ -42,6 +52,7 @@ function checkAuthState() {
     }
 }
 
+// --- DATEN LADEN ---
 async function loadFirms() {
     const content = document.getElementById('app-content');
     const accounts = msalInstance.getAllAccounts();
@@ -77,14 +88,15 @@ async function loadFirms() {
     }
 }
 
+// --- UI RENDERING ---
 function renderUI(siteId, listId) {
     const content = document.getElementById('app-content');
     content.innerHTML = `
         <div class="bg-white p-6 rounded-3xl shadow-xl border border-slate-100">
             <div class="flex justify-between items-center mb-8">
                 <div>
-                    <h2 class="text-3xl font-black text-slate-800 tracking-tighter italic">🏢 FIRMEN</h2>
-                    <p class="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1 italic">${allFirms.length} Einträge gefunden</p>
+                    <h2 class="text-3xl font-black text-slate-800 tracking-tighter italic uppercase">🏢 Firmen</h2>
+                    <p class="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1 italic">${allFirms.length} Einträge</p>
                 </div>
                 <button onclick="toggleForm()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-full font-bold shadow-lg transition-all transform hover:scale-105">
                     + NEUE FIRMA
@@ -126,7 +138,6 @@ function generateFirmCards(firms) {
         const f = item.fields;
         const rawClass = f.Klassifizierung || '-';
         
-        // MAPPING: Macht aus "A" -> "A-Kunde"
         let displayClass = rawClass;
         if (rawClass === 'A') displayClass = 'A-Kunde';
         if (rawClass === 'B') displayClass = 'B-Kunde';
@@ -181,10 +192,7 @@ async function saveFirm(siteId, listId) {
         body: JSON.stringify({ fields: { 
             Title: name, 
             Klassifizierung: klasse,
-            Adresse: street,
-            PLZ: zip,
-            Ort: city,
-            Land: "Schweiz" 
+            Adresse: street, PLZ: zip, Ort: city, Land: "Schweiz" 
         } })
     });
 
