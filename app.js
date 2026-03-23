@@ -1,6 +1,6 @@
 // --- CONFIG & VERSION ---
-const appVersion = "V2.6";
-console.log(`CRM App ${appVersion} - Detail & Edit Modus`);
+const appVersion = "V2.7";
+console.log(`CRM App ${appVersion} - Land & VIP Status`);
 
 const config = {
     clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a",
@@ -58,7 +58,7 @@ async function loadFirms() {
     const accounts = msalInstance.getAllAccounts();
     if (accounts.length === 0) return;
 
-    content.innerHTML = '<p class="p-10 text-center animate-pulse text-blue-600 font-bold">Lade Daten...</p>';
+    content.innerHTML = '<p class="p-10 text-center animate-pulse text-blue-600 font-bold uppercase tracking-widest text-xs">Lade Daten...</p>';
 
     try {
         const tokenRes = await msalInstance.acquireTokenSilent({ ...loginRequest, account: accounts[0] })
@@ -84,9 +84,9 @@ async function loadFirms() {
 function renderUI() {
     const content = document.getElementById('app-content');
     content.innerHTML = `
-        <div class="bg-white p-6 rounded-3xl shadow-xl border border-slate-100 relative">
+        <div class="bg-white p-6 rounded-3xl shadow-xl border border-slate-100">
             <div class="flex justify-between items-center mb-8">
-                <h2 class="text-3xl font-black text-slate-800 italic uppercase">🏢 Firmen</h2>
+                <h2 class="text-3xl font-black text-slate-800 italic uppercase tracking-tighter">🏢 Firmen</h2>
                 <button onclick="toggleAddForm()" class="bg-blue-600 text-white px-6 py-2 rounded-full font-bold shadow-lg transform hover:scale-105 transition">+ NEU</button>
             </div>
 
@@ -98,17 +98,30 @@ function renderUI() {
             </div>
 
             <div id="addForm" class="hidden mb-8 p-6 bg-slate-50 rounded-2xl border-2 border-white shadow-inner">
-                <input type="text" id="new_fName" placeholder="Name" class="w-full p-3 mb-3 rounded-xl border-none shadow-sm">
-                <div class="grid grid-cols-2 gap-3 mb-3">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                    <input type="text" id="new_fName" placeholder="Name" class="p-3 rounded-xl border-none shadow-sm font-bold">
                     <select id="new_fClass" class="p-3 rounded-xl border-none shadow-sm font-bold text-slate-500">
-                        <option value="leer">leer</option><option value="A">A-Kunde</option><option value="B">B-Kunde</option><option value="C">C-Kunde</option>
+                        <option value="leer">Klassifizierung wählen</option><option value="A">A-Kunde</option><option value="B">B-Kunde</option><option value="C">C-Kunde</option>
                     </select>
-                    <input type="text" id="new_fCity" placeholder="Ort" class="p-3 rounded-xl border-none shadow-sm">
                 </div>
-                <button onclick="saveNewFirm()" class="bg-green-600 text-white px-6 py-2 rounded-xl font-bold">Anlegen</button>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                    <input type="text" id="new_fStreet" placeholder="Strasse" class="p-3 rounded-xl border-none shadow-sm">
+                    <div class="flex gap-2">
+                        <input type="text" id="new_fZip" placeholder="PLZ" class="w-20 p-3 rounded-xl border-none shadow-sm">
+                        <input type="text" id="new_fCity" placeholder="Ort" class="flex-1 p-3 rounded-xl border-none shadow-sm">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3 mb-4 items-center">
+                    <input type="text" id="new_fCountry" value="Schweiz" class="p-3 rounded-xl border-none shadow-sm">
+                    <label class="flex items-center space-x-3 cursor-pointer p-3">
+                        <input type="checkbox" id="new_fVIP" class="w-5 h-5 rounded text-blue-600 border-none shadow-sm focus:ring-0">
+                        <span class="text-slate-600 font-bold uppercase text-xs">VIP Firma</span>
+                    </label>
+                </div>
+                <button onclick="saveNewFirm()" class="bg-green-600 text-white px-8 py-2 rounded-xl font-bold">SPEICHERN</button>
             </div>
 
-            <input type="text" onkeyup="filterFirms(this.value)" placeholder="Suchen..." class="w-full p-4 mb-6 rounded-2xl bg-slate-50 border-none shadow-inner focus:ring-2 focus:ring-blue-500 text-lg">
+            <input type="text" onkeyup="filterFirms(this.value)" placeholder="Suchen nach Name, Ort oder Klasse..." class="w-full p-4 mb-6 rounded-2xl bg-slate-50 border-none shadow-inner focus:ring-2 focus:ring-blue-500 text-lg">
 
             <div id="firmList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 ${generateFirmCards(allFirms)}
@@ -120,47 +133,60 @@ function renderUI() {
 function generateFirmCards(firms) {
     return firms.map(item => {
         const f = item.fields;
+        const isVIP = f.VIP === true || f.VIP === "true";
         return `
-            <div onclick="openFirmDetails('${item.id}')" class="p-5 bg-slate-50 border border-white rounded-3xl shadow-sm hover:shadow-xl transition-all cursor-pointer group">
+            <div onclick="openFirmDetails('${item.id}')" class="p-5 bg-slate-50 border border-white rounded-3xl shadow-sm hover:shadow-xl transition-all cursor-pointer group relative">
                 <div class="flex justify-between items-start mb-2">
-                    <span class="font-bold text-slate-700 text-lg group-hover:text-blue-600">${f.Title || 'Unbenannt'}</span>
-                    <span class="px-2 py-1 rounded-lg text-[10px] font-black shadow-sm uppercase bg-white text-blue-500">${f.Klassifizierung || 'leer'}</span>
+                    <span class="font-bold text-slate-700 text-lg group-hover:text-blue-600 transition-colors">${f.Title || 'Unbenannt'}</span>
+                    <div class="flex items-center space-x-1">
+                        ${isVIP ? '<span title="VIP" class="text-amber-500">👑</span>' : ''}
+                        <span class="px-2 py-1 rounded-lg text-[10px] font-black shadow-sm uppercase bg-white text-blue-500">${f.Klassifizierung || 'leer'}</span>
+                    </div>
                 </div>
-                <div class="text-[11px] text-slate-400">${f.Ort || 'Kein Ort'}</div>
+                <div class="text-[11px] text-slate-400 font-medium">
+                    ${f.Ort || 'Kein Ort'} ${f.Land ? '· ' + f.Land : ''}
+                </div>
             </div>
         `;
     }).join('');
 }
 
-// --- DETAIL & EDIT LOGIK ---
-
 function openFirmDetails(itemId) {
     const firm = allFirms.find(f => f.id === itemId);
     const f = firm.fields;
+    const isVIP = f.VIP === true || f.VIP === "true";
     const modal = document.getElementById('detailModal');
     const container = document.getElementById('modalContent');
     
     modal.classList.remove('hidden');
     container.innerHTML = `
-        <h2 class="text-2xl font-black text-slate-800 mb-6 uppercase tracking-tighter italic">Firma bearbeiten</h2>
+        <h2 class="text-2xl font-black text-slate-800 mb-6 uppercase tracking-tighter italic">Details</h2>
         <div class="space-y-4">
-            <div><label class="text-[10px] font-bold text-slate-400 uppercase ml-2">Firmenname</label>
-                 <input type="text" id="edit_Title" value="${f.Title || ''}" class="w-full p-3 bg-slate-100 rounded-xl border-none focus:ring-2 focus:ring-blue-500 font-bold"></div>
+            <div><label class="text-[10px] font-bold text-slate-400 uppercase ml-2">Firma</label>
+                 <input type="text" id="edit_Title" value="${f.Title || ''}" class="w-full p-3 bg-slate-100 rounded-xl border-none font-bold"></div>
             
             <div class="grid grid-cols-2 gap-4">
-                <div><label class="text-[10px] font-bold text-slate-400 uppercase ml-2">Klassifizierung</label>
+                <div><label class="text-[10px] font-bold text-slate-400 uppercase ml-2">Klasse</label>
                 <select id="edit_Klass" class="w-full p-3 bg-slate-100 rounded-xl border-none font-bold">
                     <option value="leer" ${f.Klassifizierung === 'leer' ? 'selected' : ''}>leer</option>
                     <option value="A" ${f.Klassifizierung === 'A' ? 'selected' : ''}>A-Kunde</option>
                     <option value="B" ${f.Klassifizierung === 'B' ? 'selected' : ''}>B-Kunde</option>
                     <option value="C" ${f.Klassifizierung === 'C' ? 'selected' : ''}>C-Kunde</option>
                 </select></div>
-                <div><label class="text-[10px] font-bold text-slate-400 uppercase ml-2">Hauptnummer</label>
-                <input type="text" id="edit_Phone" value="${f.Hauptnummer || ''}" class="w-full p-3 bg-slate-100 rounded-xl border-none font-bold"></div>
+                <div><label class="text-[10px] font-bold text-slate-400 uppercase ml-2">VIP</label>
+                    <label class="flex items-center space-x-2 bg-slate-100 p-3 rounded-xl cursor-pointer">
+                        <input type="checkbox" id="edit_VIP" ${isVIP ? 'checked' : ''} class="w-4 h-4 rounded text-blue-600 border-none">
+                        <span class="text-xs font-bold text-slate-500 uppercase">Premium Status</span>
+                    </label>
+                </div>
             </div>
 
-            <div><label class="text-[10px] font-bold text-slate-400 uppercase ml-2">Strasse</label>
-                 <input type="text" id="edit_Street" value="${f.Adresse || ''}" class="w-full p-3 bg-slate-100 rounded-xl border-none font-bold"></div>
+            <div class="grid grid-cols-2 gap-4">
+                <div><label class="text-[10px] font-bold text-slate-400 uppercase ml-2">Strasse</label>
+                     <input type="text" id="edit_Street" value="${f.Adresse || ''}" class="w-full p-3 bg-slate-100 rounded-xl border-none font-bold"></div>
+                <div><label class="text-[10px] font-bold text-slate-400 uppercase ml-2">Land</label>
+                     <input type="text" id="edit_Country" value="${f.Land || 'Schweiz'}" class="w-full p-3 bg-slate-100 rounded-xl border-none font-bold"></div>
+            </div>
 
             <div class="grid grid-cols-3 gap-4">
                 <div class="col-span-1"><label class="text-[10px] font-bold text-slate-400 uppercase ml-2">PLZ</label>
@@ -171,11 +197,7 @@ function openFirmDetails(itemId) {
 
             <div class="mt-8 pt-6 border-t flex justify-between items-center">
                 <button onclick="updateFirm('${itemId}')" class="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black shadow-lg hover:bg-blue-700 transition">SPEICHERN</button>
-                <button onclick="deleteFirm('${itemId}', '${f.Title}')" class="text-red-400 hover:text-red-600 transition p-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                </button>
+                <button onclick="deleteFirm('${itemId}', '${f.Title}')" class="text-red-400 hover:text-red-600 p-2">Löschen</button>
             </div>
         </div>
     `;
@@ -188,19 +210,40 @@ async function updateFirm(itemId) {
         Adresse: document.getElementById('edit_Street').value,
         PLZ: document.getElementById('edit_Zip').value,
         Ort: document.getElementById('edit_City').value,
-        Hauptnummer: document.getElementById('edit_Phone').value
+        Land: document.getElementById('edit_Country').value,
+        VIP: document.getElementById('edit_VIP').checked
     };
 
-    try {
-        const tokenRes = await msalInstance.acquireTokenSilent({ ...loginRequest, account: msalInstance.getAllAccounts()[0] });
-        const res = await fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${currentListId}/items/${itemId}/fields`, {
-            method: 'PATCH',
-            headers: { 'Authorization': `Bearer ${tokenRes.accessToken}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify(fields)
-        });
+    const tokenRes = await msalInstance.acquireTokenSilent({ ...loginRequest, account: msalInstance.getAllAccounts()[0] });
+    await fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${currentListId}/items/${itemId}/fields`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${tokenRes.accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(fields)
+    });
+    closeModal(); loadFirms();
+}
 
-        if(res.ok) { closeModal(); loadFirms(); }
-    } catch (err) { alert("Fehler beim Update: " + err.message); }
+async function saveNewFirm() {
+    const name = document.getElementById('new_fName').value;
+    if(!name) return alert("Name fehlt!");
+
+    const fields = {
+        Title: name,
+        Klassifizierung: document.getElementById('new_fClass').value,
+        Adresse: document.getElementById('new_fStreet').value,
+        PLZ: document.getElementById('new_fZip').value,
+        Ort: document.getElementById('new_fCity').value,
+        Land: document.getElementById('new_fCountry').value,
+        VIP: document.getElementById('new_fVIP').checked
+    };
+
+    const tokenRes = await msalInstance.acquireTokenSilent({ ...loginRequest, account: msalInstance.getAllAccounts()[0] });
+    await fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${currentListId}/items`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${tokenRes.accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: fields })
+    });
+    toggleAddForm(); loadFirms();
 }
 
 async function deleteFirm(itemId, name) {
@@ -214,7 +257,7 @@ async function deleteFirm(itemId, name) {
 
 function filterFirms(q) {
     const query = q.toLowerCase();
-    const filtered = allFirms.filter(f => f.fields.Title?.toLowerCase().includes(query) || f.fields.Ort?.toLowerCase().includes(query));
+    const filtered = allFirms.filter(f => f.fields.Title?.toLowerCase().includes(query) || f.fields.Ort?.toLowerCase().includes(query) || f.fields.Klassifizierung?.toLowerCase().includes(query));
     document.getElementById('firmList').innerHTML = generateFirmCards(filtered);
 }
 
