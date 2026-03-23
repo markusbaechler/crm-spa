@@ -1,65 +1,347 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CRM bbz Light</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
-    <style>
-        .hidden { display: none; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>bbz CRM</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #f3f4f6;
+      color: #111827;
+      font-family: "Segoe UI", Arial, sans-serif;
+      font-style: normal !important;
+    }
+
+    * {
+      box-sizing: border-box;
+      font-style: normal !important;
+    }
+
+    .bbz-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #ffffff;
+    }
+
+    .bbz-table th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #f9fafb;
+      color: #374151;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid #e5e7eb;
+      white-space: nowrap;
+    }
+
+    .bbz-table td {
+      font-size: 14px;
+      padding: 10px 12px;
+      border-bottom: 1px solid #f1f5f9;
+      vertical-align: top;
+    }
+
+    .bbz-table tbody tr:hover {
+      background: #f8fafc;
+    }
+
+    .bbz-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 24px;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 500;
+      border: 1px solid #d1d5db;
+      background: #fff;
+      color: #374151;
+      white-space: nowrap;
+    }
+
+    .bbz-badge-a {
+      background: #fef2f2;
+      border-color: #fecaca;
+      color: #991b1b;
+    }
+
+    .bbz-badge-b {
+      background: #fffbeb;
+      border-color: #fde68a;
+      color: #92400e;
+    }
+
+    .bbz-badge-c {
+      background: #eff6ff;
+      border-color: #bfdbfe;
+      color: #1d4ed8;
+    }
+
+    .bbz-badge-vip {
+      background: #ecfdf5;
+      border-color: #a7f3d0;
+      color: #065f46;
+    }
+
+    .bbz-chip {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 9999px;
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+      padding: 2px 8px;
+      font-size: 12px;
+      color: #374151;
+      margin: 2px 6px 2px 0;
+    }
+
+    .bbz-card {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+    }
+
+    .bbz-card-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 14px;
+      font-weight: 600;
+      color: #111827;
+    }
+
+    .bbz-card-body {
+      padding: 16px;
+    }
+
+    .bbz-label {
+      font-size: 12px;
+      color: #6b7280;
+      margin-bottom: 4px;
+    }
+
+    .bbz-value {
+      font-size: 14px;
+      color: #111827;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+
+    .bbz-input,
+    .bbz-select,
+    .bbz-button {
+      height: 38px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+      padding: 0 12px;
+      font-size: 14px;
+      color: #111827;
+    }
+
+    .bbz-input:focus,
+    .bbz-select:focus {
+      outline: none;
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+
+    .bbz-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+
+    .bbz-button-primary {
+      background: #2563eb;
+      border-color: #2563eb;
+      color: white;
+    }
+
+    .bbz-button-secondary {
+      background: white;
+      border-color: #d1d5db;
+      color: #111827;
+    }
+
+    .bbz-nav-btn {
+      border: none;
+      background: transparent;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      color: #4b5563;
+      cursor: pointer;
+    }
+
+    .bbz-nav-btn.active {
+      background: #e5eefc;
+      color: #1d4ed8;
+    }
+
+    .bbz-timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .bbz-timeline-item {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 12px;
+      align-items: start;
+      padding: 10px 0;
+      border-bottom: 1px solid #f1f5f9;
+    }
+
+    .bbz-timeline-date {
+      font-size: 12px;
+      color: #6b7280;
+      white-space: nowrap;
+    }
+
+    .bbz-timeline-body {
+      min-width: 0;
+    }
+
+    .bbz-timeline-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #111827;
+      margin-bottom: 4px;
+    }
+
+    .bbz-timeline-text {
+      font-size: 14px;
+      color: #374151;
+      white-space: pre-wrap;
+      line-height: 1.45;
+    }
+
+    .bbz-kpi {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 16px;
+    }
+
+    .bbz-kpi-label {
+      font-size: 12px;
+      color: #6b7280;
+      margin-bottom: 8px;
+    }
+
+    .bbz-kpi-value {
+      font-size: 24px;
+      font-weight: 600;
+      color: #111827;
+    }
+
+    .bbz-link {
+      color: #1d4ed8;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .bbz-link:hover {
+      text-decoration: underline;
+    }
+
+    .bbz-muted {
+      color: #6b7280;
+    }
+
+    .bbz-danger {
+      color: #b91c1c;
+    }
+
+    .bbz-warning {
+      color: #b45309;
+    }
+
+    .bbz-success {
+      color: #047857;
+    }
+
+    .bbz-scroll {
+      overflow: auto;
+    }
+
+    .bbz-empty {
+      padding: 24px;
+      text-align: center;
+      color: #6b7280;
+      font-size: 14px;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+    }
+
+    .bbz-loader {
+      width: 20px;
+      height: 20px;
+      border: 2px solid #dbeafe;
+      border-top-color: #2563eb;
+      border-radius: 9999px;
+      animation: bbzspin 0.8s linear infinite;
+    }
+
+    @keyframes bbzspin {
+      to { transform: rotate(360deg); }
+    }
+
+    @media (max-width: 1024px) {
+      .bbz-timeline-item {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
 </head>
-<body class="bg-gray-50 font-sans text-gray-800">
-
-    <nav class="bg-slate-900 text-white shadow-lg">
-        <div class="container mx-auto px-6 py-4 flex justify-between items-center">
-            <div class="flex items-center space-x-4">
-                <span class="text-2xl font-bold tracking-tight text-blue-400">CRM</span>
-                <span class="text-xl font-light text-slate-300">bbz Light</span>
-            </div>
-            
-            <div class="hidden md:flex space-x-8 text-sm font-medium">
-                <button onclick="loadFirms()" class="hover:text-blue-400 transition">🏢 Firmen</button>
-                <button onclick="renderAllContacts()" class="hover:text-blue-400 transition">👥 Kontakte</button>
-            </div>
-
-            <div id="auth-status">
-                <button id="authBtn" onclick="login()" class="bg-blue-600 hover:bg-blue-500 px-5 py-2 rounded-full text-sm font-semibold transition shadow-md">
-                    Login
-                </button>
-            </div>
+<body>
+  <div id="app" class="min-h-screen">
+    <header class="bg-white border-b border-slate-200">
+      <div class="max-w-[1800px] mx-auto px-4 py-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div class="text-[22px] leading-7 text-slate-900 font-semibold">bbz CRM</div>
+          <div class="text-sm text-slate-500">Firmenzentriertes operatives CRM auf SharePoint / Microsoft Graph</div>
         </div>
+
+        <div class="flex items-center gap-2 flex-wrap">
+          <button id="btn-login" class="bbz-button bbz-button-primary">Anmelden</button>
+          <button id="btn-refresh" class="bbz-button bbz-button-secondary">Neu laden</button>
+          <div id="auth-status" class="text-sm text-slate-500"></div>
+        </div>
+      </div>
+    </header>
+
+    <nav class="bg-white border-b border-slate-200">
+      <div class="max-w-[1800px] mx-auto px-4 py-2 flex items-center gap-2 flex-wrap">
+        <button class="bbz-nav-btn active" data-route="firms">Firmen</button>
+        <button class="bbz-nav-btn" data-route="contacts">Kontakte</button>
+        <button class="bbz-nav-btn" data-route="planning">Planung</button>
+      </div>
     </nav>
 
-    <main class="container mx-auto mt-10 px-6">
-        <div id="main-content" class="bg-white p-8 rounded-xl shadow-sm border border-gray-100 min-h-[400px]">
-            <div class="text-center py-12">
-                <h2 class="text-3xl font-bold text-gray-900 mb-4">Willkommen im CRM</h2>
-                <p class="text-gray-500 mb-8">Bitte loggen Sie sich oben rechts ein und klicken Sie auf "Firmen", um die Daten zu laden.</p>
-                <div class="flex justify-center space-x-4">
-                    <div class="w-12 h-1 bg-blue-500 rounded"></div>
-                    <div class="w-12 h-1 bg-slate-300 rounded"></div>
-                    <div class="w-12 h-1 bg-slate-300 rounded"></div>
-                </div>
-            </div>
-        </div>
+    <main class="max-w-[1800px] mx-auto px-4 py-4">
+      <div id="global-message" class="hidden mb-4"></div>
+      <div id="view-root"></div>
     </main>
+  </div>
 
-    <div id="detail-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-        <div class="bg-white w-full max-w-2xl rounded-xl shadow-2xl p-6 relative">
-            <button onclick="closeModal()" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
-            <div id="modal-body-content">
-                </div>
-        </div>
-    </div>
-
-    <footer class="mt-20 pb-10 text-center border-t border-slate-100 pt-10">
-        <p id="footer-text" class="text-slate-400 text-xs">
-            © 2026 bbz CRM Light | Status: Etappe E (Kontakte-Layer)
-        </p>
-    </footer>
-
-    <script src="app.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>
