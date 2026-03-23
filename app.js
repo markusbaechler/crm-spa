@@ -18,10 +18,10 @@ const msalConfig = {
 
 const msalInstance = new msal.PublicClientApplication(msalConfig);
 
-// Redirect-Ergebnis verarbeiten
+// Verarbeitet die Rückkehr vom Login
 msalInstance.handleRedirectPromise().then(response => {
     if (response) {
-        document.getElementById('authBtn').innerText = "Eingeloggt ✅";
+        console.log("Login erfolgreich");
         loadFirms();
     }
 });
@@ -35,11 +35,11 @@ async function loadFirms() {
     const accounts = msalInstance.getAllAccounts();
 
     if (accounts.length === 0) {
-        content.innerHTML = '<button onclick="handleAuth()" class="bg-blue-600 text-white p-4 rounded shadow-lg">Bitte Login klicken</button>';
+        content.innerHTML = '<button onclick="handleAuth()" class="bg-blue-600 text-white p-4 rounded">Bitte einloggen</button>';
         return;
     }
 
-    content.innerHTML = '<p class="p-6 text-center animate-pulse">SharePoint-Daten werden gelesen...</p>';
+    content.innerHTML = '<p class="p-6 animate-pulse">Rufe Daten ab...</p>';
 
     try {
         const tokenRes = await msalInstance.acquireTokenSilent({
@@ -49,40 +49,39 @@ async function loadFirms() {
 
         if (!tokenRes) return;
 
-        // Wir holen die Rohdaten
         const url = `https://graph.microsoft.com/v1.0/sites/${config.siteId}/lists/${config.lists.firms}/items?expand=fields`;
         const response = await fetch(url, {
             headers: { 'Authorization': 'Bearer ' + tokenRes.accessToken }
         });
 
         const data = await response.json();
-        
-        // SICHERHEITS-CHECK: Sind Daten da?
-        const firms = data.value || []; 
 
-        if (firms.length === 0) {
-            content.innerHTML = '<div class="p-6 text-orange-600 bg-orange-50 border rounded text-center">Verbindung erfolgreich, aber die SharePoint-Liste "CRMFirms" ist momentan leer.</div>';
+        // --- DIAGNOSE-BLOCK START ---
+        // Wenn wir hier landen und "value" fehlt, zeigen wir die Rohdaten an
+        if (!data.value) {
+            content.innerHTML = `
+                <div class="p-4 bg-orange-100 border-l-4 border-orange-500 text-orange-700 text-xs">
+                    <p class="font-bold mb-2 text-sm">Warnung: Microsoft hat keine Liste gesendet.</p>
+                    <p>Antwort von Microsoft:</p>
+                    <pre class="bg-white p-2 mt-2 overflow-auto max-h-60 border">${JSON.stringify(data, null, 2)}</pre>
+                </div>`;
             return;
         }
+        // --- DIAGNOSE-BLOCK ENDE ---
 
-        let html = '<h2 class="text-2xl font-bold mb-6 text-slate-800 border-b pb-2">🏢 Firmenverzeichnis</h2><div class="grid gap-3">';
-        
-        firms.forEach(item => {
+        let html = '<h2 class="text-xl font-bold mb-4">🏢 Firmen</h2>';
+        data.value.forEach(item => {
             const f = item.fields || {};
-            html += `<div class="p-4 bg-white border rounded shadow-sm flex justify-between items-center hover:bg-slate-50">
-                        <span class="font-bold text-slate-700">${f.Title || 'Unbenannt'}</span>
-                        <span class="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-bold">${f.Klassifizierung || '-'}</span>
-                     </div>`;
+            html += `<div class="p-2 border-b font-medium text-slate-700">${f.Title || 'Kein Name'}</div>`;
         });
-        
-        content.innerHTML = html + "</div>";
+        content.innerHTML = html;
 
     } catch (err) {
-        content.innerHTML = `<div class="p-4 bg-red-50 text-red-700 border rounded">Technischer Fehler: ${err.message}</div>`;
+        content.innerHTML = `<div class="p-4 bg-red-100 text-red-700 font-bold">Fehler: ${err.message}</div>`;
     }
 }
 
-// Button-Status
+// Button-Status oben rechts
 window.onload = () => {
     if(msalInstance.getAllAccounts().length > 0) {
         document.getElementById('authBtn').innerText = "Eingeloggt ✅";
