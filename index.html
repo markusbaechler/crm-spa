@@ -6,7 +6,6 @@
   <title>bbz CRM</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
 
   <style>
     html, body {
@@ -342,6 +341,56 @@
     </main>
   </div>
 
-  <script src="./app.js"></script>
+  <script>
+    window.__bbzLoadScript = function (src) {
+      return new Promise((resolve, reject) => {
+        const existing = document.querySelector('script[data-src="' + src + '"]');
+        if (existing) {
+          if (existing.dataset.loaded === "true") {
+            resolve();
+            return;
+          }
+          existing.addEventListener("load", () => resolve(), { once: true });
+          existing.addEventListener("error", () => reject(new Error("Script konnte nicht geladen werden: " + src)), { once: true });
+          return;
+        }
+
+        const s = document.createElement("script");
+        s.src = src;
+        s.async = false;
+        s.defer = true;
+        s.dataset.src = src;
+        s.addEventListener("load", () => {
+          s.dataset.loaded = "true";
+          resolve();
+        }, { once: true });
+        s.addEventListener("error", () => {
+          reject(new Error("Script konnte nicht geladen werden: " + src));
+        }, { once: true });
+        document.head.appendChild(s);
+      });
+    };
+
+    (async () => {
+      try {
+        await window.__bbzLoadScript("https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js");
+
+        if (!window.msal || !window.msal.PublicClientApplication) {
+          throw new Error("MSAL wurde geladen, aber nicht korrekt initialisiert.");
+        }
+
+        await window.__bbzLoadScript("./app.js");
+      } catch (err) {
+        const msg = document.getElementById("global-message");
+        if (msg) {
+          msg.className = "mb-4 border rounded-xl px-4 py-3 bg-red-50 border-red-200 text-red-700";
+          msg.textContent = err.message || "Unbekannter Fehler beim Laden der Anwendung.";
+        } else {
+          alert(err.message || "Unbekannter Fehler beim Laden der Anwendung.");
+        }
+        console.error(err);
+      }
+    })();
+  </script>
 </body>
 </html>
