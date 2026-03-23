@@ -1,5 +1,5 @@
 // --- CONFIG & VERSION ---
-const appVersion = "V2.2"; // <--- Hier ändern wir die Version
+const appVersion = "V2.3";
 console.log(`CRM App ${appVersion} wird geladen...`);
 
 const config = {
@@ -26,7 +26,7 @@ let allFirms = [];
 
 // --- INITIALISIERUNG ---
 window.onload = async () => {
-    updateFooter(); // Setzt die Version in der Fußzeile
+    updateFooter(); 
     await msalInstance.handleRedirectPromise();
     checkAuthState();
 };
@@ -107,6 +107,7 @@ function renderUI(siteId, listId) {
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                     <input type="text" id="fName" placeholder="Firmenname" class="p-3 rounded-xl border-none shadow-sm focus:ring-2 focus:ring-blue-500">
                     <select id="fClass" class="p-3 rounded-xl border-none shadow-sm font-bold text-slate-600">
+                        <option value="leer" selected>leer</option>
                         <option value="A">A-Kunde</option>
                         <option value="B">B-Kunde</option>
                         <option value="C">C-Kunde</option>
@@ -119,7 +120,7 @@ function renderUI(siteId, listId) {
                 </div>
                 <div class="mt-4 flex gap-2">
                     <button onclick="saveFirm('${siteId}', '${listId}')" class="bg-green-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-green-700">SPEICHERN</button>
-                    <button onclick="toggleForm()" class="text-slate-400 px-4">Abbrechen</button>
+                    <button onclick="toggleForm()" class="text-slate-400 px-4 font-bold">Abbrechen</button>
                 </div>
             </div>
 
@@ -136,14 +137,14 @@ function renderUI(siteId, listId) {
 function generateFirmCards(firms) {
     return firms.map(item => {
         const f = item.fields;
-        const rawClass = f.Klassifizierung || '-';
+        const rawClass = f.Klassifizierung || 'leer';
         
         let displayClass = rawClass;
         if (rawClass === 'A') displayClass = 'A-Kunde';
         if (rawClass === 'B') displayClass = 'B-Kunde';
         if (rawClass === 'C') displayClass = 'C-Kunde';
 
-        let colorStyle = "text-slate-400 bg-slate-100";
+        let colorStyle = "text-slate-400 bg-slate-100 border-slate-200";
         if (displayClass.startsWith('A')) colorStyle = "text-emerald-600 bg-emerald-50 border border-emerald-100";
         if (displayClass.startsWith('B')) colorStyle = "text-blue-600 bg-blue-50 border border-blue-100";
         if (displayClass.startsWith('C')) colorStyle = "text-orange-600 bg-orange-50 border border-orange-100";
@@ -152,7 +153,7 @@ function generateFirmCards(firms) {
             <div class="p-5 bg-slate-50 border border-white rounded-3xl shadow-sm hover:shadow-md transition-all group">
                 <div class="flex justify-between items-start mb-2">
                     <span class="font-bold text-slate-700 text-lg group-hover:text-blue-600 transition-colors">${f.Title || 'Unbenannt'}</span>
-                    <span class="px-2 py-1 rounded-lg text-[10px] font-black shadow-sm italic uppercase ${colorStyle}">
+                    <span class="px-2 py-1 rounded-lg text-[10px] font-black shadow-sm italic uppercase border ${colorStyle}">
                         ${displayClass}
                     </span>
                 </div>
