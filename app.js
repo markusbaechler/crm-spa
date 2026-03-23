@@ -18,46 +18,48 @@ const msalConfig = {
 
 const msalInstance = new msal.PublicClientApplication(msalConfig);
 
-// WICHTIG: Diese Funktion verarbeitet die Rückkehr von Microsoft
+// 1. Sobald die Seite lädt: Prüfen, ob wir gerade vom Login zurückkommen
 msalInstance.handleRedirectPromise().then(response => {
     if (response) {
-        console.log("Login via Redirect erfolgreich");
+        console.log("Login erfolgreich zurückgekehrt");
         document.getElementById('authBtn').innerText = "Eingeloggt ✅";
-        loadFirms(); // Lädt die Firmen direkt nach Rückkehr
+        loadFirms(); // Direkt Firmen laden
     }
 }).catch(err => {
-    console.error("Redirect Fehler:", err);
+    console.error("Fehler beim Zurückkehren:", err);
 });
 
-async function handleAuth() {
-    // Wir nutzen jetzt loginRedirect statt loginPopup
+// 2. Die Login-Funktion (NUR NOCH REDIRECT!)
+function handleAuth() {
     const loginRequest = {
         scopes: ["https://graph.microsoft.com/Sites.Read.All"]
     };
+    // Keinerlei Popups mehr -> Seite springt zu Microsoft
     msalInstance.loginRedirect(loginRequest);
 }
 
+// 3. Firmen laden
 async function loadFirms() {
     const content = document.getElementById('app-content');
     const accounts = msalInstance.getAllAccounts();
 
     if (accounts.length === 0) {
-        content.innerHTML = '<div class="text-center p-10"><button onclick="handleAuth()" class="bg-blue-600 text-white px-6 py-2 rounded shadow-lg">Login erforderlich</button></div>';
+        content.innerHTML = '<button onclick="handleAuth()" class="bg-blue-600 text-white p-4 rounded">Bitte einloggen</button>';
         return;
     }
 
-    content.innerHTML = '<p class="p-6 text-center animate-pulse">Lade Firmenliste...</p>';
+    content.innerHTML = "Lade Firmen...";
 
     try {
         const tokenRes = await msalInstance.acquireTokenSilent({
             scopes: ["https://graph.microsoft.com/Sites.Read.All"],
             account: accounts[0]
         }).catch(err => {
-            // Falls Silent fehlschlägt, wieder Redirect nutzen
+            // Wenn der Token abgelaufen ist -> wieder Redirect
             return msalInstance.acquireTokenRedirect({ scopes: ["https://graph.microsoft.com/Sites.Read.All"] });
         });
 
-        if (!tokenRes) return; // Warten auf Redirect
+        if (!tokenRes) return;
 
         const url = `https://graph.microsoft.com/v1.0/sites/${config.siteId}/lists/${config.lists.firms}/items?expand=fields(select=Title,Klassifizierung)`;
         const response = await fetch(url, {
@@ -65,27 +67,13 @@ async function loadFirms() {
         });
 
         const data = await response.json();
-        
-        let html = '<h2 class="text-xl font-bold mb-4">🏢 Firmenliste</h2><div class="space-y-2">';
+        let html = '<h2 class="text-xl font-bold mb-4 italic">🏢 Deine Firmen</h2>';
         data.value.forEach(item => {
-            html += `<div class="p-3 bg-white border rounded shadow-sm flex justify-between hover:bg-blue-50 transition cursor-default">
-                        <span class="font-semibold text-slate-800">${item.fields.Title || 'Unbekannt'}</span>
-                        <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-bold">${item.fields.Klassifizierung || '-'}</span>
-                     </div>`;
+            html += `<div class="p-2 border-b uppercase">${item.fields.Title || 'Unbenannt'}</div>`;
         });
-        content.innerHTML = html + "</div>";
+        content.innerHTML = html;
 
     } catch (err) {
-        content.innerHTML = `<div class="p-4 bg-orange-50 text-orange-700 border rounded">Fehler: ${err.message}</div>`;
+        content.innerHTML = "Fehler: " + err.message;
     }
-}
-
-// Navigation
-function showView(v) { 
-    if(v === 'dashboard') location.reload();
-}
-
-// Button Status prüfen
-if(msalInstance.getAllAccounts().length > 0) {
-    document.getElementById('authBtn').innerText = "Eingeloggt ✅";
 }
