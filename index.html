@@ -16,128 +16,7 @@
       font-family: "Segoe UI", Arial, sans-serif;
       font-style: normal !important;
     }
-
-    * {
-      box-sizing: border-box;
-      font-style: normal !important;
-    }
-
-    .bbz-table {
-      width: 100%;
-      border-collapse: collapse;
-      background: #ffffff;
-    }
-
-    .bbz-table th {
-      position: sticky;
-      top: 0;
-      z-index: 1;
-      background: #f9fafb;
-      color: #374151;
-      font-size: 12px;
-      font-weight: 600;
-      letter-spacing: 0.02em;
-      text-align: left;
-      padding: 10px 12px;
-      border-bottom: 1px solid #e5e7eb;
-      white-space: nowrap;
-    }
-
-    .bbz-table td {
-      font-size: 14px;
-      padding: 10px 12px;
-      border-bottom: 1px solid #f1f5f9;
-      vertical-align: top;
-    }
-
-    .bbz-table tbody tr:hover {
-      background: #f8fafc;
-    }
-
-    .bbz-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      min-height: 24px;
-      padding: 2px 8px;
-      border-radius: 9999px;
-      font-size: 12px;
-      font-weight: 500;
-      border: 1px solid #d1d5db;
-      background: #fff;
-      color: #374151;
-      white-space: nowrap;
-    }
-
-    .bbz-badge-a {
-      background: #fef2f2;
-      border-color: #fecaca;
-      color: #991b1b;
-    }
-
-    .bbz-badge-b {
-      background: #fffbeb;
-      border-color: #fde68a;
-      color: #92400e;
-    }
-
-    .bbz-badge-c {
-      background: #eff6ff;
-      border-color: #bfdbfe;
-      color: #1d4ed8;
-    }
-
-    .bbz-badge-vip {
-      background: #ecfdf5;
-      border-color: #a7f3d0;
-      color: #065f46;
-    }
-
-    .bbz-chip {
-      display: inline-flex;
-      align-items: center;
-      border-radius: 9999px;
-      border: 1px solid #d1d5db;
-      background: #ffffff;
-      padding: 2px 8px;
-      font-size: 12px;
-      color: #374151;
-      margin: 2px 6px 2px 0;
-    }
-
-    .bbz-card {
-      background: #ffffff;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-    }
-
-    .bbz-card-header {
-      padding: 14px 16px;
-      border-bottom: 1px solid #e5e7eb;
-      font-size: 14px;
-      font-weight: 600;
-      color: #111827;
-    }
-
-    .bbz-card-body {
-      padding: 16px;
-    }
-
-    .bbz-label {
-      font-size: 12px;
-      color: #6b7280;
-      margin-bottom: 4px;
-    }
-
-    .bbz-value {
-      font-size: 14px;
-      color: #111827;
-      line-height: 1.4;
-      word-break: break-word;
-    }
-
-    .bbz-input,
-    .bbz-select,
+    * { box-sizing: border-box; font-style: normal !important; }
     .bbz-button {
       height: 38px;
       border-radius: 8px;
@@ -146,16 +25,6 @@
       padding: 0 12px;
       font-size: 14px;
       color: #111827;
-    }
-
-    .bbz-input:focus,
-    .bbz-select:focus {
-      outline: none;
-      border-color: #2563eb;
-      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
-    }
-
-    .bbz-button {
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -163,19 +32,16 @@
       cursor: pointer;
       font-weight: 500;
     }
-
     .bbz-button-primary {
       background: #2563eb;
       border-color: #2563eb;
       color: white;
     }
-
     .bbz-button-secondary {
       background: white;
       border-color: #d1d5db;
       color: #111827;
     }
-
     .bbz-nav-btn {
       border: none;
       background: transparent;
@@ -186,127 +52,24 @@
       color: #4b5563;
       cursor: pointer;
     }
-
     .bbz-nav-btn.active {
       background: #e5eefc;
       color: #1d4ed8;
     }
-
-    .bbz-timeline {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    .bbz-timeline-item {
-      display: grid;
-      grid-template-columns: 120px 1fr;
-      gap: 12px;
-      align-items: start;
-      padding: 10px 0;
-      border-bottom: 1px solid #f1f5f9;
-    }
-
-    .bbz-timeline-date {
-      font-size: 12px;
-      color: #6b7280;
-      white-space: nowrap;
-    }
-
-    .bbz-timeline-body {
-      min-width: 0;
-    }
-
-    .bbz-timeline-title {
-      font-size: 14px;
-      font-weight: 600;
-      color: #111827;
-      margin-bottom: 4px;
-    }
-
-    .bbz-timeline-text {
-      font-size: 14px;
-      color: #374151;
-      white-space: pre-wrap;
-      line-height: 1.45;
-    }
-
-    .bbz-kpi {
+    .bbz-card {
       background: #ffffff;
       border: 1px solid #e5e7eb;
       border-radius: 12px;
+    }
+    .bbz-card-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 14px;
+      font-weight: 600;
+      color: #111827;
+    }
+    .bbz-card-body {
       padding: 16px;
-    }
-
-    .bbz-kpi-label {
-      font-size: 12px;
-      color: #6b7280;
-      margin-bottom: 8px;
-    }
-
-    .bbz-kpi-value {
-      font-size: 24px;
-      font-weight: 600;
-      color: #111827;
-    }
-
-    .bbz-link {
-      color: #1d4ed8;
-      text-decoration: none;
-      cursor: pointer;
-    }
-
-    .bbz-link:hover {
-      text-decoration: underline;
-    }
-
-    .bbz-muted {
-      color: #6b7280;
-    }
-
-    .bbz-danger {
-      color: #b91c1c;
-    }
-
-    .bbz-warning {
-      color: #b45309;
-    }
-
-    .bbz-success {
-      color: #047857;
-    }
-
-    .bbz-scroll {
-      overflow: auto;
-    }
-
-    .bbz-empty {
-      padding: 24px;
-      text-align: center;
-      color: #6b7280;
-      font-size: 14px;
-      background: #ffffff;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-    }
-
-    .bbz-loader {
-      width: 20px;
-      height: 20px;
-      border: 2px solid #dbeafe;
-      border-top-color: #2563eb;
-      border-radius: 9999px;
-      animation: bbzspin 0.8s linear infinite;
-    }
-
-    @keyframes bbzspin {
-      to { transform: rotate(360deg); }
-    }
-
-    @media (max-width: 1024px) {
-      .bbz-timeline-item {
-        grid-template-columns: 1fr;
-      }
     }
   </style>
 </head>
@@ -336,12 +99,56 @@
     </nav>
 
     <main class="max-w-[1800px] mx-auto px-4 py-4">
-      <div id="global-message" class="hidden mb-4"></div>
+      <div id="global-message" class="mb-4 border rounded-xl px-4 py-3 bg-amber-50 border-amber-200 text-amber-700">
+        Lade lokale MSAL-Datei...
+      </div>
       <div id="view-root"></div>
     </main>
   </div>
 
+  <script>
+    window.addEventListener("error", function (event) {
+      const box = document.getElementById("global-message");
+      if (box) {
+        box.className = "mb-4 border rounded-xl px-4 py-3 bg-red-50 border-red-200 text-red-700";
+        box.textContent = "Script-Fehler: " + (event.message || "Unbekannter Fehler");
+      }
+    });
+  </script>
+
   <script src="./msal-browser.min.js"></script>
-  <script src="./app.js"></script>
+
+  <script>
+    (function () {
+      const box = document.getElementById("global-message");
+
+      if (!window.msal || !window.msal.PublicClientApplication) {
+        box.className = "mb-4 border rounded-xl px-4 py-3 bg-red-50 border-red-200 text-red-700";
+        box.innerHTML = `
+          <div><strong>Lokale MSAL-Datei wurde nicht geladen.</strong></div>
+          <div class="mt-2">Prüfe:</div>
+          <div>1. Datei <code>msal-browser.min.js</code> existiert wirklich</div>
+          <div>2. Datei liegt im gleichen Ordner wie <code>index.html</code></div>
+          <div>3. Dateiname ist exakt gleich</div>
+          <div>4. Die Datei ist über Browser direkt erreichbar</div>
+        `;
+        return;
+      }
+
+      box.className = "mb-4 border rounded-xl px-4 py-3 bg-green-50 border-green-200 text-green-700";
+      box.textContent = "MSAL lokal erfolgreich geladen. app.js wird jetzt gestartet.";
+
+      const s = document.createElement("script");
+      s.src = "./app.js";
+      s.onload = function () {
+        box.textContent = "MSAL lokal erfolgreich geladen. Anwendung gestartet.";
+      };
+      s.onerror = function () {
+        box.className = "mb-4 border rounded-xl px-4 py-3 bg-red-50 border-red-200 text-red-700";
+        box.textContent = "app.js konnte nicht geladen werden.";
+      };
+      document.body.appendChild(s);
+    })();
+  </script>
 </body>
 </html>
