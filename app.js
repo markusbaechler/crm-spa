@@ -1,322 +1,1534 @@
-// --- CONFIG & VERSION ---
-const appVersion = "0.52";
-const appName = "CRM bbz";
-const config = { 
-    clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a", 
-    tenantId: "3643e7ab-d166-4e27-bd5f-c5bbfcd282d7", 
-    siteSearch: "bbzsg.sharepoint.com:/sites/CRM" 
-};
+(() => {
+  "use strict";
 
-// --- TOAST NOTIFICATIONS ---
-function showToast(msg, type = 'success') {
-    const existing = document.getElementById('crm-toast');
-    if (existing) existing.remove();
-    const colors = { success: 'bg-emerald-600', error: 'bg-red-500', info: 'bg-blue-600' };
-    const toast = document.createElement('div');
-    toast.id = 'crm-toast';
-    toast.className = `fixed bottom-8 right-8 z-[9999] px-6 py-4 rounded-2xl text-white text-[11px] font-black uppercase tracking-widest shadow-2xl transition-all duration-300 ${colors[type] || colors.success}`;
-    toast.innerText = msg;
-    document.body.appendChild(toast);
-    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3000);
-}
+  const CONFIG = {
+    appName: "bbz CRM",
 
-// Globaler State
-let allFirms = [], allContacts = [], currentSiteId = "", currentListId = "", contactListId = "";
-let meta = { klassen: [], anreden: [], rollen: [], leads: [], sgf: [], events: [] };
+    graph: {
+      tenantId: "3643e7ab-d166-4e27-bd5f-c5bbfcd282d7",
+      clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a",
+      authority: "https://login.microsoftonline.com/3643e7ab-d166-4e27-bd5f-c5bbfcd282d7",
+      redirectUri: "https://markusbaechler.github.io/crm-spa/",
+      scopes: ["User.Read", "Sites.Read.All"]
+    },
 
-const msalConfig = { 
-    auth: { clientId: config.clientId, authority: `https://login.microsoftonline.com/${config.tenantId}`, redirectUri: "https://markusbaechler.github.io/crm-spa/" }, 
-    cache: { cacheLocation: "localStorage" } 
-};
-const msalInstance = new msal.PublicClientApplication(msalConfig);
-const loginRequest = { scopes: ["https://graph.microsoft.com/AllSites.Write", "https://graph.microsoft.com/AllSites.Read"] };
+    sharePoint: {
+      siteHostname: "bbzsg.sharepoint.com",
+      sitePath: "/sites/CRM"
+    },
 
-// --- INITIALISIERUNG ---
-window.onload = async () => { 
-    updateFooter();
-    try {
-        await msalInstance.handleRedirectPromise(); 
-        checkAuthState(); 
-    } catch (e) { console.error("Ladefehler:", e); }
-};
+    lists: {
+      firms: "CRMFirms",
+      contacts: "CRMContacts",
+      history: "CRMHistory",
+      tasks: "CRMTasks"
+    },
 
-function updateFooter() {
-    const ft = document.getElementById('footer-text');
-    if (ft) ft.innerHTML = `© 2026 ${appName} | <b>Build ${appVersion}</b>`;
-}
-
-function checkAuthState() {
-    const acc = msalInstance.getAllAccounts();
-    const btn = document.getElementById('authBtn');
-    if (acc.length > 0) {
-        btn.innerText = "Logout"; btn.onclick = () => msalInstance.logoutRedirect({ account: acc[0] });
-        loadData();
-    } else {
-        btn.innerText = "Login"; btn.onclick = () => msalInstance.loginRedirect(loginRequest);
+    defaults: {
+      route: "firms",
+      contactArchiveDefaultHidden: true,
+      planningShowOnlyOpen: true
     }
-}
+  };
 
-async function loadData() {
-    const content = document.getElementById('main-content');
-    content.innerHTML = `<div class="p-20 text-center text-slate-400 font-bold uppercase tracking-widest animate-pulse italic">Lade Datenbank-Intelligenz...</div>`;
-    try {
-        const token = (await msalInstance.acquireTokenSilent({ ...loginRequest, account: msalInstance.getAllAccounts()[0] })).accessToken;
-        const h = { 'Authorization': `Bearer ${token}` };
-        
-        const s = await (await fetch(`https://graph.microsoft.com/v1.0/sites/${config.siteSearch}`, { headers: h })).json();
-        currentSiteId = s.id;
-        const l = await (await fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists`, { headers: h })).json();
-        currentListId = l.value.find(x => x.displayName === "CRMFirms").id;
-        contactListId = l.value.find(x => x.displayName === "CRMContacts").id;
+  const SCHEMA = {
+    firms: {
+      listTitle: CONFIG.lists.firms,
+      fields: {
+        id: "id",
+        title: "Title",
+        adresse: "Adresse",
+        plz: "PLZ",
+        ort: "Ort",
+        land: "Land",
+        hauptnummer: "Hauptnummer",
+        klassifizierung: "Klassifizierung",
+        vip: "VIP"
+      }
+    },
 
-        const [cKlass, cAnrede, cRolle, cLead, cSGF, cEvent, fData, cData] = await Promise.all([
-            fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${currentListId}/columns/Klassifizierung`, { headers: h }).then(r => r.json()),
-            fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${contactListId}/columns/Anrede`, { headers: h }).then(r => r.json()),
-            fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${contactListId}/columns/Rolle`, { headers: h }).then(r => r.json()),
-            fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${contactListId}/columns/Leadbbz0`, { headers: h }).then(r => r.json()),
-            fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${contactListId}/columns/SGF`, { headers: h }).then(r => r.json()),
-            fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${contactListId}/columns/Event`, { headers: h }).then(r => r.json()),
-            fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${currentListId}/items?expand=fields`, { headers: h }).then(r => r.json()),
-            fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${contactListId}/items?expand=fields`, { headers: h }).then(r => r.json())
-        ]);
+    contacts: {
+      listTitle: CONFIG.lists.contacts,
+      fields: {
+        id: "id",
+        nachname: "Title",
+        vorname: "Vorname",
+        anrede: "Anrede",
+        firma: "Firma",
+        firmaLookupId: "FirmaLookupId",
+        funktion: "Funktion",
+        email1: "Email1",
+        email2: "Email2",
+        direktwahl: "Direktwahl",
+        mobile: "Mobile",
+        rolle: "Rolle",
+        leadbbz0: "Leadbbz0",
+        sgf: "SGF",
+        geburtstag: "Geburtstag",
+        kommentar: "Kommentar",
+        event: "Event",
+        eventhistory: "Eventhistory",
+        archiviert: "Archiviert"
+      }
+    },
 
-        meta = {
-            klassen: cKlass.choice?.choices || [],
-            anreden: cAnrede.choice?.choices || [],
-            rollen: cRolle.choice?.choices || [],
-            leads: cLead.choice?.choices || [],
-            sgf: cSGF.choice?.choices || [],
-            events: cEvent.choice?.choices || []
+    history: {
+      listTitle: CONFIG.lists.history,
+      fields: {
+        id: "id",
+        title: "Title",
+        kontakt: "Nachname",
+        kontaktLookupId: "NachnameLookupId",
+        datum: "Datum",
+        typ: "Typ",
+        notizen: "Notizen",
+        projektbezug: "Projektbezug",
+        leadbbz: "Leadbbz"
+      }
+    },
+
+    tasks: {
+      listTitle: CONFIG.lists.tasks,
+      fields: {
+        id: "id",
+        title: "Title",
+        kontakt: "Name",
+        kontaktLookupId: "NameLookupId",
+        deadline: "Deadline",
+        status: "Status",
+        leadbbz: "Leadbbz"
+      }
+    }
+  };
+
+  const state = {
+    auth: {
+      msal: null,
+      account: null,
+      token: null,
+      isAuthenticated: false
+    },
+
+    meta: {
+      siteId: null,
+      loading: false,
+      lastError: null
+    },
+
+    data: {
+      firms: [],
+      contacts: [],
+      history: [],
+      tasks: []
+    },
+
+    enriched: {
+      firms: [],
+      contacts: [],
+      history: [],
+      tasks: []
+    },
+
+    filters: {
+      route: CONFIG.defaults.route,
+
+      firms: {
+        search: "",
+        klassifizierung: "",
+        vip: ""
+      },
+
+      contacts: {
+        search: "",
+        archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden
+      },
+
+      planning: {
+        search: "",
+        onlyOpen: CONFIG.defaults.planningShowOnlyOpen,
+        onlyOverdue: false
+      }
+    },
+
+    selection: {
+      firmId: null,
+      contactId: null
+    }
+  };
+
+  const helpers = {
+    escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    },
+
+    safe(value, fallback = "") {
+      return value === null || value === undefined ? fallback : value;
+    },
+
+    bool(value) {
+      if (typeof value === "boolean") return value;
+      if (typeof value === "number") return value === 1;
+      if (typeof value === "string") {
+        const v = value.trim().toLowerCase();
+        return ["true", "1", "ja", "yes"].includes(v);
+      }
+      return false;
+    },
+
+    isEmpty(value) {
+      return value === null || value === undefined || value === "";
+    },
+
+    toArray(value) {
+      if (Array.isArray(value)) return value;
+      if (value === null || value === undefined || value === "") return [];
+      if (typeof value === "string") {
+        if (value.includes(";#")) {
+          return value.split(";#").map(v => v.trim()).filter(Boolean);
+        }
+        if (value.includes(",")) {
+          return value.split(",").map(v => v.trim()).filter(Boolean);
+        }
+        return [value.trim()].filter(Boolean);
+      }
+      return [value];
+    },
+
+    normalizeChoiceList(value) {
+      return helpers.toArray(value).filter(Boolean);
+    },
+
+    toDate(value) {
+      if (!value) return null;
+      const d = new Date(value);
+      return Number.isNaN(d.getTime()) ? null : d;
+    },
+
+    formatDate(value) {
+      const d = helpers.toDate(value);
+      if (!d) return "";
+      return d.toLocaleDateString("de-CH", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric"
+      });
+    },
+
+    formatDateTime(value) {
+      const d = helpers.toDate(value);
+      if (!d) return "";
+      return d.toLocaleString("de-CH", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+    },
+
+    todayStart() {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      return d;
+    },
+
+    isOpenTask(status) {
+      const v = String(status || "").trim().toLowerCase();
+      return !["erledigt", "geschlossen", "completed", "done", "closed"].includes(v);
+    },
+
+    isOverdue(deadline) {
+      const d = helpers.toDate(deadline);
+      if (!d) return false;
+      return d < helpers.todayStart();
+    },
+
+    compareDateAsc(a, b) {
+      const ad = helpers.toDate(a);
+      const bd = helpers.toDate(b);
+      if (!ad && !bd) return 0;
+      if (!ad) return 1;
+      if (!bd) return -1;
+      return ad - bd;
+    },
+
+    compareDateDesc(a, b) {
+      const ad = helpers.toDate(a);
+      const bd = helpers.toDate(b);
+      if (!ad && !bd) return 0;
+      if (!ad) return 1;
+      if (!bd) return -1;
+      return bd - ad;
+    },
+
+    textIncludes(haystack, needle) {
+      return String(haystack || "").toLowerCase().includes(String(needle || "").toLowerCase());
+    },
+
+    joinNonEmpty(values, sep = " · ") {
+      return values.filter(v => !helpers.isEmpty(v)).join(sep);
+    },
+
+    fullName(contact) {
+      return helpers.joinNonEmpty([contact.vorname, contact.nachname], " ").trim();
+    },
+
+    firmBadgeClass(value) {
+      const v = String(value || "").toUpperCase();
+      if (v === "A") return "bbz-badge bbz-badge-a";
+      if (v === "B") return "bbz-badge bbz-badge-b";
+      if (v === "C") return "bbz-badge bbz-badge-c";
+      return "bbz-badge";
+    },
+
+    statusClass(status, deadline) {
+      if (!helpers.isOpenTask(status)) return "bbz-success";
+      if (helpers.isOverdue(deadline)) return "bbz-danger";
+      return "bbz-warning";
+    },
+
+    multiChoiceHtml(values) {
+      const list = helpers.normalizeChoiceList(values);
+      if (!list.length) return '<span class="bbz-muted">—</span>';
+      return list.map(v => `<span class="bbz-chip">${helpers.escapeHtml(v)}</span>`).join("");
+    }
+  };
+
+  const ui = {
+    els: {
+      viewRoot: null,
+      authStatus: null,
+      globalMessage: null,
+      btnLogin: null,
+      btnRefresh: null,
+      navButtons: []
+    },
+
+    init() {
+      this.els.viewRoot = document.getElementById("view-root");
+      this.els.authStatus = document.getElementById("auth-status");
+      this.els.globalMessage = document.getElementById("global-message");
+      this.els.btnLogin = document.getElementById("btn-login");
+      this.els.btnRefresh = document.getElementById("btn-refresh");
+      this.els.navButtons = [...document.querySelectorAll(".bbz-nav-btn")];
+
+      this.els.btnLogin.addEventListener("click", controller.handleLogin);
+      this.els.btnRefresh.addEventListener("click", controller.handleRefresh);
+
+      this.els.navButtons.forEach(btn => {
+        btn.addEventListener("click", () => {
+          controller.navigate(btn.dataset.route);
+        });
+      });
+
+      document.addEventListener("click", (event) => {
+        const routeBtn = event.target.closest("[data-action='route']");
+        if (routeBtn) {
+          controller.navigate(routeBtn.dataset.target);
+          return;
+        }
+
+        const openFirm = event.target.closest("[data-action='open-firm']");
+        if (openFirm) {
+          controller.openFirm(openFirm.dataset.id);
+          return;
+        }
+
+        const openContact = event.target.closest("[data-action='open-contact']");
+        if (openContact) {
+          controller.openContact(openContact.dataset.id);
+          return;
+        }
+
+        const backToFirms = event.target.closest("[data-action='back-to-firms']");
+        if (backToFirms) {
+          controller.navigate("firms");
+          return;
+        }
+
+        const backToContacts = event.target.closest("[data-action='back-to-contacts']");
+        if (backToContacts) {
+          controller.navigate("contacts");
+          return;
+        }
+      });
+
+      document.addEventListener("input", (event) => {
+        const el = event.target;
+
+        if (el.matches("[data-filter='firms-search']")) {
+          state.filters.firms.search = el.value;
+          controller.render();
+        }
+        if (el.matches("[data-filter='contacts-search']")) {
+          state.filters.contacts.search = el.value;
+          controller.render();
+        }
+        if (el.matches("[data-filter='planning-search']")) {
+          state.filters.planning.search = el.value;
+          controller.render();
+        }
+      });
+
+      document.addEventListener("change", (event) => {
+        const el = event.target;
+
+        if (el.matches("[data-filter='firms-klassifizierung']")) {
+          state.filters.firms.klassifizierung = el.value;
+          controller.render();
+        }
+        if (el.matches("[data-filter='firms-vip']")) {
+          state.filters.firms.vip = el.value;
+          controller.render();
+        }
+        if (el.matches("[data-filter='contacts-archiviert']")) {
+          state.filters.contacts.archiviertAusblenden = el.checked;
+          controller.render();
+        }
+        if (el.matches("[data-filter='planning-open']")) {
+          state.filters.planning.onlyOpen = el.checked;
+          controller.render();
+        }
+        if (el.matches("[data-filter='planning-overdue']")) {
+          state.filters.planning.onlyOverdue = el.checked;
+          controller.render();
+        }
+      });
+    },
+
+    setLoading(isLoading) {
+      state.meta.loading = isLoading;
+      this.renderShell();
+    },
+
+    setMessage(message, type = "info") {
+      const el = this.els.globalMessage;
+      if (!message) {
+        el.className = "hidden mb-4";
+        el.innerHTML = "";
+        return;
+      }
+
+      let colorClasses = "bg-slate-50 border-slate-200 text-slate-700";
+      if (type === "error") colorClasses = "bg-red-50 border-red-200 text-red-700";
+      if (type === "success") colorClasses = "bg-green-50 border-green-200 text-green-700";
+      if (type === "warning") colorClasses = "bg-amber-50 border-amber-200 text-amber-700";
+
+      el.className = `mb-4 border rounded-xl px-4 py-3 ${colorClasses}`;
+      el.textContent = message;
+    },
+
+    renderShell() {
+      this.els.navButtons.forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.route === state.filters.route);
+      });
+
+      if (state.auth.isAuthenticated && state.auth.account) {
+        this.els.authStatus.textContent = `Angemeldet: ${state.auth.account.username || state.auth.account.name || ""}`;
+        this.els.btnLogin.textContent = "Erneut anmelden";
+      } else {
+        this.els.authStatus.textContent = "Nicht angemeldet";
+        this.els.btnLogin.textContent = "Anmelden";
+      }
+
+      this.els.btnRefresh.disabled = state.meta.loading;
+      this.els.btnLogin.disabled = state.meta.loading;
+    },
+
+    renderView(html) {
+      this.els.viewRoot.innerHTML = html;
+    },
+
+    loadingBlock(text = "Daten werden geladen ...") {
+      return `
+        <div class="bbz-card">
+          <div class="bbz-card-body flex items-center gap-3">
+            <div class="bbz-loader"></div>
+            <div class="text-sm text-slate-600">${helpers.escapeHtml(text)}</div>
+          </div>
+        </div>
+      `;
+    },
+
+    emptyBlock(text = "Keine Daten vorhanden.") {
+      return `<div class="bbz-empty">${helpers.escapeHtml(text)}</div>`;
+    },
+
+    kv(label, value) {
+      return `
+        <div>
+          <div class="bbz-label">${helpers.escapeHtml(label)}</div>
+          <div class="bbz-value">${value || '<span class="bbz-muted">—</span>'}</div>
+        </div>
+      `;
+    }
+  };
+
+  const api = {
+    async initAuth() {
+      state.auth.msal = new msal.PublicClientApplication({
+        auth: {
+          clientId: CONFIG.graph.clientId,
+          authority: CONFIG.graph.authority,
+          redirectUri: CONFIG.graph.redirectUri
+        },
+        cache: {
+          cacheLocation: "localStorage"
+        }
+      });
+
+      await state.auth.msal.initialize();
+
+      try {
+        const redirectResponse = await state.auth.msal.handleRedirectPromise();
+        if (redirectResponse?.account) {
+          state.auth.account = redirectResponse.account;
+          state.auth.isAuthenticated = true;
+        }
+      } catch (error) {
+        console.warn("handleRedirectPromise Fehler", error);
+      }
+
+      const accounts = state.auth.msal.getAllAccounts();
+      if (accounts.length > 0) {
+        state.auth.account = accounts[0];
+        state.auth.isAuthenticated = true;
+      }
+    },
+
+    async login() {
+      const loginResponse = await state.auth.msal.loginPopup({
+        scopes: CONFIG.graph.scopes,
+        prompt: "select_account"
+      });
+
+      state.auth.account = loginResponse.account;
+      state.auth.isAuthenticated = true;
+
+      await this.acquireToken();
+    },
+
+    async acquireToken() {
+      if (!state.auth.account) {
+        throw new Error("Kein angemeldetes Konto gefunden.");
+      }
+
+      try {
+        const tokenResponse = await state.auth.msal.acquireTokenSilent({
+          account: state.auth.account,
+          scopes: CONFIG.graph.scopes
+        });
+        state.auth.token = tokenResponse.accessToken;
+        return state.auth.token;
+      } catch (silentError) {
+        const tokenResponse = await state.auth.msal.acquireTokenPopup({
+          account: state.auth.account,
+          scopes: CONFIG.graph.scopes
+        });
+        state.auth.token = tokenResponse.accessToken;
+        return state.auth.token;
+      }
+    },
+
+    async graphRequest(path, options = {}) {
+      const token = state.auth.token || await this.acquireToken();
+      const response = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+        method: options.method || "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          ...(options.headers || {})
+        },
+        body: options.body ? JSON.stringify(options.body) : undefined
+      });
+
+      if (!response.ok) {
+        let detail = "";
+        try {
+          detail = await response.text();
+        } catch {
+          detail = "";
+        }
+        throw new Error(`Graph ${response.status}: ${detail || response.statusText}`);
+      }
+
+      if (response.status === 204) return null;
+      return await response.json();
+    },
+
+    async getSiteId() {
+      if (state.meta.siteId) return state.meta.siteId;
+
+      const siteRef = `${CONFIG.sharePoint.siteHostname}:${CONFIG.sharePoint.sitePath}`;
+      const data = await this.graphRequest(`/sites/${siteRef}`);
+      state.meta.siteId = data.id;
+      return state.meta.siteId;
+    },
+
+    async getListItems(listTitle) {
+      const siteId = await this.getSiteId();
+      const data = await this.graphRequest(`/sites/${siteId}/lists/${encodeURIComponent(listTitle)}/items?expand=fields&top=5000`);
+      return data.value || [];
+    },
+
+    async loadAll() {
+      const [firms, contacts, history, tasks] = await Promise.all([
+        this.getListItems(SCHEMA.firms.listTitle),
+        this.getListItems(SCHEMA.contacts.listTitle),
+        this.getListItems(SCHEMA.history.listTitle),
+        this.getListItems(SCHEMA.tasks.listTitle)
+      ]);
+
+      state.data.firms = firms.map(item => normalizer.firm(item));
+      state.data.contacts = contacts.map(item => normalizer.contact(item));
+      state.data.history = history.map(item => normalizer.history(item));
+      state.data.tasks = tasks.map(item => normalizer.task(item));
+
+      dataModel.enrich();
+    }
+  };
+
+  const normalizer = {
+    getField(item, fieldName) {
+      return item?.fields?.[fieldName];
+    },
+
+    itemId(item) {
+      return Number(item?.id) || null;
+    },
+
+    firm(item) {
+      const f = SCHEMA.firms.fields;
+      return {
+        id: this.itemId(item),
+        title: this.getField(item, f.title) || "",
+        adresse: this.getField(item, f.adresse) || "",
+        plz: this.getField(item, f.plz) || "",
+        ort: this.getField(item, f.ort) || "",
+        land: this.getField(item, f.land) || "",
+        hauptnummer: this.getField(item, f.hauptnummer) || "",
+        klassifizierung: this.getField(item, f.klassifizierung) || "",
+        vip: helpers.bool(this.getField(item, f.vip))
+      };
+    },
+
+    contact(item) {
+      const f = SCHEMA.contacts.fields;
+      return {
+        id: this.itemId(item),
+        nachname: this.getField(item, f.nachname) || "",
+        vorname: this.getField(item, f.vorname) || "",
+        anrede: this.getField(item, f.anrede) || "",
+        firmaRaw: this.getField(item, f.firma),
+        firmaLookupId: Number(this.getField(item, f.firmaLookupId)) || null,
+        funktion: this.getField(item, f.funktion) || "",
+        email1: this.getField(item, f.email1) || "",
+        email2: this.getField(item, f.email2) || "",
+        direktwahl: this.getField(item, f.direktwahl) || "",
+        mobile: this.getField(item, f.mobile) || "",
+        rolle: this.getField(item, f.rolle) || "",
+        leadbbz0: this.getField(item, f.leadbbz0) || "",
+        sgf: helpers.normalizeChoiceList(this.getField(item, f.sgf)),
+        geburtstag: this.getField(item, f.geburtstag) || "",
+        kommentar: this.getField(item, f.kommentar) || "",
+        event: helpers.normalizeChoiceList(this.getField(item, f.event)),
+        eventhistory: this.getField(item, f.eventhistory) || "",
+        archiviert: helpers.bool(this.getField(item, f.archiviert))
+      };
+    },
+
+    history(item) {
+      const f = SCHEMA.history.fields;
+      return {
+        id: this.itemId(item),
+        title: this.getField(item, f.title) || "",
+        kontaktRaw: this.getField(item, f.kontakt),
+        kontaktLookupId: Number(this.getField(item, f.kontaktLookupId)) || null,
+        datum: this.getField(item, f.datum) || "",
+        typ: this.getField(item, f.typ) || "",
+        notizen: this.getField(item, f.notizen) || "",
+        projektbezug: this.getField(item, f.projektbezug) || "",
+        leadbbz: this.getField(item, f.leadbbz) || ""
+      };
+    },
+
+    task(item) {
+      const f = SCHEMA.tasks.fields;
+      return {
+        id: this.itemId(item),
+        title: this.getField(item, f.title) || "",
+        kontaktRaw: this.getField(item, f.kontakt),
+        kontaktLookupId: Number(this.getField(item, f.kontaktLookupId)) || null,
+        deadline: this.getField(item, f.deadline) || "",
+        status: this.getField(item, f.status) || "",
+        leadbbz: this.getField(item, f.leadbbz) || ""
+      };
+    }
+  };
+
+  const dataModel = {
+    enrich() {
+      const firmById = new Map(state.data.firms.map(f => [f.id, f]));
+      const contactById = new Map(state.data.contacts.map(c => [c.id, c]));
+
+      const contacts = state.data.contacts.map(contact => {
+        const firm = firmById.get(contact.firmaLookupId) || null;
+        return {
+          ...contact,
+          fullName: helpers.fullName(contact),
+          firmId: firm?.id || contact.firmaLookupId || null,
+          firmTitle: firm?.title || contact.firmaRaw || "",
+          firm: firm
         };
-        allFirms = fData.value; allContacts = cData.value;
-        renderFirms(); 
-    } catch (e) { content.innerHTML = `<div class="p-10 text-red-500">Sync-Fehler: ${e.message}</div>`; }
-}
+      });
 
-// --- NAVIGATION ---
-function renderFirms() {
-    const content = document.getElementById('main-content');
-    content.innerHTML = `
-        <div class="max-w-[1600px] mx-auto animate-in fade-in">
-            <div class="flex justify-between items-center mb-8 border-b pb-6 border-slate-100">
-                <div class="flex gap-10 items-end">
-                    <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter cursor-pointer" onclick="renderFirms()">Firmen</h2>
-                    <nav class="flex gap-6 text-xs font-black uppercase tracking-widest pb-1">
-                        <button class="text-blue-600 border-b-2 border-blue-600 px-1">Übersicht</button>
-                        <button onclick="renderAllContacts()" class="text-slate-300 hover:text-slate-600 transition">Alle Kontakte</button>
-                    </nav>
-                </div>
-                <div class="flex gap-4">
-                    <input type="text" onkeyup="filterFirms(this.value)" placeholder="Suche..." class="px-5 py-2.5 bg-slate-50 rounded-2xl text-sm w-80 shadow-inner font-bold italic outline-none">
-                    <button onclick="toggleAddForm()" class="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-[10px] font-black uppercase">+ Firma</button>
-                </div>
-            </div>
-            <div id="addForm" class="hidden mb-8 p-6 bg-slate-50 border rounded-2xl grid grid-cols-1 md:grid-cols-3 gap-4 shadow-inner">
-                <input type="text" id="new_fName" placeholder="Name *" class="p-2 border rounded text-sm">
-                <select id="new_fClass" class="p-2 border rounded text-sm"><option value="">- Klasse -</option>${meta.klassen.map(o => `<option value="${o}">${o}</option>`).join('')}</select>
-                <input type="text" id="new_fCity" placeholder="Ort" class="p-2 border rounded text-sm">
-                <button onclick="saveNewFirm()" class="bg-green-600 text-white font-bold text-xs p-2 rounded uppercase shadow-md">In SharePoint speichern</button>
-            </div>
-            <div id="firmList" class="grid grid-cols-1 md:grid-cols-3 gap-8">
-                ${allFirms.map(f => `
-                    <div onclick="renderDetail('${f.id}')" class="bg-white border p-8 rounded-[2.5rem] hover:shadow-2xl transition-all cursor-pointer border-t-[6px] ${f.fields.Klassifizierung === 'A' ? 'border-t-emerald-500' : 'border-t-slate-200'}">
-                        <h3 class="font-black text-slate-800 text-xl uppercase italic tracking-tighter mb-4 underline">${f.fields.Title}</h3>
-                        <div class="text-[11px] font-bold text-slate-400 uppercase tracking-widest italic mb-8">📍 ${f.fields.Ort || '-'}</div>
-                        <div class="mt-auto pt-6 flex justify-between items-center border-t border-slate-50">
-                            <span class="text-[10px] font-black bg-slate-50 px-3 py-1.5 rounded-xl border italic uppercase">${f.fields.Klassifizierung || '-'}</span>
-                            <span class="text-[10px] font-black text-blue-600 bg-blue-50 px-3 py-1.5 rounded-xl uppercase italic">👥 ${allContacts.filter(c => String(c.fields.FirmaLookupId) === String(f.id)).length}</span>
-                        </div>
-                    </div>`).join('')}
-            </div>
-        </div>`;
-}
+      const history = state.data.history.map(entry => {
+        const contact = contactById.get(entry.kontaktLookupId) || null;
+        const firm = contact ? firmById.get(contact.firmaLookupId) || null : null;
 
-function renderAllContacts() {
-    const content = document.getElementById('main-content');
-    content.innerHTML = `
-        <div class="max-w-[1600px] mx-auto animate-in fade-in">
-            <div class="flex justify-between items-center mb-8 border-b pb-6 border-slate-100">
-                <div class="flex gap-10 items-end">
-                    <h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter cursor-pointer" onclick="renderFirms()">Kontakte</h2>
-                    <nav class="flex gap-6 text-xs font-black uppercase tracking-widest pb-1">
-                        <button onclick="renderFirms()" class="text-slate-300 hover:text-slate-600 transition">Firmen</button>
-                        <button class="text-blue-600 border-b-2 border-blue-600 px-1">Alle Kontakte</button>
-                    </nav>
-                </div>
-                <input type="text" onkeyup="filterContacts(this.value)" placeholder="Person suchen..." class="px-5 py-2.5 bg-slate-50 rounded-2xl text-sm w-96 shadow-inner font-bold italic outline-none">
+        return {
+          ...entry,
+          contactId: contact?.id || entry.kontaktLookupId || null,
+          contactName: contact ? helpers.fullName(contact) : (entry.kontaktRaw || ""),
+          firmId: firm?.id || null,
+          firmTitle: firm?.title || "",
+          projektbezugBool: helpers.bool(entry.projektbezug)
+        };
+      });
+
+      const tasks = state.data.tasks.map(task => {
+        const contact = contactById.get(task.kontaktLookupId) || null;
+        const firm = contact ? firmById.get(contact.firmaLookupId) || null : null;
+
+        return {
+          ...task,
+          contactId: contact?.id || task.kontaktLookupId || null,
+          contactName: contact ? helpers.fullName(contact) : (task.kontaktRaw || ""),
+          firmId: firm?.id || null,
+          firmTitle: firm?.title || "",
+          isOpen: helpers.isOpenTask(task.status),
+          isOverdue: helpers.isOverdue(task.deadline)
+        };
+      });
+
+      const firms = state.data.firms.map(firm => {
+        const firmContacts = contacts.filter(c => c.firmId === firm.id);
+        const firmContactIds = new Set(firmContacts.map(c => c.id));
+        const firmTasks = tasks.filter(t => firmContactIds.has(t.contactId));
+        const firmHistory = history.filter(h => firmContactIds.has(h.contactId));
+
+        const openTasks = firmTasks.filter(t => t.isOpen);
+        const nextDeadlineTask = openTasks
+          .filter(t => helpers.toDate(t.deadline))
+          .sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline))[0] || null;
+
+        return {
+          ...firm,
+          contactsCount: firmContacts.length,
+          contacts: firmContacts.sort((a, b) => a.fullName.localeCompare(b.fullName, "de")),
+          tasks: firmTasks.sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline)),
+          history: firmHistory.sort((a, b) => helpers.compareDateDesc(a.datum, b.datum)),
+          openTasksCount: openTasks.length,
+          nextDeadline: nextDeadlineTask?.deadline || ""
+        };
+      });
+
+      state.enriched.contacts = contacts.sort((a, b) => a.fullName.localeCompare(b.fullName, "de"));
+      state.enriched.history = history.sort((a, b) => helpers.compareDateDesc(a.datum, b.datum));
+      state.enriched.tasks = tasks.sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
+      state.enriched.firms = firms.sort((a, b) => a.title.localeCompare(b.title, "de"));
+    },
+
+    getFirmById(id) {
+      return state.enriched.firms.find(f => String(f.id) === String(id)) || null;
+    },
+
+    getContactById(id) {
+      return state.enriched.contacts.find(c => String(c.id) === String(id)) || null;
+    }
+  };
+
+  const views = {
+    renderRoute() {
+      if (state.meta.loading) {
+        return ui.loadingBlock();
+      }
+
+      switch (state.filters.route) {
+        case "firms":
+          if (state.selection.firmId) return this.firmDetail();
+          return this.firms();
+        case "contacts":
+          if (state.selection.contactId) return this.contactDetail();
+          return this.contacts();
+        case "planning":
+          return this.planning();
+        default:
+          return this.firms();
+      }
+    },
+
+    firms() {
+      const filters = state.filters.firms;
+      const rows = state.enriched.firms.filter(firm => {
+        const search = filters.search.trim().toLowerCase();
+
+        const searchMatch =
+          !search ||
+          [
+            firm.title,
+            firm.ort,
+            firm.klassifizierung,
+            firm.hauptnummer,
+            firm.adresse,
+            firm.land,
+            ...firm.contacts.map(c => c.fullName)
+          ].some(v => helpers.textIncludes(v, search));
+
+        const klassifizierungMatch =
+          !filters.klassifizierung || firm.klassifizierung === filters.klassifizierung;
+
+        const vipMatch =
+          !filters.vip ||
+          (filters.vip === "yes" && firm.vip) ||
+          (filters.vip === "no" && !firm.vip);
+
+        return searchMatch && klassifizierungMatch && vipMatch;
+      });
+
+      const aCount = state.enriched.firms.filter(f => f.klassifizierung === "A").length;
+      const bCount = state.enriched.firms.filter(f => f.klassifizierung === "B").length;
+      const cCount = state.enriched.firms.filter(f => f.klassifizierung === "C").length;
+      const overdueTasks = state.enriched.tasks.filter(t => t.isOpen && t.isOverdue).length;
+
+      return `
+        <div class="space-y-4">
+          <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">Firmen gesamt</div>
+              <div class="bbz-kpi-value">${state.enriched.firms.length}</div>
             </div>
-            <div class="bg-white border rounded-[2rem] overflow-hidden shadow-sm">
-                <table class="w-full text-left text-[11px] italic">
-                    <thead class="bg-slate-50 border-b text-[9px] uppercase font-black text-slate-400 tracking-widest">
-                        <tr><th class="p-6">Name / Firma</th><th class="p-6">Rolle / SGF</th><th class="p-6">Events (Badges)</th><th class="p-6">Kontaktinfo</th></tr>
-                    </thead>
-                    <tbody id="contactTableBody" class="divide-y divide-slate-50 italic">
-                        ${allContacts.map(c => {
-                            const firm = allFirms.find(x => String(x.id) === String(c.fields.FirmaLookupId));
-                            return `<tr class="hover:bg-blue-50/30 transition-all group">
-                                <td class="p-6"><div class="text-base font-black text-slate-800 uppercase group-hover:text-blue-600 cursor-pointer underline" onclick="renderContactDetail('${c.id}')">${c.fields.Vorname || ''} ${c.fields.Title}</div>
-                                <div class="text-[11px] font-bold text-slate-400 mt-1 cursor-pointer" onclick="renderDetail('${c.fields.FirmaLookupId}')">🏢 ${firm ? firm.fields.Title : '-'}</div></td>
-                                <td class="p-6"><div class="text-[10px] font-black text-blue-500 uppercase">${c.fields.Rolle || '-'}</div><div class="text-[9px] font-black bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded border border-emerald-100 mt-1 inline-block uppercase">${c.fields.SGF || '-'}</div></td>
-                                <td class="p-6"><div class="flex flex-wrap gap-1">${c.fields.Event ? `<span class="px-2 py-0.5 bg-blue-50 text-blue-600 border border-blue-100 rounded text-[8px] font-black uppercase">${c.fields.Event}</span>` : '-'}</div></td>
-                                <td class="p-6 font-bold text-slate-500">📧 ${c.fields.Email1 || '-'}<br>📱 ${c.fields.Mobile || '-'}</td>
-                            </tr>`;
-                        }).join('')}
-                    </tbody>
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">A / B / C</div>
+              <div class="bbz-kpi-value">${aCount} / ${bCount} / ${cCount}</div>
+            </div>
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">Kontakte gesamt</div>
+              <div class="bbz-kpi-value">${state.enriched.contacts.length}</div>
+            </div>
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">Überfällige Tasks</div>
+              <div class="bbz-kpi-value">${overdueTasks}</div>
+            </div>
+          </section>
+
+          <section class="bbz-card">
+            <div class="bbz-card-header">Firmen</div>
+            <div class="bbz-card-body space-y-4">
+              <div class="grid grid-cols-1 lg:grid-cols-4 gap-3">
+                <input
+                  class="bbz-input lg:col-span-2"
+                  data-filter="firms-search"
+                  type="text"
+                  placeholder="Suche nach Firma, Ort, Ansprechpartner, Telefon ..."
+                  value="${helpers.escapeHtml(filters.search)}"
+                />
+                <select class="bbz-select" data-filter="firms-klassifizierung">
+                  <option value="">Alle Klassifizierungen</option>
+                  <option value="A" ${filters.klassifizierung === "A" ? "selected" : ""}>A</option>
+                  <option value="B" ${filters.klassifizierung === "B" ? "selected" : ""}>B</option>
+                  <option value="C" ${filters.klassifizierung === "C" ? "selected" : ""}>C</option>
+                </select>
+                <select class="bbz-select" data-filter="firms-vip">
+                  <option value="">VIP egal</option>
+                  <option value="yes" ${filters.vip === "yes" ? "selected" : ""}>Nur VIP</option>
+                  <option value="no" ${filters.vip === "no" ? "selected" : ""}>Nur nicht VIP</option>
+                </select>
+              </div>
+
+              <div class="bbz-scroll">
+                <table class="bbz-table">
+                  <thead>
+                    <tr>
+                      <th>Firma</th>
+                      <th>Ort</th>
+                      <th>Klassifizierung</th>
+                      <th>VIP</th>
+                      <th>Anzahl Kontakte</th>
+                      <th>Offene Tasks</th>
+                      <th>Nächste Deadline</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${
+                      rows.length
+                        ? rows.map(firm => `
+                          <tr>
+                            <td>
+                              <a class="bbz-link" data-action="open-firm" data-id="${firm.id}">
+                                ${helpers.escapeHtml(firm.title)}
+                              </a>
+                            </td>
+                            <td>${helpers.escapeHtml(helpers.joinNonEmpty([firm.plz, firm.ort], " ")) || '<span class="bbz-muted">—</span>'}</td>
+                            <td><span class="${helpers.firmBadgeClass(firm.klassifizierung)}">${helpers.escapeHtml(firm.klassifizierung || "—")}</span></td>
+                            <td>${firm.vip ? '<span class="bbz-badge bbz-badge-vip">VIP</span>' : '<span class="bbz-muted">—</span>'}</td>
+                            <td>${firm.contactsCount}</td>
+                            <td>${firm.openTasksCount}</td>
+                            <td>${helpers.formatDate(firm.nextDeadline) || '<span class="bbz-muted">—</span>'}</td>
+                          </tr>
+                        `).join("")
+                        : `<tr><td colspan="7">${ui.emptyBlock("Keine Firmen für die aktuelle Filterung gefunden.")}</td></tr>`
+                    }
+                  </tbody>
                 </table>
+              </div>
             </div>
-        </div>`;
-}
+          </section>
+        </div>
+      `;
+    },
 
-function renderDetail(id) {
-    const firm = allFirms.find(x => String(x.id) === String(id)), f = firm.fields;
-    const contacts = allContacts.filter(c => String(c.fields.FirmaLookupId) === String(id));
-    document.getElementById('main-content').innerHTML = `
-        <div class="max-w-[1600px] mx-auto animate-in slide-in-from-right duration-300">
-            <div class="bg-white border rounded-2xl p-6 mb-8 flex justify-between items-center shadow-sm">
-                <div class="flex items-center gap-6"><button onclick="renderFirms()" class="bg-slate-50 p-2 rounded-xl text-slate-400">←</button>
-                <h2 class="text-2xl font-black text-slate-800 uppercase italic tracking-tighter">${f.Title}</h2></div>
-                <div class="flex gap-3">
-                    <button onclick="toggleFirmEditForm()" class="bg-slate-100 text-slate-600 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase hover:bg-slate-200 transition">✏️ Firma bearbeiten</button>
-                    <button onclick="toggleContactForm()" class="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase">+ Kontakt</button>
-                </div>
+    firmDetail() {
+      const firm = dataModel.getFirmById(state.selection.firmId);
+      if (!firm) {
+        return ui.emptyBlock("Die ausgewählte Firma wurde nicht gefunden.");
+      }
+
+      const recentHistory = [...firm.history].slice(0, 20);
+      const firmTasks = [...firm.tasks];
+      const contacts = [...firm.contacts];
+
+      return `
+        <div class="space-y-4">
+          <section class="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <button class="bbz-button bbz-button-secondary mb-3" data-action="back-to-firms">Zurück zur Firmenliste</button>
+              <div class="flex items-center gap-2 flex-wrap">
+                <div class="text-2xl text-slate-900 font-semibold">${helpers.escapeHtml(firm.title)}</div>
+                ${firm.klassifizierung ? `<span class="${helpers.firmBadgeClass(firm.klassifizierung)}">${helpers.escapeHtml(firm.klassifizierung)}</span>` : ""}
+                ${firm.vip ? `<span class="bbz-badge bbz-badge-vip">VIP</span>` : ""}
+              </div>
+              <div class="text-sm text-slate-500 mt-1">
+                ${helpers.escapeHtml(helpers.joinNonEmpty([firm.adresse, helpers.joinNonEmpty([firm.plz, firm.ort], " "), firm.land], " · ")) || "Keine erweiterten Stammdaten"}
+              </div>
+            </div>
+          </section>
+
+          <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">Kontakte</div>
+              <div class="bbz-kpi-value">${firm.contactsCount}</div>
+            </div>
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">Offene Tasks</div>
+              <div class="bbz-kpi-value">${firm.openTasksCount}</div>
+            </div>
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">Nächste Deadline</div>
+              <div class="bbz-kpi-value text-[20px]">${helpers.formatDate(firm.nextDeadline) || "—"}</div>
+            </div>
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">History-Einträge</div>
+              <div class="bbz-kpi-value">${firm.history.length}</div>
+            </div>
+          </section>
+
+          <section class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+            <div class="bbz-card xl:col-span-1">
+              <div class="bbz-card-header">Übersicht</div>
+              <div class="bbz-card-body grid grid-cols-1 gap-4">
+                ${ui.kv("Firma", helpers.escapeHtml(firm.title))}
+                ${ui.kv("Adresse", helpers.escapeHtml(firm.adresse) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("PLZ / Ort", helpers.escapeHtml(helpers.joinNonEmpty([firm.plz, firm.ort], " ")) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Land", helpers.escapeHtml(firm.land) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Hauptnummer", helpers.escapeHtml(firm.hauptnummer) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Klassifizierung", firm.klassifizierung ? `<span class="${helpers.firmBadgeClass(firm.klassifizierung)}">${helpers.escapeHtml(firm.klassifizierung)}</span>` : '<span class="bbz-muted">—</span>')}
+                ${ui.kv("VIP", firm.vip ? '<span class="bbz-badge bbz-badge-vip">Ja</span>' : '<span class="bbz-muted">Nein</span>')}
+              </div>
             </div>
 
-            <div id="firmEditForm" class="hidden bg-white border border-slate-200 p-8 rounded-3xl mb-8 shadow-xl animate-in fade-in">
-                <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Firma bearbeiten</h3>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                    <div><label class="text-[9px] font-black uppercase text-slate-400">Firmenname *</label>
-                        <input type="text" id="fe_name" value="${f.Title || ''}" class="w-full p-2.5 bg-slate-50 border-none rounded-xl text-sm font-bold mt-1"></div>
-                    <div><label class="text-[9px] font-black uppercase text-slate-400">Ort</label>
-                        <input type="text" id="fe_ort" value="${f.Ort || ''}" class="w-full p-2.5 bg-slate-50 border-none rounded-xl text-sm font-bold mt-1"></div>
-                    <div><label class="text-[9px] font-black uppercase text-slate-400">Klassifizierung</label>
-                        <select id="fe_klass" class="w-full p-2.5 bg-slate-50 border-none rounded-xl text-sm font-bold mt-1">
-                            <option value="">- leer -</option>${meta.klassen.map(o => `<option value="${o}" ${f.Klassifizierung===o?'selected':''}>${o}</option>`).join('')}
-                        </select></div>
-                </div>
-                <div class="flex gap-4">
-                    <button onclick="saveFirmEdit('${id}')" class="bg-blue-600 text-white font-black text-[10px] uppercase px-8 py-3 rounded-2xl shadow-lg">In SharePoint speichern</button>
-                    <button onclick="toggleFirmEditForm()" class="text-slate-400 font-bold uppercase text-[10px] px-4 underline">Abbrechen</button>
-                </div>
-            </div>
-            
-            <div id="addContactForm" class="hidden bg-white border border-blue-100 p-8 rounded-3xl mb-8 shadow-xl animate-in fade-in">
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-                    <div><label class="text-[9px] font-black uppercase text-slate-400">Anrede</label>
-                        <select id="c_anrede" class="w-full p-2 border rounded text-sm"><option value="">- leer -</option>${meta.anreden.map(o => `<option value="${o}">${o}</option>`).join('')}</select>
-                    </div>
-                    <div><label class="text-[9px] font-black uppercase text-slate-400">Vorname</label><input type="text" id="c_vn" class="w-full p-2 border rounded text-sm"></div>
-                    <div><label class="text-[9px] font-black uppercase text-slate-400">Nachname *</label><input type="text" id="c_nn" class="w-full p-2 border rounded text-sm font-black"></div>
-                    <div><label class="text-[9px] font-black uppercase text-slate-400">Rolle</label>
-                        <select id="c_rolle" class="w-full p-2 border rounded text-sm font-bold"><option value="">- leer -</option>${meta.rollen.map(o => `<option value="${o}">${o}</option>`).join('')}</select>
-                    </div>
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-                    <div><label class="text-[9px] font-black uppercase text-slate-400">E-Mail</label><input type="text" id="c_email1" class="w-full p-2 border rounded text-sm"></div>
-                    <div><label class="text-[9px] font-black uppercase text-slate-400">Mobile</label><input type="text" id="c_mo" class="w-full p-2 border rounded text-sm font-black"></div>
-                    <div><label class="text-[9px] font-black uppercase text-slate-400">SGF</label>
-                        <select id="c_sgf" class="w-full p-2 border rounded text-sm font-bold"><option value="">- leer -</option>${meta.sgf.map(o => `<option value="${o}">${o}</option>`).join('')}</select>
-                    </div>
-                    <div><label class="text-[9px] font-black uppercase text-slate-400">Lead bbz</label>
-                        <select id="c_lead" class="w-full p-2 border rounded text-sm font-bold"><option value="">- leer -</option>${meta.leads.map(o => `<option value="${o}">${o}</option>`).join('')}</select>
-                    </div>
-                </div>
-                <button onclick="saveContact('${id}')" class="bg-blue-600 text-white font-black text-[10px] uppercase px-8 py-3 rounded-2xl shadow-lg">In SharePoint Speichern</button>
-                <button onclick="toggleContactForm()" class="text-slate-400 font-bold uppercase text-[10px] px-4 underline">Abbrechen</button>
-            </div>
-
-            <div class="bg-white border rounded-[2rem] overflow-hidden shadow-sm">
-                <table class="w-full text-left text-[11px] italic">
-                    <thead class="bg-slate-50 border-b text-[9px] font-black text-slate-400 uppercase tracking-widest italic">
-                        <tr><th class="p-4">Name</th><th class="p-4">Rolle / Funktion</th><th class="p-4">Events</th><th class="p-4">Kontaktinfo</th></tr>
+            <div class="bbz-card xl:col-span-2">
+              <div class="bbz-card-header">Kontakte</div>
+              <div class="bbz-card-body">
+                <div class="bbz-scroll">
+                  <table class="bbz-table">
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Funktion</th>
+                        <th>Rolle</th>
+                        <th>E-Mail</th>
+                        <th>Telefon</th>
+                        <th>Archiviert</th>
+                      </tr>
                     </thead>
-                    <tbody class="divide-y italic">
-                        ${contacts.map(c => `
-                            <tr class="hover:bg-slate-50 transition-colors group">
-                                <td onclick="renderContactDetail('${c.id}')" class="p-4 font-bold text-slate-800 text-sm underline cursor-pointer group-hover:text-blue-600 uppercase tracking-tighter italic">${c.fields.Vorname || ''} ${c.fields.Title}</td>
-                                <td class="p-4"><div class="font-bold text-blue-600 uppercase text-[9px] tracking-widest">${c.fields.Rolle || '-'}</div></td>
-                                <td class="p-4"><div class="flex flex-wrap gap-1">${c.fields.Event ? `<span class="px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded text-[8px] font-black uppercase border border-blue-100">${c.fields.Event}</span>` : '-'}</div></td>
-                                <td class="p-4 text-slate-500 font-bold">📧 ${c.fields.Email1 || '-'} <br> 📱 ${c.fields.Mobile || '-'}</td>
-                            </tr>`).join('')}
+                    <tbody>
+                      ${
+                        contacts.length
+                          ? contacts.map(c => `
+                            <tr>
+                              <td>
+                                <a class="bbz-link" data-action="open-contact" data-id="${c.id}">
+                                  ${helpers.escapeHtml(c.fullName || c.nachname)}
+                                </a>
+                              </td>
+                              <td>${helpers.escapeHtml(c.funktion) || '<span class="bbz-muted">—</span>'}</td>
+                              <td>${helpers.escapeHtml(c.rolle) || '<span class="bbz-muted">—</span>'}</td>
+                              <td>${c.email1 ? `<a class="bbz-link" href="mailto:${helpers.escapeHtml(c.email1)}">${helpers.escapeHtml(c.email1)}</a>` : '<span class="bbz-muted">—</span>'}</td>
+                              <td>${helpers.escapeHtml(helpers.joinNonEmpty([c.direktwahl, c.mobile], " / ")) || '<span class="bbz-muted">—</span>'}</td>
+                              <td>${c.archiviert ? '<span class="bbz-danger">Ja</span>' : '<span class="bbz-muted">Nein</span>'}</td>
+                            </tr>
+                          `).join("")
+                          : `<tr><td colspan="6">${ui.emptyBlock("Keine Kontakte vorhanden.")}</td></tr>`
+                      }
                     </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div class="bbz-card">
+              <div class="bbz-card-header">Aktivitäten</div>
+              <div class="bbz-card-body">
+                ${
+                  recentHistory.length
+                    ? `
+                      <div class="bbz-timeline">
+                        ${recentHistory.map(h => `
+                          <div class="bbz-timeline-item">
+                            <div class="bbz-timeline-date">
+                              ${helpers.formatDateTime(h.datum) || "—"}<br>
+                              <span class="bbz-muted">${helpers.escapeHtml(h.contactName || "")}</span>
+                            </div>
+                            <div class="bbz-timeline-body">
+                              <div class="bbz-timeline-title">
+                                ${helpers.escapeHtml(h.typ || h.title || "Eintrag")}
+                                ${h.projektbezugBool ? '<span class="bbz-chip">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}
+                              </div>
+                              <div class="bbz-timeline-text">${helpers.escapeHtml(h.notizen || "—")}</div>
+                            </div>
+                          </div>
+                        `).join("")}
+                      </div>
+                    `
+                    : ui.emptyBlock("Keine History-Einträge vorhanden.")
+                }
+              </div>
+            </div>
+
+            <div class="bbz-card">
+              <div class="bbz-card-header">Aufgaben</div>
+              <div class="bbz-card-body">
+                <div class="bbz-scroll">
+                  <table class="bbz-table">
+                    <thead>
+                      <tr>
+                        <th>Titel</th>
+                        <th>Deadline</th>
+                        <th>Status</th>
+                        <th>Kontaktperson</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${
+                        firmTasks.length
+                          ? firmTasks.map(t => `
+                            <tr>
+                              <td>${helpers.escapeHtml(t.title) || '<span class="bbz-muted">—</span>'}</td>
+                              <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
+                              <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.escapeHtml(t.status) || '<span class="bbz-muted">—</span>'}</td>
+                              <td>
+                                ${
+                                  t.contactId
+                                    ? `<a class="bbz-link" data-action="open-contact" data-id="${t.contactId}">${helpers.escapeHtml(t.contactName || "Kontakt")}</a>`
+                                    : helpers.escapeHtml(t.contactName || "—")
+                                }
+                              </td>
+                            </tr>
+                          `).join("")
+                          : `<tr><td colspan="4">${ui.emptyBlock("Keine Aufgaben vorhanden.")}</td></tr>`
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      `;
+    },
+
+    contacts() {
+      const filters = state.filters.contacts;
+      const rows = state.enriched.contacts.filter(contact => {
+        const search = filters.search.trim().toLowerCase();
+
+        const searchMatch =
+          !search ||
+          [
+            contact.fullName,
+            contact.firmTitle,
+            contact.funktion,
+            contact.rolle,
+            contact.email1,
+            contact.email2,
+            contact.direktwahl,
+            contact.mobile,
+            contact.kommentar,
+            ...contact.sgf,
+            ...contact.event
+          ].some(v => helpers.textIncludes(v, search));
+
+        const archiveMatch = !filters.archiviertAusblenden || !contact.archiviert;
+
+        return searchMatch && archiveMatch;
+      });
+
+      return `
+        <div class="space-y-4">
+          <section class="bbz-card">
+            <div class="bbz-card-header">Kontakte</div>
+            <div class="bbz-card-body space-y-4">
+              <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                <input
+                  class="bbz-input lg:col-span-2"
+                  data-filter="contacts-search"
+                  type="text"
+                  placeholder="Suche nach Name, Firma, Funktion, Rolle, E-Mail, SGF, Event ..."
+                  value="${helpers.escapeHtml(filters.search)}"
+                />
+                <label class="flex items-center gap-2 text-sm text-slate-700 h-[38px]">
+                  <input
+                    type="checkbox"
+                    data-filter="contacts-archiviert"
+                    ${filters.archiviertAusblenden ? "checked" : ""}
+                  />
+                  Archivierte Kontakte ausblenden
+                </label>
+              </div>
+
+              <div class="bbz-scroll">
+                <table class="bbz-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Firma</th>
+                      <th>Funktion</th>
+                      <th>Rolle</th>
+                      <th>E-Mail</th>
+                      <th>Telefon</th>
+                      <th>Archiviert</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${
+                      rows.length
+                        ? rows.map(c => `
+                          <tr>
+                            <td>
+                              <a class="bbz-link" data-action="open-contact" data-id="${c.id}">
+                                ${helpers.escapeHtml(c.fullName || c.nachname)}
+                              </a>
+                            </td>
+                            <td>
+                              ${
+                                c.firmId
+                                  ? `<a class="bbz-link" data-action="open-firm" data-id="${c.firmId}">${helpers.escapeHtml(c.firmTitle || "Firma")}</a>`
+                                  : `<span class="bbz-muted">—</span>`
+                              }
+                            </td>
+                            <td>${helpers.escapeHtml(c.funktion) || '<span class="bbz-muted">—</span>'}</td>
+                            <td>${helpers.escapeHtml(c.rolle) || '<span class="bbz-muted">—</span>'}</td>
+                            <td>${c.email1 ? `<a class="bbz-link" href="mailto:${helpers.escapeHtml(c.email1)}">${helpers.escapeHtml(c.email1)}</a>` : '<span class="bbz-muted">—</span>'}</td>
+                            <td>${helpers.escapeHtml(helpers.joinNonEmpty([c.direktwahl, c.mobile], " / ")) || '<span class="bbz-muted">—</span>'}</td>
+                            <td>${c.archiviert ? '<span class="bbz-danger">Ja</span>' : '<span class="bbz-muted">Nein</span>'}</td>
+                          </tr>
+                        `).join("")
+                        : `<tr><td colspan="7">${ui.emptyBlock("Keine Kontakte für die aktuelle Filterung gefunden.")}</td></tr>`
+                    }
+                  </tbody>
                 </table>
+              </div>
             </div>
-        </div>`;
-}
+          </section>
+        </div>
+      `;
+    },
 
-function renderContactDetail(id) {
-    const c = allContacts.find(x => String(x.id) === String(id));
-    const f = c.fields, firm = allFirms.find(x => String(x.id) === String(f.FirmaLookupId));
-    document.getElementById('main-content').innerHTML = `
-        <div class="max-w-5xl mx-auto animate-in slide-in-from-right duration-300">
-            <div class="bg-white border rounded-3xl p-8 mb-8 shadow-sm flex justify-between items-center">
-                <div class="flex items-center gap-6"><button onclick="renderDetail('${f.FirmaLookupId}')" class="bg-slate-50 p-3 rounded-2xl text-xl text-slate-400">←</button>
-                <div><h2 class="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">${f.Vorname || ''} ${f.Title}</h2><p class="text-slate-400 text-[10px] font-black uppercase mt-1">Firma: <span class="text-blue-600" onclick="renderDetail('${f.FirmaLookupId}')">${firm ? firm.fields.Title : '-'}</span></p></div></div>
-                <button onclick="saveContactEdit('${id}')" class="bg-blue-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase">Änderungen speichern</button>
+    contactDetail() {
+      const contact = dataModel.getContactById(state.selection.contactId);
+      if (!contact) {
+        return ui.emptyBlock("Der ausgewählte Kontakt wurde nicht gefunden.");
+      }
+
+      const contactHistory = state.enriched.history
+        .filter(h => h.contactId === contact.id)
+        .sort((a, b) => helpers.compareDateDesc(a.datum, b.datum));
+
+      const contactTasks = state.enriched.tasks
+        .filter(t => t.contactId === contact.id)
+        .sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
+
+      return `
+        <div class="space-y-4">
+          <section class="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <button class="bbz-button bbz-button-secondary mb-3" data-action="back-to-contacts">Zurück zur Kontaktliste</button>
+              <div class="text-2xl text-slate-900 font-semibold">${helpers.escapeHtml(contact.fullName || contact.nachname)}</div>
+              <div class="text-sm text-slate-500 mt-1">
+                ${
+                  contact.firmId
+                    ? `<a class="bbz-link" data-action="open-firm" data-id="${contact.firmId}">${helpers.escapeHtml(contact.firmTitle || "Firma")}</a>`
+                    : "Keine Firma verknüpft"
+                }
+                ${contact.funktion ? ` · ${helpers.escapeHtml(contact.funktion)}` : ""}
+                ${contact.rolle ? ` · ${helpers.escapeHtml(contact.rolle)}` : ""}
+              </div>
             </div>
-            <div class="grid grid-cols-12 gap-8 italic">
-                <div class="col-span-4 bg-white border rounded-3xl p-8 shadow-sm space-y-4">
-                    <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b pb-4 mb-4">Profil Kontakt</h3>
-                    <select id="ed_anrede" class="w-full p-2.5 bg-slate-50 border-none rounded-xl text-sm font-bold italic"><option value="">-</option>${meta.anreden.map(o => `<option value="${o}" ${f.Anrede===o?'selected':''}>${o}</option>`).join('')}</select>
-                    <input type="text" id="ed_vn" value="${f.Vorname||''}" class="w-full p-2.5 bg-slate-50 border-none rounded-xl text-sm font-bold italic" placeholder="Vorname">
-                    <input type="text" id="ed_nn" value="${f.Title||''}" class="w-full p-2.5 bg-slate-50 border-none rounded-xl text-sm font-bold italic" placeholder="Nachname">
-                    <select id="ed_rolle" class="w-full p-2.5 bg-slate-50 border-none rounded-xl text-sm font-bold italic"><option value="">-</option>${meta.rollen.map(o => `<option value="${o}" ${f.Rolle===o?'selected':''}>${o}</option>`).join('')}</select>
+
+            <div class="flex items-center gap-2 flex-wrap">
+              ${contact.email1 ? `<a class="bbz-button bbz-button-secondary" href="mailto:${helpers.escapeHtml(contact.email1)}">Mail senden</a>` : ""}
+              <button class="bbz-button bbz-button-secondary" type="button" disabled>Neue Aufgabe (später)</button>
+              <button class="bbz-button bbz-button-secondary" type="button" disabled>Neue History (später)</button>
+            </div>
+          </section>
+
+          <section class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+            <div class="bbz-card xl:col-span-1">
+              <div class="bbz-card-header">Stammdaten</div>
+              <div class="bbz-card-body grid grid-cols-1 gap-4">
+                ${ui.kv("Anrede", helpers.escapeHtml(contact.anrede) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Vorname", helpers.escapeHtml(contact.vorname) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Nachname", helpers.escapeHtml(contact.nachname) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Firma", contact.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${contact.firmId}">${helpers.escapeHtml(contact.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Funktion", helpers.escapeHtml(contact.funktion) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Rolle", helpers.escapeHtml(contact.rolle) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Email 1", contact.email1 ? `<a class="bbz-link" href="mailto:${helpers.escapeHtml(contact.email1)}">${helpers.escapeHtml(contact.email1)}</a>` : '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Email 2", contact.email2 ? `<a class="bbz-link" href="mailto:${helpers.escapeHtml(contact.email2)}">${helpers.escapeHtml(contact.email2)}</a>` : '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Direktwahl", helpers.escapeHtml(contact.direktwahl) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Mobile", helpers.escapeHtml(contact.mobile) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Geburtstag", helpers.formatDate(contact.geburtstag) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Archiviert", contact.archiviert ? '<span class="bbz-danger">Ja</span>' : '<span class="bbz-muted">Nein</span>')}
+              </div>
+            </div>
+
+            <div class="bbz-card xl:col-span-1">
+              <div class="bbz-card-header">CRM-Kontext</div>
+              <div class="bbz-card-body grid grid-cols-1 gap-4">
+                ${ui.kv("Leadbbz0", helpers.escapeHtml(contact.leadbbz0) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("SGF", helpers.multiChoiceHtml(contact.sgf))}
+                ${ui.kv("Event", helpers.multiChoiceHtml(contact.event))}
+                ${ui.kv("Eventhistory", helpers.escapeHtml(contact.eventhistory) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Kommentar", helpers.escapeHtml(contact.kommentar) || '<span class="bbz-muted">—</span>')}
+              </div>
+            </div>
+
+            <div class="bbz-card xl:col-span-1">
+              <div class="bbz-card-header">Übersicht</div>
+              <div class="bbz-card-body grid grid-cols-1 gap-4">
+                ${ui.kv("Tasks", String(contactTasks.length))}
+                ${ui.kv("Offene Tasks", String(contactTasks.filter(t => t.isOpen).length))}
+                ${ui.kv("History-Einträge", String(contactHistory.length))}
+                ${ui.kv("Letzte Aktivität", helpers.formatDateTime(contactHistory[0]?.datum) || '<span class="bbz-muted">—</span>')}
+              </div>
+            </div>
+          </section>
+
+          <section class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div class="bbz-card">
+              <div class="bbz-card-header">Historie</div>
+              <div class="bbz-card-body">
+                ${
+                  contactHistory.length
+                    ? `
+                      <div class="bbz-timeline">
+                        ${contactHistory.map(h => `
+                          <div class="bbz-timeline-item">
+                            <div class="bbz-timeline-date">
+                              ${helpers.formatDateTime(h.datum) || "—"}
+                            </div>
+                            <div class="bbz-timeline-body">
+                              <div class="bbz-timeline-title">
+                                ${helpers.escapeHtml(h.typ || h.title || "Eintrag")}
+                                ${h.projektbezugBool ? '<span class="bbz-chip">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}
+                              </div>
+                              <div class="bbz-timeline-text">${helpers.escapeHtml(h.notizen || "—")}</div>
+                            </div>
+                          </div>
+                        `).join("")}
+                      </div>
+                    `
+                    : ui.emptyBlock("Keine Historie vorhanden.")
+                }
+              </div>
+            </div>
+
+            <div class="bbz-card">
+              <div class="bbz-card-header">Tasks</div>
+              <div class="bbz-card-body">
+                <div class="bbz-scroll">
+                  <table class="bbz-table">
+                    <thead>
+                      <tr>
+                        <th>Titel</th>
+                        <th>Deadline</th>
+                        <th>Status</th>
+                        <th>Firma</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${
+                        contactTasks.length
+                          ? contactTasks.map(t => `
+                            <tr>
+                              <td>${helpers.escapeHtml(t.title) || '<span class="bbz-muted">—</span>'}</td>
+                              <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
+                              <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.escapeHtml(t.status) || '<span class="bbz-muted">—</span>'}</td>
+                              <td>
+                                ${
+                                  t.firmId
+                                    ? `<a class="bbz-link" data-action="open-firm" data-id="${t.firmId}">${helpers.escapeHtml(t.firmTitle || "Firma")}</a>`
+                                    : '<span class="bbz-muted">—</span>'
+                                }
+                              </td>
+                            </tr>
+                          `).join("")
+                          : `<tr><td colspan="4">${ui.emptyBlock("Keine Tasks vorhanden.")}</td></tr>`
+                      }
+                    </tbody>
+                  </table>
                 </div>
-                <div class="col-span-8 space-y-6">
-                    <div class="bg-white border rounded-3xl p-8 shadow-sm grid grid-cols-2 gap-6">
-                        <input type="text" id="ed_e1" value="${f.Email1||''}" placeholder="E-Mail Geschäft" class="w-full p-3 bg-slate-50 border-none rounded-xl text-sm">
-                        <input type="text" id="ed_mo" value="${f.Mobile||''}" placeholder="Mobile" class="w-full p-3 bg-slate-50 border-none rounded-xl text-sm font-bold">
-                        <select id="ed_sgf" class="w-full p-3 bg-slate-50 border-none rounded-xl text-sm font-bold italic"><option value="">SGF</option>${meta.sgf.map(o => `<option value="${o}" ${f.SGF===o?'selected':''}>${o}</option>`).join('')}</select>
-                        <select id="ed_lead" class="w-full p-3 bg-slate-50 border-none rounded-xl text-sm font-bold italic"><option value="">Lead bbz</option>${meta.leads.map(o => `<option value="${o}" ${f.Leadbbz0===o?'selected':''}>${o}</option>`).join('')}</select>
-                        <select id="ed_event" class="w-full p-3 bg-blue-50 border-none rounded-xl text-sm font-bold italic text-blue-600"><option value="">Aktuelles Event</option>${meta.events.map(o => `<option value="${o}" ${f.Event===o?'selected':''}>${o}</option>`).join('')}</select>
-                    </div>
-                    <div class="bg-slate-50 border border-slate-200 rounded-3xl p-8 italic shadow-inner">
-                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 block">Event-History / Kommentar</label>
-                        <textarea id="ed_kom" class="w-full p-4 bg-white border-none rounded-2xl text-sm shadow-sm min-h-[150px] font-medium" placeholder="Historie...">${f.Kommentar || ''}</textarea>
-                    </div>
-                </div>
+              </div>
             </div>
-        </div>`;
-}
+          </section>
+        </div>
+      `;
+    },
 
-// --- ACTIONS ---
-async function saveContactEdit(id) {
-    const fields = { Anrede: document.getElementById('ed_anrede').value, Vorname: document.getElementById('ed_vn').value, Title: document.getElementById('ed_nn').value, Rolle: document.getElementById('ed_rolle').value, Email1: document.getElementById('ed_e1').value, Mobile: document.getElementById('ed_mo').value, SGF: document.getElementById('ed_sgf').value, Leadbbz0: document.getElementById('ed_lead').value, Event: document.getElementById('ed_event').value, Kommentar: document.getElementById('ed_kom').value };
-    const t = (await msalInstance.acquireTokenSilent({ ...loginRequest, account: msalInstance.getAllAccounts()[0] })).accessToken;
-    await fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${contactListId}/items/${id}/fields`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${t}`, 'Content-Type': 'application/json' }, body: JSON.stringify(fields) });
-    showToast('Kontakt gespeichert ✓');
-    loadData();
-}
+    planning() {
+      const filters = state.filters.planning;
 
-async function saveContact(firmId) {
-    const nn = document.getElementById('c_nn').value; if(!nn) return alert("Nachname fehlt!");
-    const fields = { Title: nn, Vorname: document.getElementById('c_vn').value, Anrede: document.getElementById('c_anrede').value, Rolle: document.getElementById('c_rolle').value, Email1: document.getElementById('c_email1').value, Mobile: document.getElementById('c_mo').value, SGF: document.getElementById('c_sgf').value, Leadbbz0: document.getElementById('c_lead').value, FirmaLookupId: firmId };
-    const t = (await msalInstance.acquireTokenSilent({ ...loginRequest, account: msalInstance.getAllAccounts()[0] })).accessToken;
-    await fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${contactListId}/items`, { method: 'POST', headers: { 'Authorization': `Bearer ${t}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }) });
-    showToast('Neuer Kontakt erstellt ✓');
-    loadData();
-}
+      const rows = state.enriched.tasks.filter(task => {
+        const search = filters.search.trim().toLowerCase();
 
-async function saveNewFirm() {
-    const n = document.getElementById('new_fName').value; if(!n) return;
-    const f = { Title: n, Klassifizierung: document.getElementById('new_fClass').value, Ort: document.getElementById('new_fCity').value };
-    const t = (await msalInstance.acquireTokenSilent({ ...loginRequest, account: msalInstance.getAllAccounts()[0] })).accessToken;
-    await fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${currentListId}/items`, { method: 'POST', headers: { 'Authorization': `Bearer ${t}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: f }) });
-    showToast('Firma erstellt ✓');
-    loadData();
-}
+        const searchMatch =
+          !search ||
+          [
+            task.title,
+            task.status,
+            task.contactName,
+            task.firmTitle,
+            task.leadbbz
+          ].some(v => helpers.textIncludes(v, search));
 
-function filterFirms(q) { const ql = q.toLowerCase(); const f = allFirms.filter(x => x.fields.Title?.toLowerCase().includes(ql) || x.fields.Ort?.toLowerCase().includes(ql)); document.getElementById('firmList').innerHTML = f.map(x => `<div onclick="renderDetail('${x.id}')" class="bg-white border p-8 rounded-[2.5rem] hover:shadow-2xl transition-all cursor-pointer border-t-[6px] ${x.fields.Klassifizierung === 'A' ? 'border-t-emerald-500' : 'border-t-slate-200'}"><h3 class="font-black text-slate-800 text-xl uppercase italic tracking-tighter mb-4 underline">${x.fields.Title}</h3><div class="text-[11px] font-bold text-slate-400 uppercase tracking-widest italic mb-8">📍 ${x.fields.Ort || '-'}</div><div class="mt-auto pt-6 flex justify-between items-center border-t border-slate-50"><span class="text-[10px] font-black bg-slate-50 px-3 py-1.5 rounded-xl border italic uppercase">${x.fields.Klassifizierung || '-'}</span><span class="text-[10px] font-black text-blue-600 bg-blue-50 px-3 py-1.5 rounded-xl uppercase italic">👥 ${allContacts.filter(c => String(c.fields.FirmaLookupId) === String(x.id)).length}</span></div></div>`).join(''); }
-function filterContacts(q) { const ql = q.toLowerCase(); const f = allContacts.filter(c => c.fields.Title?.toLowerCase().includes(ql) || c.fields.Vorname?.toLowerCase().includes(ql)); document.getElementById('contactTableBody').innerHTML = f.map(c => { const firm = allFirms.find(x => String(x.id) === String(c.fields.FirmaLookupId)); return `<tr class="hover:bg-blue-50/30 transition-all group"><td class="p-6"><div class="text-base font-black text-slate-800 uppercase group-hover:text-blue-600 cursor-pointer underline" onclick="renderContactDetail('${c.id}')">${c.fields.Vorname || ''} ${c.fields.Title}</div><div class="text-[11px] font-bold text-slate-400 mt-1 cursor-pointer" onclick="renderDetail('${c.fields.FirmaLookupId}')">🏢 ${firm ? firm.fields.Title : '-'}</div></td><td class="p-6"><div class="text-[10px] font-black text-blue-500 uppercase">${c.fields.Rolle || '-'}</div><div class="text-[9px] font-black bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded border border-emerald-100 mt-1 inline-block uppercase">${c.fields.SGF || '-'}</div></td><td class="p-6"><div class="flex flex-wrap gap-1">${c.fields.Event ? `<span class="px-2 py-0.5 bg-blue-50 text-blue-600 border border-blue-100 rounded text-[8px] font-black uppercase">${c.fields.Event}</span>` : '-'}</div></td><td class="p-6 font-bold text-slate-500">📧 ${c.fields.Email1 || '-'}<br>📱 ${c.fields.Mobile || '-'}</td></tr>`; }).join(''); }
+        const openMatch = !filters.onlyOpen || task.isOpen;
+        const overdueMatch = !filters.onlyOverdue || task.isOverdue;
 
-async function saveFirmEdit(id) {
-    const n = document.getElementById('fe_name').value; if (!n) return showToast('Firmenname fehlt!', 'error');
-    const fields = { Title: n, Ort: document.getElementById('fe_ort').value, Klassifizierung: document.getElementById('fe_klass').value };
-    const t = (await msalInstance.acquireTokenSilent({ ...loginRequest, account: msalInstance.getAllAccounts()[0] })).accessToken;
-    await fetch(`https://graph.microsoft.com/v1.0/sites/${currentSiteId}/lists/${currentListId}/items/${id}/fields`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${t}`, 'Content-Type': 'application/json' }, body: JSON.stringify(fields) });
-    showToast('Firma gespeichert ✓');
-    loadData();
-}
+        return searchMatch && openMatch && overdueMatch;
+      });
 
-function toggleFirmEditForm() { document.getElementById('firmEditForm').classList.toggle('hidden'); }
-function toggleContactForm() { document.getElementById('addContactForm').classList.toggle('hidden'); }
-function toggleAddForm() { document.getElementById('addForm').classList.toggle('hidden'); }
+      const openTasks = state.enriched.tasks.filter(t => t.isOpen).length;
+      const overdueTasks = state.enriched.tasks.filter(t => t.isOpen && t.isOverdue).length;
+
+      return `
+        <div class="space-y-4">
+          <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">Tasks gesamt</div>
+              <div class="bbz-kpi-value">${state.enriched.tasks.length}</div>
+            </div>
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">Offen</div>
+              <div class="bbz-kpi-value">${openTasks}</div>
+            </div>
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">Überfällig</div>
+              <div class="bbz-kpi-value">${overdueTasks}</div>
+            </div>
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">Erledigt / geschlossen</div>
+              <div class="bbz-kpi-value">${state.enriched.tasks.length - openTasks}</div>
+            </div>
+          </section>
+
+          <section class="bbz-card">
+            <div class="bbz-card-header">Planung</div>
+            <div class="bbz-card-body space-y-4">
+              <div class="grid grid-cols-1 lg:grid-cols-4 gap-3">
+                <input
+                  class="bbz-input lg:col-span-2"
+                  data-filter="planning-search"
+                  type="text"
+                  placeholder="Suche nach Titel, Firma, Kontakt, Status ..."
+                  value="${helpers.escapeHtml(filters.search)}"
+                />
+                <label class="flex items-center gap-2 text-sm text-slate-700 h-[38px]">
+                  <input
+                    type="checkbox"
+                    data-filter="planning-open"
+                    ${filters.onlyOpen ? "checked" : ""}
+                  />
+                  Nur offene Tasks
+                </label>
+                <label class="flex items-center gap-2 text-sm text-slate-700 h-[38px]">
+                  <input
+                    type="checkbox"
+                    data-filter="planning-overdue"
+                    ${filters.onlyOverdue ? "checked" : ""}
+                  />
+                  Nur überfällige Tasks
+                </label>
+              </div>
+
+              <div class="bbz-scroll">
+                <table class="bbz-table">
+                  <thead>
+                    <tr>
+                      <th>Titel</th>
+                      <th>Deadline</th>
+                      <th>Status</th>
+                      <th>Kontaktperson</th>
+                      <th>Firma</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${
+                      rows.length
+                        ? rows.map(t => `
+                          <tr>
+                            <td>${helpers.escapeHtml(t.title) || '<span class="bbz-muted">—</span>'}</td>
+                            <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
+                            <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.escapeHtml(t.status) || '<span class="bbz-muted">—</span>'}</td>
+                            <td>
+                              ${
+                                t.contactId
+                                  ? `<a class="bbz-link" data-action="open-contact" data-id="${t.contactId}">${helpers.escapeHtml(t.contactName || "Kontakt")}</a>`
+                                  : helpers.escapeHtml(t.contactName || "—")
+                              }
+                            </td>
+                            <td>
+                              ${
+                                t.firmId
+                                  ? `<a class="bbz-link" data-action="open-firm" data-id="${t.firmId}">${helpers.escapeHtml(t.firmTitle || "Firma")}</a>`
+                                  : '<span class="bbz-muted">—</span>'
+                              }
+                            </td>
+                          </tr>
+                        `).join("")
+                        : `<tr><td colspan="5">${ui.emptyBlock("Keine Tasks für die aktuelle Filterung gefunden.")}</td></tr>`
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </div>
+      `;
+    }
+  };
+
+  const controller = {
+    async init() {
+      ui.init();
+      ui.renderShell();
+
+      try {
+        ui.setLoading(true);
+        ui.setMessage("");
+
+        await api.initAuth();
+
+        if (state.auth.isAuthenticated) {
+          await api.acquireToken();
+          await api.loadAll();
+        } else {
+          ui.setMessage("Bitte anmelden, um die SharePoint-Listen über Microsoft Graph zu laden.", "warning");
+        }
+      } catch (error) {
+        console.error(error);
+        state.meta.lastError = error;
+        ui.setMessage(`Fehler beim Initialisieren: ${error.message}`, "error");
+      } finally {
+        ui.setLoading(false);
+        this.render();
+      }
+    },
+
+    async handleLogin() {
+      try {
+        ui.setLoading(true);
+        ui.setMessage("");
+
+        await api.login();
+        await api.loadAll();
+
+        ui.setMessage("Anmeldung erfolgreich. Daten wurden geladen.", "success");
+      } catch (error) {
+        console.error(error);
+        ui.setMessage(`Anmeldung fehlgeschlagen: ${error.message}`, "error");
+      } finally {
+        ui.setLoading(false);
+        controller.render();
+      }
+    },
+
+    async handleRefresh() {
+      if (!state.auth.isAuthenticated) {
+        ui.setMessage("Bitte zuerst anmelden.", "warning");
+        return;
+      }
+
+      try {
+        ui.setLoading(true);
+        ui.setMessage("");
+
+        await api.acquireToken();
+        await api.loadAll();
+
+        ui.setMessage("Daten erfolgreich neu geladen.", "success");
+      } catch (error) {
+        console.error(error);
+        ui.setMessage(`Fehler beim Laden: ${error.message}`, "error");
+      } finally {
+        ui.setLoading(false);
+        controller.render();
+      }
+    },
+
+    navigate(route) {
+      state.filters.route = route;
+      if (route !== "firms") state.selection.firmId = null;
+      if (route !== "contacts") state.selection.contactId = null;
+      this.render();
+    },
+
+    openFirm(id) {
+      state.selection.firmId = id;
+      state.selection.contactId = null;
+      state.filters.route = "firms";
+      this.render();
+    },
+
+    openContact(id) {
+      state.selection.contactId = id;
+      state.filters.route = "contacts";
+      this.render();
+    },
+
+    render() {
+      ui.renderShell();
+      ui.renderView(views.renderRoute());
+    }
+  };
+
+  document.addEventListener("DOMContentLoaded", () => {
+    controller.init();
+  });
+})();
