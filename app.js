@@ -1,175 +1,221 @@
 /**
- * CRM bbz (light) - Core Logic V3.0
- * Fokus: Verknüpfung Firmen & Kontakte
+ * CRM bbz (light) - Full Application Logic
+ * Site: bbzsg.sharepoint.com/sites/CRM
  */
 
-// Konfiguration (Anpassung an deine Umgebung)
-const siteId = "bbzsg.sharepoint.com:/sites/CRM";
+// 1. KONFIGURATION
+const msalConfig = {
+    auth: {
+        clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a",
+        authority: "https://login.microsoftonline.com/3643e7ab-d166-4e27-bd5f-c5bbfcd282d7",
+        redirectUri: "https://markusbaechler.github.io/crm-spa/"
+    }
+};
+
+const siteId = "bbzsg.sharepoint.com,3643e7ab-d166-4e27-bd5f-c5bbfcd282d7,bd5f-c5bbfcd282d7"; // Vereinfachte Site-ID für Graph
 const listFirms = "CRMFirms";
 const listContacts = "CRMContacts";
 
-let currentFirmId = null; // Speichert die ID der aktuell im Modal geöffneten Firma
+const msalInstance = new msal.PublicClientApplication(msalConfig);
 
-// --- 1. API WRAPPER (Graph API) ---
-async function graphRequest(endpoint, method = "GET", body = null) {
+// 2. AUTHENTIFIZIERUNG
+async function login() {
+    try {
+        await msalInstance.loginPopup({ scopes: ["Sites.ReadWrite.All"] });
+        location.reload();
+    } catch (err) {
+        console.error("Login fehlgeschlagen:", err);
+    }
+}
+
+async function getGraphToken() {
     const account = msalInstance.getAllAccounts()[0];
-    const tokenResponse = await msalInstance.acquireTokenSilent({
+    if (!account) return null;
+    const response = await msalInstance.acquireTokenSilent({
         scopes: ["Sites.ReadWrite.All"],
         account: account
     });
+    return response.accessToken;
+}
+
+// 3. GRAPH API WRAPPER
+async function graphRequest(endpoint, method = "GET", body = null) {
+    const token = await getGraphToken();
+    if (!token) return alert("Bitte erst einloggen!");
 
     const options = {
         method: method,
         headers: {
-            "Authorization": `Bearer ${tokenResponse.accessToken}`,
+            "Authorization": `Bearer ${token}`,
             "Content-Type": "application/json"
         }
     };
     if (body) options.body = JSON.stringify({ fields: body });
 
     const response = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${endpoint}`, options);
-    return response.ok ? await response.json() : Promise.reject(response.statusText);
+    return response.ok ? await response.json() : Promise.reject(await response.text());
 }
 
-// --- 2. FIRMEN LOGIK (Bestehend) ---
+// 4. FIRMEN-LOGIK
 async function loadFirms() {
-    const data = await graphRequest(`${listFirms}/items?expand=fields`);
-    renderFirms(data.value.map(item => item.fields));
+    const container = document.getElementById('main-content');
+    container.innerHTML = '<p class="text-center p-10">Lade Firmen...</p>';
+    
+    try {
+        const data = await graphRequest(`${listFirms}/items?expand=fields`);
+        const firms = data.value.map(item => item.fields);
+        renderFirms(firms);
+    } catch (err) {
+        container.innerHTML = `<p class="text-red-500">Fehler: ${err}</p>`;
+    }
 }
 
 function renderFirms(firms) {
     const container = document.getElementById('main-content');
     container.innerHTML = `
-        <h1 class="text-2xl font-bold mb-4">Firmenübersicht</h1>
-        <table class="min-w-full bg-white border">
-            <thead>
-                <tr class="bg-gray-100">
-                    <th class="p-2 border">Firma</th>
-                    <th class="p-2 border">Ort</th>
-                    <th class="p-2 border">Aktion</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${firms.map(f => `
-                    <tr>
-                        <td class="p-2 border">${f.Title}</td>
-                        <td class="p-2 border">${f.City || '-'}</td>
-                        <td class="p-2 border">
-                            <button onclick="openFirmDetails(${f.id})" class="text-blue-600 hover:underline">Details</button>
-                        </td>
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-2xl font-bold text-slate-800">Firmenverzeichnis</h1>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-slate-100 border-b">
+                        <th class="p-3 text-sm font-semibold text-slate-600">Firma</th>
+                        <th class="p-3 text-sm font-semibold text-slate-600">Klassifizierung</th>
+                        <th class="p-3 text-sm font-semibold text-slate-600">Ort</th>
+                        <th class="p-3 text-sm font-semibold text-slate-600">Aktion</th>
                     </tr>
-                `).join('')}
-            </tbody>
-        </table>
-    `;
-}
-
-// --- 3. KONTAKT LOGIK (Neu) ---
-
-// A. Globale Kontaktliste laden
-async function loadAllContacts() {
-    const data = await graphRequest(`${listContacts}/items?expand=fields`);
-    const contacts = data.value.map(item => item.fields);
-    
-    const container = document.getElementById('main-content');
-    container.innerHTML = `
-        <h1 class="text-2xl font-bold mb-4">Alle Kontakte</h1>
-        <table class="min-w-full bg-white border text-left">
-            <thead>
-                <tr class="bg-gray-100">
-                    <th class="p-2 border">Name</th>
-                    <th class="p-2 border">E-Mail</th>
-                    <th class="p-2 border">Firma (ID)</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${contacts.map(c => `
-                    <tr>
-                        <td class="p-2 border font-bold">${c.Title} ${c.FirstName || ''}</td>
-                        <td class="p-2 border">${c.Email || '-'}</td>
-                        <td class="p-2 border text-sm text-gray-500">${c.FirmID || 'Privat'}</td>
-                    </tr>
-                `).join('')}
-            </tbody>
-        </table>
-    `;
-}
-
-// B. Firmendetails öffnen & Kontakte filtern
-async function openFirmDetails(firmId) {
-    currentFirmId = firmId;
-    // Lade Firmendaten
-    const firmData = await graphRequest(`${listFirms}/items/${firmId}?expand=fields`);
-    const firm = firmData.fields;
-
-    // Lade zugehörige Kontakte (gefiltert nach FirmID)
-    const contactData = await graphRequest(`${listContacts}/items?expand=fields&$filter=fields/FirmID eq '${firmId}'`);
-    const contacts = contactData.value.map(item => item.fields);
-
-    showModal(firm, contacts);
-}
-
-// C. UI: Modal für Details und Kontakt-Subliste
-function showModal(firm, contacts) {
-    const modal = document.getElementById('detail-modal');
-    modal.classList.remove('hidden');
-    
-    modal.innerHTML = `
-        <div class="bg-white p-6 rounded-lg max-w-2xl mx-auto mt-20 shadow-xl border">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-bold">${firm.Title}</h2>
-                <button onclick="closeModal()" class="text-gray-500 text-2xl">&times;</button>
-            </div>
-            
-            <div class="grid grid-cols-2 gap-4 mb-6">
-                <div><strong>Adresse:</strong> ${firm.Address || '-'}</div>
-                <div><strong>Klassifizierung:</strong> ${firm.Classification || '-'}</div>
-            </div>
-
-            <hr class="mb-4">
-            <h3 class="font-bold mb-2 text-gray-700">Ansprechpartner bei dieser Firma:</h3>
-            
-            <ul class="bg-gray-50 rounded p-2 mb-4 border">
-                ${contacts.length > 0 ? contacts.map(c => `
-                    <li class="py-1 border-b last:border-0 flex justify-between">
-                        <span>${c.Title} ${c.FirstName || ''}</span>
-                        <span class="text-sm text-gray-500">${c.Email || ''}</span>
-                    </li>
-                `).join('') : '<li class="text-gray-400 italic">Keine Kontakte zugeordnet.</li>'}
-            </ul>
-
-            <div class="flex gap-2">
-                <button onclick="createNewContactPrompt(${firm.id})" class="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700">
-                    + Kontakt hinzufügen
-                </button>
-                <button onclick="closeModal()" class="bg-gray-200 px-3 py-1 rounded text-sm hover:bg-gray-300">Schließen</button>
-            </div>
+                </thead>
+                <tbody class="divide-y">
+                    ${firms.map(f => `
+                        <tr class="hover:bg-blue-50 transition">
+                            <td class="p-3 font-medium">${f.Title}</td>
+                            <td class="p-3"><span class="px-2 py-1 rounded text-xs font-bold ${getClassBadge(f.Classification)}">${f.Classification || '-'}</span></td>
+                            <td class="p-3 text-slate-600">${f.City || '-'}</td>
+                            <td class="p-3">
+                                <button onclick="openFirmDetails(${f.id})" class="text-blue-600 font-semibold hover:text-blue-800">Details</button>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
         </div>
     `;
 }
 
-// D. Neuen Kontakt anlegen (Direkt-Zuordnung)
-async function createNewContactPrompt(firmId) {
-    const name = prompt("Nachname des neuen Kontakts:");
-    const email = prompt("E-Mail Adresse:");
+// 5. KONTAKT-LOGIK (Verknüpfung via FirmID)
+async function loadAllContacts() {
+    const container = document.getElementById('main-content');
+    container.innerHTML = '<p class="text-center p-10">Lade alle Kontakte...</p>';
     
-    if (name) {
-        const newContact = {
-            Title: name,      // 'Title' ist das Standard-Feld für Nachname
-            FirmID: String(firmId), // WICHTIG: Die Verknüpfung
-            Email: email
-        };
+    const data = await graphRequest(`${listContacts}/items?expand=fields`);
+    const contacts = data.value.map(item => item.fields);
+    
+    container.innerHTML = `
+        <h1 class="text-2xl font-bold mb-6 text-slate-800">Alle Ansprechpartner</h1>
+        <table class="w-full text-left border-collapse">
+            <thead>
+                <tr class="bg-slate-100 border-b">
+                    <th class="p-3 text-sm font-semibold text-slate-600">Name</th>
+                    <th class="p-3 text-sm font-semibold text-slate-600">E-Mail</th>
+                    <th class="p-3 text-sm font-semibold text-slate-600">Zugehörige FirmID</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y">
+                ${contacts.map(c => `
+                    <tr class="hover:bg-blue-50">
+                        <td class="p-3 font-medium">${c.Title} ${c.FirstName || ''}</td>
+                        <td class="p-3">${c.Email || '-'}</td>
+                        <td class="p-3 text-xs text-slate-400">${c.FirmID || 'Privat'}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+}
 
-        try {
-            await graphRequest(`${listContacts}/items`, "POST", newContact);
-            alert("Kontakt erfolgreich gespeichert!");
-            openFirmDetails(firmId); // Refresh des Modals
-        } catch (error) {
-            alert("Fehler beim Speichern!");
-        }
-    }
+async function openFirmDetails(firmId) {
+    const modal = document.getElementById('detail-modal');
+    const content = document.getElementById('modal-body-content');
+    modal.classList.remove('hidden');
+    content.innerHTML = '<p>Lade Details...</p>';
+
+    // Parallel laden: Firmendaten & zugehörige Kontakte
+    const [firmData, contactData] = await Promise.all([
+        graphRequest(`${listFirms}/items/${firmId}?expand=fields`),
+        graphRequest(`${listContacts}/items?expand=fields&$filter=fields/FirmID eq '${firmId}'`)
+    ]);
+
+    const firm = firmData.fields;
+    const contacts = contactData.value.map(item => item.fields);
+
+    content.innerHTML = `
+        <h2 class="text-2xl font-bold text-slate-800 mb-1">${firm.Title}</h2>
+        <p class="text-slate-500 mb-6">${firm.Address || ''}, ${firm.ZIP || ''} ${firm.City || ''}</p>
+        
+        <div class="mb-6">
+            <h3 class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-2">Ansprechpartner</h3>
+            <div class="bg-slate-50 rounded-lg border border-slate-200 divide-y">
+                ${contacts.length > 0 ? contacts.map(c => `
+                    <div class="p-3 flex justify-between items-center">
+                        <div>
+                            <p class="font-semibold text-slate-700">${c.FirstName || ''} ${c.Title}</p>
+                            <p class="text-xs text-slate-500">${c.Email || 'Keine E-Mail'}</p>
+                        </div>
+                    </div>
+                `).join('') : '<p class="p-4 text-slate-400 italic text-sm">Keine Kontakte hinterlegt.</p>'}
+            </div>
+        </div>
+
+        <div class="flex gap-3">
+            <button onclick="addContact(${firm.id})" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 shadow-sm transition">
+                + Kontakt hinzufügen
+            </button>
+            <button onclick="closeModal()" class="bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm hover:bg-slate-300 transition">
+                Schließen
+            </button>
+        </div>
+    `;
+}
+
+// 6. HELPER FUNKTIONEN
+function getClassBadge(cls) {
+    if (cls === 'A') return 'bg-amber-100 text-amber-700';
+    if (cls === 'B') return 'bg-slate-200 text-slate-700';
+    if (cls === 'C') return 'bg-orange-100 text-orange-700';
+    return 'bg-gray-100 text-gray-500';
 }
 
 function closeModal() {
     document.getElementById('detail-modal').classList.add('hidden');
 }
+
+async function addContact(firmId) {
+    const lastName = prompt("Nachname des Kontakts:");
+    if (!lastName) return;
+    const firstName = prompt("Vorname:");
+    const email = prompt("E-Mail:");
+
+    const newContact = {
+        Title: lastName,
+        FirstName: firstName,
+        Email: email,
+        FirmID: String(firmId) // Hier passiert die Magie der Verknüpfung
+    };
+
+    try {
+        await graphRequest(`${listContacts}/items`, "POST", newContact);
+        openFirmDetails(firmId); // Refresh
+    } catch (err) {
+        alert("Fehler beim Speichern: " + err);
+    }
+}
+
+// Initialer Check beim Laden
+(async () => {
+    const account = msalInstance.getAllAccounts()[0];
+    if (account) {
+        document.getElementById('auth-status').innerHTML = `<span>Angemeldet als ${account.username}</span>`;
+        loadFirms();
+    }
+})();
