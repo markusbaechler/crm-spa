@@ -10,31 +10,31 @@ const config = {
 const msalConfig = {
     auth: {
         clientId: config.clientId,
-        authority: `https://login.microsoftonline.com/${config.tenantId}`,
-        redirectUri: "https://markusbaechler.github.io/crm-spa/",
-        navigateToLoginRequestUrl: false
+        authority: "https://login.microsoftonline.com/" + config.tenantId,
+        redirectUri: "https://markusbaechler.github.io/crm-spa/"
     },
-    cache: {
-        cacheLocation: "localStorage",
-        storeAuthStateInCookie: true
-    }
+    cache: { cacheLocation: "localStorage" }
 };
 
 const msalInstance = new msal.PublicClientApplication(msalConfig);
 
-async function handleAuth() {
-    try {
-        // Wir erzwingen die Konto-Auswahl, damit alte Fehler gelöscht werden
-        const loginRequest = {
-            scopes: ["https://graph.microsoft.com/Sites.Read.All"],
-            prompt: "select_account" 
-        };
-        await msalInstance.loginPopup(loginRequest);
-        location.reload();
-    } catch (err) {
-        console.error("Login Fehler:", err);
-        alert("Login fehlgeschlagen: " + err.message);
+// WICHTIG: Diese Funktion verarbeitet die Rückkehr von Microsoft
+msalInstance.handleRedirectPromise().then(response => {
+    if (response) {
+        console.log("Login via Redirect erfolgreich");
+        document.getElementById('authBtn').innerText = "Eingeloggt ✅";
+        loadFirms(); // Lädt die Firmen direkt nach Rückkehr
     }
+}).catch(err => {
+    console.error("Redirect Fehler:", err);
+});
+
+async function handleAuth() {
+    // Wir nutzen jetzt loginRedirect statt loginPopup
+    const loginRequest = {
+        scopes: ["https://graph.microsoft.com/Sites.Read.All"]
+    };
+    msalInstance.loginRedirect(loginRequest);
 }
 
 async function loadFirms() {
@@ -42,49 +42,50 @@ async function loadFirms() {
     const accounts = msalInstance.getAllAccounts();
 
     if (accounts.length === 0) {
-        content.innerHTML = '<div class="text-center p-10"><button onclick="handleAuth()" class="bg-blue-600 text-white px-6 py-2 rounded shadow-lg font-bold">Zuerst Einloggen</button></div>';
+        content.innerHTML = '<div class="text-center p-10"><button onclick="handleAuth()" class="bg-blue-600 text-white px-6 py-2 rounded shadow-lg">Login erforderlich</button></div>';
         return;
     }
 
-    content.innerHTML = '<p class="p-6 text-center animate-pulse text-blue-500">Daten werden von SharePoint abgerufen...</p>';
+    content.innerHTML = '<p class="p-6 text-center animate-pulse">Lade Firmenliste...</p>';
 
     try {
         const tokenRes = await msalInstance.acquireTokenSilent({
             scopes: ["https://graph.microsoft.com/Sites.Read.All"],
             account: accounts[0]
         }).catch(err => {
-            return msalInstance.acquireTokenPopup({ scopes: ["https://graph.microsoft.com/Sites.Read.All"] });
+            // Falls Silent fehlschlägt, wieder Redirect nutzen
+            return msalInstance.acquireTokenRedirect({ scopes: ["https://graph.microsoft.com/Sites.Read.All"] });
         });
+
+        if (!tokenRes) return; // Warten auf Redirect
 
         const url = `https://graph.microsoft.com/v1.0/sites/${config.siteId}/lists/${config.lists.firms}/items?expand=fields(select=Title,Klassifizierung)`;
         const response = await fetch(url, {
-            headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` }
+            headers: { 'Authorization': 'Bearer ' + tokenRes.accessToken }
         });
 
         const data = await response.json();
         
-        let html = '<h2 class="text-2xl font-bold mb-6">🏢 Firmenliste</h2><div class="grid gap-3">';
+        let html = '<h2 class="text-xl font-bold mb-4">🏢 Firmenliste</h2><div class="space-y-2">';
         data.value.forEach(item => {
-            html += `<div class="p-4 bg-white border-l-4 border-blue-500 rounded shadow-sm flex justify-between items-center">
-                        <span class="font-bold text-slate-800">${item.fields.Title || 'Unbekannt'}</span>
-                        <span class="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-bold">${item.fields.Klassifizierung || '-'}</span>
+            html += `<div class="p-3 bg-white border rounded shadow-sm flex justify-between hover:bg-blue-50 transition cursor-default">
+                        <span class="font-semibold text-slate-800">${item.fields.Title || 'Unbekannt'}</span>
+                        <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-bold">${item.fields.Klassifizierung || '-'}</span>
                      </div>`;
         });
-        content.innerHTML = html + '</div>';
+        content.innerHTML = html + "</div>";
 
     } catch (err) {
-        content.innerHTML = `<div class="p-4 bg-red-50 text-red-700 border border-red-200 rounded">
-            <strong>Fehler beim Laden:</strong> ${err.message}
-        </div>`;
+        content.innerHTML = `<div class="p-4 bg-orange-50 text-orange-700 border rounded">Fehler: ${err.message}</div>`;
     }
 }
 
-// Button-Status beim Start prüfen
-window.onload = () => {
-    if(msalInstance.getAllAccounts().length > 0) {
-        document.getElementById('authBtn').innerText = "Eingeloggt ✅";
-        document.getElementById('authBtn').classList.replace('bg-blue-600', 'bg-green-600');
-    }
-};
+// Navigation
+function showView(v) { 
+    if(v === 'dashboard') location.reload();
+}
 
-function showView(v) { if(v === 'dashboard') location.reload(); }
+// Button Status prüfen
+if(msalInstance.getAllAccounts().length > 0) {
+    document.getElementById('authBtn').innerText = "Eingeloggt ✅";
+}
