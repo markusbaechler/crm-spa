@@ -7,153 +7,115 @@ const config = {
 const msalConfig = {
     auth: {
         clientId: config.clientId,
-        authority: "https://login.microsoftonline.com/" + config.tenantId,
+        authority: `https://login.microsoftonline.com/${config.tenantId}`,
         redirectUri: "https://markusbaechler.github.io/crm-spa/"
     },
-    cache: { cacheLocation: "localStorage" }
+    cache: { 
+        cacheLocation: "localStorage",
+        storeAuthStateInCookie: true
+    }
 };
 
 const msalInstance = new msal.PublicClientApplication(msalConfig);
 
-// Verarbeitet die Rückkehr vom Login
-msalInstance.handleRedirectPromise().then(response => {
-    if (response) { loadFirms(); }
-});
+// Initialisierung beim Laden
+window.onload = async () => {
+    try {
+        const response = await msalInstance.handleRedirectPromise();
+        if (response) {
+            console.log("Login erfolgreich");
+        }
+        checkAuthState();
+    } catch (err) {
+        console.error("Auth Fehler:", err);
+    }
+};
 
-function handleAuth() {
-    msalInstance.loginRedirect({ scopes: ["https://graph.microsoft.com/Sites.Read.Write.All"] });
+function checkAuthState() {
+    const accounts = msalInstance.getAllAccounts();
+    const authBtn = document.getElementById('authBtn');
+    const content = document.getElementById('app-content');
+
+    if (accounts.length > 0) {
+        authBtn.innerText = "Logout";
+        authBtn.onclick = handleLogout;
+        authBtn.classList.replace('bg-blue-600', 'bg-red-600');
+        // Falls wir auf der Firmen-Seite sind, laden wir sie jetzt sauber
+        if (content.innerHTML.includes('Lade Firmen')) loadFirms();
+    } else {
+        authBtn.innerText = "Login";
+        authBtn.onclick = handleAuth;
+        authBtn.classList.contains('bg-red-600') ? authBtn.classList.replace('bg-red-600', 'bg-blue-600') : null;
+        content.innerHTML = '<div class="text-center p-10 font-bold text-slate-400">Bitte einloggen, um Daten zu sehen.</div>';
+        localStorage.clear(); // Putzt alle Reste weg
+    }
 }
 
-// HAUPTFUNKTION: FIRMEN ANZEIGEN
+async function handleAuth() {
+    await msalInstance.loginRedirect({ scopes: ["https://graph.microsoft.com/Sites.Read.Write.All"] });
+}
+
+async function handleLogout() {
+    const logoutRequest = { account: msalInstance.getAllAccounts()[0] };
+    await msalInstance.logoutRedirect(logoutRequest);
+}
+
 async function loadFirms() {
     const content = document.getElementById('app-content');
     const accounts = msalInstance.getAllAccounts();
 
     if (accounts.length === 0) {
-        content.innerHTML = '<div class="text-center p-10"><button onclick="handleAuth()" class="bg-blue-600 text-white px-6 py-2 rounded shadow-lg font-bold">Zuerst Login bestätigen</button></div>';
+        checkAuthState();
         return;
     }
 
-    content.innerHTML = '<p class="p-6 text-center animate-pulse">Lade Firmen...</p>';
+    content.innerHTML = '<p class="p-6 text-center animate-pulse">Verifiziere Zugriff...</p>';
 
     try {
         const tokenRes = await msalInstance.acquireTokenSilent({
             scopes: ["https://graph.microsoft.com/Sites.Read.Write.All"],
             account: accounts[0]
-        }).catch(() => msalInstance.acquireTokenRedirect({ scopes: ["https://graph.microsoft.com/Sites.Read.Write.All"] }));
+        });
 
-        if (!tokenRes) return;
-
-        // Site-ID finden
+        // 1. Site suchen
         const siteRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${config.siteSearch}`, {
-            headers: { 'Authorization': 'Bearer ' + tokenRes.accessToken }
+            headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` }
         });
         const siteData = await siteRes.json();
-        const realSiteId = siteData.id;
-
-        // Liste finden
-        const listsRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${realSiteId}/lists`, {
-            headers: { 'Authorization': 'Bearer ' + tokenRes.accessToken }
+        
+        // 2. Liste suchen
+        const listsRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteData.id}/lists`, {
+            headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` }
         });
         const listsData = await listsRes.json();
         const targetList = listsData.value.find(l => l.displayName === "CRMFirms");
 
-        // Items laden
-        const itemsRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${realSiteId}/lists/${targetList.id}/items?expand=fields`, {
-            headers: { 'Authorization': 'Bearer ' + tokenRes.accessToken }
+        // 3. Daten holen
+        const itemsRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteData.id}/lists/${targetList.id}/items?expand=fields`, {
+            headers: { 'Authorization': `Bearer ${tokenRes.accessToken}` }
         });
         const itemsData = await itemsRes.json();
 
-        // UI: Header mit "Neu"-Button
-        let html = `
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="text-2xl font-bold text-slate-800 tracking-tight">🏢 Firmenliste</h2>
-                <button onclick="showAddForm('${realSiteId}', '${targetList.id}')" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold shadow transition">
-                    + Neue Firma
-                </button>
-            </div>
-            <div id="form-container" class="hidden mb-8 p-6 bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl"></div>
-            <div class="grid gap-3">`;
-        
-        itemsData.value.forEach(item => {
-            html += `<div class="p-4 bg-white border rounded-xl shadow-sm flex justify-between items-center">
-                        <span class="font-bold text-slate-700">${item.fields.Title || 'Unbenannt'}</span>
-                        <span class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-black">${item.fields.Klassifizierung || '-'}</span>
-                     </div>`;
-        });
-
-        content.innerHTML = html + "</div>";
+        renderFirms(itemsData.value);
 
     } catch (err) {
-        content.innerHTML = `<p class="p-6 text-red-600 font-bold italic">Fehler: ${err.message}</p>`;
+        console.error(err);
+        content.innerHTML = `<div class="p-4 bg-red-100 text-red-700">Sitzung abgelaufen. Bitte neu einloggen.</div>`;
     }
 }
 
-// FUNKTION: FORMULAR ANZEIGEN
-function showAddForm(siteId, listId) {
-    const container = document.getElementById('form-container');
-    container.classList.toggle('hidden');
-    container.innerHTML = `
-        <h3 class="font-bold mb-4">Neue Firma erfassen</h3>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <input type="text" id="newFirmName" placeholder="Firmenname" class="p-2 border rounded">
-            <select id="newFirmClass" class="p-2 border rounded">
-                <option value="">Klassifizierung wählen</option>
-                <option value="A">A (Top)</option>
-                <option value="B">B (Normal)</option>
-                <option value="C">C (Passiv)</option>
-            </select>
-        </div>
-        <div class="mt-4 flex space-x-2">
-            <button onclick="saveFirm('${siteId}', '${listId}')" class="bg-blue-600 text-white px-4 py-2 rounded font-bold">Speichern</button>
-            <button onclick="this.parentElement.parentElement.classList.add('hidden')" class="bg-gray-300 px-4 py-2 rounded">Abbrechen</button>
-        </div>
-    `;
+function renderFirms(firms) {
+    let html = `<h2 class="text-xl font-bold mb-4">Firmenliste (${firms.length})</h2><div class="grid gap-2">`;
+    firms.forEach(item => {
+        html += `<div class="p-4 bg-white border rounded shadow-sm flex justify-between">
+            <span class="font-bold">${item.fields.Title || 'Unbenannt'}</span>
+            <span class="text-xs text-slate-400">${item.fields.Klassifizierung || '-'}</span>
+        </div>`;
+    });
+    document.getElementById('app-content').innerHTML = html + '</div>';
 }
 
-// FUNKTION: DATEN AN SHAREPOINT SENDEN
-async function saveFirm(siteId, listId) {
-    const name = document.getElementById('newFirmName').value;
-    const klassifizierung = document.getElementById('newFirmClass').value;
-
-    if (!name) { alert("Bitte Namen eingeben!"); return; }
-
-    try {
-        const accounts = msalInstance.getAllAccounts();
-        const tokenRes = await msalInstance.acquireTokenSilent({
-            scopes: ["https://graph.microsoft.com/Sites.Read.Write.All"],
-            account: accounts[0]
-        });
-
-        const url = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items`;
-        
-        const payload = {
-            fields: {
-                Title: name,
-                Klassifizierung: klassifizierung
-            }
-        };
-
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Authorization': 'Bearer ' + tokenRes.accessToken,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        });
-
-        if (response.ok) {
-            alert("Firma erfolgreich gespeichert!");
-            loadFirms(); // Liste aktualisieren
-        } else {
-            const errData = await response.json();
-            alert("Fehler: " + errData.error.message);
-        }
-
-    } catch (err) {
-        alert("Fehler beim Speichern: " + err.message);
-    }
+function showView(v) {
+    if (v === 'dashboard') location.reload();
+    if (v === 'firms') loadFirms();
 }
-
-function showView(v) { if(v === 'dashboard') location.reload(); }
