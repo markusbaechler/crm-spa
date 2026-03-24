@@ -38,7 +38,6 @@
     firms: {
       listTitle: CONFIG.lists.firms,
       fields: {
-        id: "id",
         title: "Title",
         adresse: "Adresse",
         plz: "PLZ",
@@ -53,7 +52,6 @@
     contacts: {
       listTitle: CONFIG.lists.contacts,
       fields: {
-        id: "id",
         nachname: "Title",
         vorname: "Vorname",
         anrede: "Anrede",
@@ -78,7 +76,6 @@
     history: {
       listTitle: CONFIG.lists.history,
       fields: {
-        id: "id",
         title: "Title",
         kontakt: "Nachname",
         kontaktLookupId: "NachnameLookupId",
@@ -94,7 +91,6 @@
     tasks: {
       listTitle: CONFIG.lists.tasks,
       fields: {
-        id: "id",
         title: "Title",
         kontakt: "Name",
         kontaktLookupId: "NameLookupId",
@@ -1571,16 +1567,13 @@
         return;
       }
 
-      // SharePoint Multi-Choice-Format: Werte mit ";#" getrennt
-      // Einzelwerte werden als normaler String übergeben
-      const joinMulti = (values) => values.length ? values.join(";#") : "";
-
+      // SharePoint Graph v1.0: Multi-Choice-Felder als JSON-Array (nicht ;# wie bei REST)
+      // Einzelwahl-Felder bleiben normaler String
       const fields = {
         Title:          raw.nachname.trim(),
         Vorname:        raw.vorname.trim(),
         Anrede:         raw.anrede,
         // BESTÄTIGT: SharePoint Graph erwartet "FirmaLookupId" (nicht "FirmaId")
-        // Fehler "Field 'FirmaId' is not recognized" vom 24.03.2026 bestätigt dies
         FirmaLookupId:  Number(raw.firmaLookupId),
         Funktion:       raw.funktion.trim(),
         Rolle:          raw.rolle,
@@ -1589,9 +1582,10 @@
         Direktwahl:     raw.direktwahl.trim(),
         Mobile:         raw.mobile.trim(),
         Leadbbz0:       raw.leadbbz0,
-        SGF:            joinMulti(raw.sgf),
-        Event:          joinMulti(raw.event),
-        Eventhistory:   joinMulti(raw.eventhistory),
+        // Multi-Choice: Graph erwartet Array, nicht ";#"-String (REST-Format)
+        SGF:            raw.sgf,
+        Event:          raw.event,
+        Eventhistory:   raw.eventhistory,
         Kommentar:      raw.kommentar.trim(),
         Archiviert:     raw.archiviert
       };
@@ -1600,6 +1594,9 @@
       if (raw.geburtstag.trim()) {
         fields.Geburtstag = raw.geburtstag.trim();
       }
+
+      // Debug-Log: exakte Felder die an Graph gesendet werden
+      console.log("handleModalSubmit fields →", JSON.stringify(fields, null, 2));
 
       ui.setLoading(true);
       ui.setMessage("");
