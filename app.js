@@ -1570,33 +1570,13 @@
         return;
       }
 
-      // BISECT-MODUS: Felder in zwei Hälften aufteilen um 400-Ursache zu isolieren
-      // Hälfte A (Basis): Title, FirmaLookupId, Archiviert, Anrede, Rolle
-      // Hälfte B (Rest):  Vorname, Funktion, Leadbbz0, Emails, Tel, Event
-      // → Zuerst nur Hälfte A senden, dann bei Erfolg Hälfte B dazu
+      // DIAGNOSE-MODUS: Minimaler Payload — nur Title + FirmaLookupId
+      // Wenn das durchgeht → eines der anderen Felder ist der Täter
+      // Wenn auch das 400 gibt → FirmaLookupId oder SP-Konfiguration ist das Problem
       const fields = {
         Title:         raw.nachname.trim(),
-        FirmaLookupId: Number(raw.firmaLookupId),
-        Archiviert:    raw.archiviert
+        FirmaLookupId: Number(raw.firmaLookupId)
       };
-
-      // Einzelwahl — nur wenn Wert vorhanden
-      if (raw.anrede)    fields.Anrede    = raw.anrede;
-      if (raw.rolle)     fields.Rolle     = raw.rolle;
-
-      // BISECT: Hälfte B — auskommentieren um Hälfte A allein zu testen
-      if (raw.leadbbz0)          fields.Leadbbz0  = raw.leadbbz0;
-      if (raw.vorname.trim())    fields.Vorname   = raw.vorname.trim();
-      if (raw.funktion.trim())   fields.Funktion  = raw.funktion.trim();
-      if (raw.kommentar.trim())  fields.Kommentar = raw.kommentar.trim();
-      if (raw.email1.trim())     fields.Email1    = raw.email1.trim();
-      if (raw.email2.trim())     fields.Email2    = raw.email2.trim();
-      if (raw.direktwahl.trim()) fields.Direktwahl = raw.direktwahl.trim();
-      if (raw.mobile.trim())     fields.Mobile    = raw.mobile.trim();
-      if (raw.geburtstag.trim()) fields.Geburtstag = raw.geburtstag.trim();
-      if (raw.sgf.length)        fields.SGF       = raw.sgf;
-      if (raw.event.length)      fields.Event     = raw.event;
-      if (raw.eventhistory.length) fields.Eventhistory = raw.eventhistory;
 
       // Debug-Log
       console.log("handleModalSubmit fields →", JSON.stringify(fields, null, 2));
