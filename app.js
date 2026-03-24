@@ -656,11 +656,16 @@
 
           const choicesForList = {};
           for (const col of (data.value || [])) {
-            // Graph gibt Choice-Felder mit col.choice.choices[] zurück
             if (col.choice && Array.isArray(col.choice.choices) && col.choice.choices.length > 0) {
               choicesForList[col.name] = col.choice.choices;
-              // Debug: zeigt internen SP-Feldnamen — wichtig für Write-Layer
-              console.log(`[${listTitle}] Choice-Feld: name="${col.name}" displayName="${col.displayName}" multiSelect=${col.choice.allowMultipleSelection ?? false}`);
+              // Vollständiger Debug — zeigt alle relevanten SP-Feldnamen
+              console.log(`[${listTitle}] Choice:`, {
+                name:        col.name,
+                displayName: col.displayName,
+                description: col.description,
+                multiSelect: col.choice.allowMultipleSelection ?? false,
+                choices:     col.choice.choices
+              });
             }
           }
           state.meta.choices[listTitle] = choicesForList;
@@ -1598,14 +1603,21 @@
       // Datum — nur wenn befüllt, SP erwartet volles ISO-8601 Datetime (nicht nur YYYY-MM-DD)
       if (raw.geburtstag.trim()) fields.Geburtstag = raw.geburtstag.trim() + "T00:00:00Z";
 
-      // Multi-Choice — Array-Format
-      // BESTÄTIGT: ging durch wenn Archiviert:false nicht im Payload
-      if (raw.sgf.length)          fields.SGF          = raw.sgf;
-      else                         fields.SGF          = "";
-      if (raw.event.length)        fields.Event        = raw.event;
-      else                         fields.Event        = "";
-      if (raw.eventhistory.length) fields.Eventhistory = raw.eventhistory;
-      else                         fields.Eventhistory = "";
+      // Multi-Choice — @odata.type + Array (Gemini Punkt 1+2)
+      // Leer = Feld weglassen (nicht "" und nicht [])
+      // Befüllt = expliziter Collection-Typ + Array
+      if (raw.sgf.length) {
+        fields["SGF@odata.type"] = "Collection(Edm.String)";
+        fields["SGF"]            = raw.sgf;
+      }
+      if (raw.event.length) {
+        fields["Event@odata.type"] = "Collection(Edm.String)";
+        fields["Event"]            = raw.event;
+      }
+      if (raw.eventhistory.length) {
+        fields["Eventhistory@odata.type"] = "Collection(Edm.String)";
+        fields["Eventhistory"]            = raw.eventhistory;
+      }
 
       // Debug-Log (kann nach stabilem Betrieb entfernt werden)
       console.log("handleModalSubmit fields →", JSON.stringify(fields, null, 2));
