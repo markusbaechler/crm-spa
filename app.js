@@ -1291,28 +1291,42 @@
     },
 
     async saveContact(formData, mode, itemId) {
-      const firmaLookupId = Number(formData.get("firmaLookupId") || 0);
-      if (!firmaLookupId) throw new Error("Bitte eine Firma auswählen.");
+  const firmaLookupId = Number(formData.get("firmaLookupId") || 0);
+  if (!firmaLookupId) throw new Error("Bitte eine Firma auswählen.");
 
-      const fields = {
-        [SCHEMA.contacts.fields.nachname]: String(formData.get("nachname") || "").trim(),
-        [SCHEMA.contacts.fields.vorname]: String(formData.get("vorname") || "").trim(),
-        [SCHEMA.contacts.fields.anrede]: String(formData.get("anrede") || "").trim(),
-        [SCHEMA.contacts.fields.firmaLookupId]: firmaLookupId,
-        [SCHEMA.contacts.fields.funktion]: String(formData.get("funktion") || "").trim(),
-        [SCHEMA.contacts.fields.email1]: String(formData.get("email1") || "").trim(),
-        [SCHEMA.contacts.fields.email2]: String(formData.get("email2") || "").trim(),
-        [SCHEMA.contacts.fields.direktwahl]: String(formData.get("direktwahl") || "").trim(),
-        [SCHEMA.contacts.fields.mobile]: String(formData.get("mobile") || "").trim(),
-        [SCHEMA.contacts.fields.rolle]: String(formData.get("rolle") || "").trim(),
-        [SCHEMA.contacts.fields.leadbbz0]: String(formData.get("leadbbz0") || "").trim(),
-        [SCHEMA.contacts.fields.sgf]: helpers.splitCsv(formData.get("sgf")),
-        [SCHEMA.contacts.fields.geburtstag]: formData.get("geburtstag") ? new Date(`${formData.get("geburtstag")}T00:00:00`).toISOString() : null,
-        [SCHEMA.contacts.fields.kommentar]: String(formData.get("kommentar") || "").trim(),
-        [SCHEMA.contacts.fields.event]: helpers.splitCsv(formData.get("event")),
-        [SCHEMA.contacts.fields.eventhistory]: String(formData.get("eventhistory") || "").trim(),
-        [SCHEMA.contacts.fields.archiviert]: formData.get("archiviert") === "on"
-      };
+  const fields = {
+    [SCHEMA.contacts.fields.nachname]: String(formData.get("nachname") || "").trim(),
+    [SCHEMA.contacts.fields.vorname]: String(formData.get("vorname") || "").trim(),
+    [SCHEMA.contacts.fields.anrede]: String(formData.get("anrede") || "").trim(),
+    [SCHEMA.contacts.fields.firmaLookupId]: firmaLookupId,
+    [SCHEMA.contacts.fields.funktion]: String(formData.get("funktion") || "").trim(),
+    [SCHEMA.contacts.fields.email1]: String(formData.get("email1") || "").trim(),
+    [SCHEMA.contacts.fields.email2]: String(formData.get("email2") || "").trim(),
+    [SCHEMA.contacts.fields.direktwahl]: String(formData.get("direktwahl") || "").trim(),
+    [SCHEMA.contacts.fields.mobile]: String(formData.get("mobile") || "").trim(),
+    [SCHEMA.contacts.fields.rolle]: String(formData.get("rolle") || "").trim(),
+    [SCHEMA.contacts.fields.sgf]: helpers.splitCsv(formData.get("sgf")),
+    [SCHEMA.contacts.fields.geburtstag]: formData.get("geburtstag")
+      ? new Date(`${formData.get("geburtstag")}T00:00:00`).toISOString()
+      : null,
+    [SCHEMA.contacts.fields.kommentar]: String(formData.get("kommentar") || "").trim(),
+    [SCHEMA.contacts.fields.event]: helpers.splitCsv(formData.get("event")),
+    [SCHEMA.contacts.fields.eventhistory]: String(formData.get("eventhistory") || "").trim(),
+    [SCHEMA.contacts.fields.archiviert]: formData.get("archiviert") === "on"
+  };
+
+  if (!fields[SCHEMA.contacts.fields.nachname]) {
+    throw new Error("Nachname fehlt.");
+  }
+
+  if (mode === "edit" && itemId) {
+    await api.updateListItemFields(SCHEMA.contacts.listTitle, itemId, fields);
+    ui.setMessage("Kontakt gespeichert.", "success");
+  } else {
+    await api.createListItem(SCHEMA.contacts.listTitle, fields);
+    ui.setMessage("Kontakt angelegt.", "success");
+  }
+}
 
       if (!fields[SCHEMA.contacts.fields.nachname]) throw new Error("Nachname fehlt.");
 
