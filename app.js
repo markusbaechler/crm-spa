@@ -83,7 +83,8 @@
         kontakt: "Nachname",
         kontaktLookupId: "NachnameLookupId",
         datum: "Datum",
-        typ: "Typ",
+        // KORREKTUR: SP-Feldname ist "Kontaktart", nicht "Typ"
+        typ: "Kontaktart",
         notizen: "Notizen",
         projektbezug: "Projektbezug",
         leadbbz: "Leadbbz"
@@ -1577,7 +1578,9 @@
         Title:         raw.nachname.trim(),
         Vorname:       raw.vorname.trim(),
         Anrede:        raw.anrede,
-        FirmaLookupId: Number(raw.firmaLookupId),
+        // WICHTIG: SharePoint Graph Write verwendet "FirmaId" (ohne LookupId-Suffix)
+        // Beim Lesen kommt "FirmaLookupId", beim Schreiben muss "FirmaId" verwendet werden
+        FirmaId:       Number(raw.firmaLookupId),
         Funktion:      raw.funktion.trim(),
         Rolle:         raw.rolle,
         Email1:        raw.email1.trim(),
@@ -1615,8 +1618,19 @@
       } catch (error) {
         console.error("handleModalSubmit Fehler:", error);
 
+        // Vollständigen Graph-Fehlertext extrahieren für sauberes Debugging
         let msg = error.message || "Unbekannter Fehler";
-        if (msg.includes("400")) msg = "Fehler 400: Ungültige Felddaten. Bitte Eingaben prüfen.";
+        let detail = "";
+        try {
+          // Graph-Fehler haben oft JSON im message-String
+          const match = msg.match(/\{.*\}/s);
+          if (match) {
+            const parsed = JSON.parse(match[0]);
+            detail = parsed?.error?.message || parsed?.message || "";
+          }
+        } catch { /* ignore parse error */ }
+
+        if (msg.includes("400")) msg = `Fehler 400: Ungültige Felddaten.${detail ? " " + detail : " Bitte Konsole prüfen."}`;
         if (msg.includes("403")) msg = "Fehler 403: Keine Schreibberechtigung auf diese Liste.";
         if (msg.includes("409")) msg = "Fehler 409: Konflikt — Eintrag wurde zwischenzeitlich geändert.";
 
