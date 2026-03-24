@@ -594,8 +594,12 @@
 
       if (!response.ok) {
         let detail = "";
-        try { detail = await response.text(); } catch { detail = ""; }
-        throw new Error(`Graph ${response.status}: ${detail || response.statusText}`);
+        try {
+          // Vollständigen Body lesen — gibt bei 400 den exakten SP-Feldnamen
+          detail = await response.text();
+          console.error(`Graph ${response.status} auf ${options.method || "GET"} ${path}:`, detail);
+        } catch { detail = response.statusText; }
+        throw new Error(`Graph ${response.status}: ${detail}`);
       }
 
       if (response.status === 204) return null;
@@ -1567,7 +1571,10 @@
         return;
       }
 
-      // Pflichtfelder — immer senden
+      // BISECT-MODUS: Felder in zwei Hälften aufteilen um 400-Ursache zu isolieren
+      // Hälfte A (Basis): Title, FirmaLookupId, Archiviert, Anrede, Rolle
+      // Hälfte B (Rest):  Vorname, Funktion, Leadbbz0, Emails, Tel, Event
+      // → Zuerst nur Hälfte A senden, dann bei Erfolg Hälfte B dazu
       const fields = {
         Title:         raw.nachname.trim(),
         FirmaLookupId: Number(raw.firmaLookupId),
@@ -1577,28 +1584,22 @@
       // Einzelwahl — nur wenn Wert vorhanden
       if (raw.anrede)    fields.Anrede    = raw.anrede;
       if (raw.rolle)     fields.Rolle     = raw.rolle;
-      if (raw.leadbbz0)  fields.Leadbbz0  = raw.leadbbz0;
 
-      // Optionaler Text — nur wenn befüllt (leerer String → SP 400)
-      if (raw.vorname.trim())    fields.Vorname    = raw.vorname.trim();
-      if (raw.funktion.trim())   fields.Funktion   = raw.funktion.trim();
-      if (raw.kommentar.trim())  fields.Kommentar  = raw.kommentar.trim();
-      if (raw.email1.trim())     fields.Email1     = raw.email1.trim();
-      if (raw.email2.trim())     fields.Email2     = raw.email2.trim();
+      // BISECT: Hälfte B — auskommentieren um Hälfte A allein zu testen
+      if (raw.leadbbz0)          fields.Leadbbz0  = raw.leadbbz0;
+      if (raw.vorname.trim())    fields.Vorname   = raw.vorname.trim();
+      if (raw.funktion.trim())   fields.Funktion  = raw.funktion.trim();
+      if (raw.kommentar.trim())  fields.Kommentar = raw.kommentar.trim();
+      if (raw.email1.trim())     fields.Email1    = raw.email1.trim();
+      if (raw.email2.trim())     fields.Email2    = raw.email2.trim();
       if (raw.direktwahl.trim()) fields.Direktwahl = raw.direktwahl.trim();
-      if (raw.mobile.trim())     fields.Mobile     = raw.mobile.trim();
-
-      // Datum — nur wenn befüllt
+      if (raw.mobile.trim())     fields.Mobile    = raw.mobile.trim();
       if (raw.geburtstag.trim()) fields.Geburtstag = raw.geburtstag.trim();
-
-      // Multi-Choice — nur senden wenn Werte vorhanden
-      // [] → SP 400, null → SP 400, weglassen → SP behält bestehenden Wert
-      // TRADE-OFF: Abwählen aller Werte ist damit nicht möglich — separater Fix folgt nach Bestätigung
-      if (raw.sgf.length)          fields.SGF          = raw.sgf;
-      if (raw.event.length)        fields.Event        = raw.event;
+      if (raw.sgf.length)        fields.SGF       = raw.sgf;
+      if (raw.event.length)      fields.Event     = raw.event;
       if (raw.eventhistory.length) fields.Eventhistory = raw.eventhistory;
 
-      // Debug-Log: exakte Felder die an Graph gesendet werden
+      // Debug-Log
       console.log("handleModalSubmit fields →", JSON.stringify(fields, null, 2));
 
       ui.setLoading(true);
