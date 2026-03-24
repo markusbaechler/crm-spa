@@ -278,6 +278,15 @@
       return list.map(v => `<span class="bbz-chip">${helpers.escapeHtml(v)}</span>`).join("");
     },
 
+    // Debounce: verhindert excessive DOM-Rebuilds beim Tippen in Suchfeldern
+    debounce(fn, ms = 150) {
+      let timer = null;
+      return (...args) => {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn(...args), ms);
+      };
+    },
+
     ensureMsalAvailable() {
       if (!window.msal || !window.msal.PublicClientApplication) {
         throw new Error("MSAL-Bibliothek wurde nicht geladen.");
@@ -368,12 +377,14 @@
         }
       });
 
+      const debouncedRender = helpers.debounce(() => controller.render(), 150);
+
       document.addEventListener("input", (event) => {
         const el = event.target;
-        if (el.matches("[data-filter='firms-search']")) { state.filters.firms.search = el.value; controller.render(); }
-        if (el.matches("[data-filter='contacts-search']")) { state.filters.contacts.search = el.value; controller.render(); }
-        if (el.matches("[data-filter='planning-search']")) { state.filters.planning.search = el.value; controller.render(); }
-        if (el.matches("[data-filter='events-search']")) { state.filters.events.search = el.value; controller.render(); }
+        if (el.matches("[data-filter='firms-search']")) { state.filters.firms.search = el.value; debouncedRender(); }
+        if (el.matches("[data-filter='contacts-search']")) { state.filters.contacts.search = el.value; debouncedRender(); }
+        if (el.matches("[data-filter='planning-search']")) { state.filters.planning.search = el.value; debouncedRender(); }
+        if (el.matches("[data-filter='events-search']")) { state.filters.events.search = el.value; debouncedRender(); }
       });
 
       document.addEventListener("change", (event) => {
@@ -580,6 +591,33 @@
       state.data.tasks = tasks.map(item => normalizer.task(item));
 
       dataModel.enrich();
+    },
+
+    // Write-Layer — POST (neues Item anlegen)
+    async postItem(listTitle, fields) {
+      const siteId = await this.getSiteId();
+      return await this.graphRequest(
+        `/sites/${siteId}/lists/${encodeURIComponent(listTitle)}/items`,
+        { method: "POST", body: { fields } }
+      );
+    },
+
+    // Write-Layer — PATCH (bestehendes Item aktualisieren)
+    async patchItem(listTitle, itemId, fields) {
+      const siteId = await this.getSiteId();
+      return await this.graphRequest(
+        `/sites/${siteId}/lists/${encodeURIComponent(listTitle)}/items/${itemId}/fields`,
+        { method: "PATCH", body: fields }
+      );
+    },
+
+    // Write-Layer — DELETE
+    async deleteItem(listTitle, itemId) {
+      const siteId = await this.getSiteId();
+      return await this.graphRequest(
+        `/sites/${siteId}/lists/${encodeURIComponent(listTitle)}/items/${itemId}`,
+        { method: "DELETE" }
+      );
     }
   };
 
@@ -1338,15 +1376,78 @@
       this.render();
     },
 
-    // FIX 2f: Form Submit — Platzhalter, Write-Layer folgt in naechster Etappe
+    // Write-Layer: Kontakt speichern (create oder edit)
     async handleModalSubmit(form, mode, itemId) {
-      const data = Object.fromEntries(new FormData(form).entries());
-      // Checkbox ist nicht in FormData wenn unchecked — explizit setzen
-      data.archiviert = form.querySelector("[name='archiviert']")?.checked ?? false;
+      const raw = Object.fromEntries(new FormData(form).entries());
 
-      console.log("Modal Submit:", { mode, itemId, data });
-      ui.setMessage(`[Write-Layer folgt] Modus: ${mode} · Felder: ${Object.keys(data).join(", ")}`, "warning");
-      this.closeModal();
+      // Checkbox ist nicht in FormData wenn unchecked — explizit setzen
+      raw.archiviert = form.querySelector("[name='archiviert']")?.checked ?? false;
+
+      // FormData → SharePoint-Feldnamen mappen
+      // Pflichtfeld-Validierung
+      if (!raw.nachname?.trim()) {
+        ui.setMessage("Nachname ist ein Pflichtfeld.", "error");
+        return;
+      }
+      if (!raw.firmaLookupId) {
+        ui.setMessage("Bitte eine Firma zuweisen.", "error");
+        return;
+      }
+
+      // Felder für Graph API aufbauen
+      // Hinweis: SharePoint Lookup-Felder benötigen den Key "FeldnameId" (Integer)
+      const fields = {
+        Title:          raw.nachname.trim(),
+        Vorname:        raw.vorname?.trim() || "",
+        Anrede:         raw.anrede?.trim() || "",
+        FirmaLookupId:  Number(raw.firmaLookupId),
+        Funktion:       raw.funktion?.trim() || "",
+        Rolle:          raw.rolle?.trim() || "",
+        Email1:         raw.email1?.trim() || "",
+        Email2:         raw.email2?.trim() || "",
+        Direktwahl:     raw.direktwahl?.trim() || "",
+        Mobile:         raw.mobile?.trim() || "",
+        SGF:            raw.sgf?.trim() || "",
+        Event:          raw.event?.trim() || "",
+        Eventhistory:   raw.eventhistory?.trim() || "",
+        Kommentar:      raw.kommentar?.trim() || "",
+        Archiviert:     raw.archiviert
+      };
+
+      // Geburtstag nur setzen wenn befüllt (leerer String würde Graph-Fehler geben)
+      if (raw.geburtstag?.trim()) {
+        fields.Geburtstag = raw.geburtstag.trim();
+      }
+
+      ui.setLoading(true);
+      ui.setMessage("");
+
+      try {
+        if (mode === "create") {
+          await api.postItem(SCHEMA.contacts.listTitle, fields);
+          ui.setMessage("Kontakt wurde erfolgreich angelegt.", "success");
+        } else {
+          if (!itemId) throw new Error("itemId fehlt für PATCH.");
+          await api.patchItem(SCHEMA.contacts.listTitle, Number(itemId), fields);
+          ui.setMessage("Kontakt wurde erfolgreich gespeichert.", "success");
+        }
+
+        await api.loadAll();
+        this.closeModal();
+      } catch (error) {
+        console.error("handleModalSubmit Fehler:", error);
+
+        // Graph-Fehlermeldung lesbar aufbereiten
+        let msg = error.message || "Unbekannter Fehler";
+        if (msg.includes("400")) msg = "Fehler 400: Ungültige Felddaten. Bitte Eingaben prüfen.";
+        if (msg.includes("403")) msg = "Fehler 403: Keine Schreibberechtigung auf diese Liste.";
+        if (msg.includes("409")) msg = "Fehler 409: Konflikt — Eintrag wurde zwischenzeitlich geändert.";
+
+        ui.setMessage(msg, "error");
+      } finally {
+        ui.setLoading(false);
+        this.render();
+      }
     },
 
     navigate(route) {
@@ -1354,6 +1455,7 @@
       if (route !== "firms") state.selection.firmId = null;
       if (route !== "contacts") state.selection.contactId = null;
       state.modal = null;
+      window.scrollTo(0, 0);
       this.render();
     },
 
@@ -1362,6 +1464,7 @@
       state.selection.contactId = null;
       state.filters.route = "firms";
       state.modal = null;
+      window.scrollTo(0, 0);
       this.render();
     },
 
@@ -1369,6 +1472,7 @@
       state.selection.contactId = id;
       state.filters.route = "contacts";
       state.modal = null;
+      window.scrollTo(0, 0);
       this.render();
     },
 
