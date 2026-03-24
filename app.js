@@ -28,7 +28,9 @@
     defaults: {
       route: "firms",
       contactArchiveDefaultHidden: true,
-      planningShowOnlyOpen: true
+      planningShowOnlyOpen: true,
+      // Firma für Privatpersonen ohne Firmenbezug — exakter SP-Titel
+      privateFirmTitle: "Privatpersonen"
     }
   };
 
@@ -117,7 +119,9 @@
       lastError: null,
       // Choice-Werte aus SharePoint — pro Liste, pro SP-Feldname
       // Struktur: { "CRMContacts": { "Anrede": ["Herr", "Frau", ...], ... }, ... }
-      choices: {}
+      choices: {},
+      // ID der Firma "Privatpersonen" — wird nach enrich() automatisch gesetzt
+      privateFirmId: null
     },
 
     data: {
@@ -849,6 +853,12 @@
       state.enriched.tasks = tasks.sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
       state.enriched.firms = firms.sort((a, b) => a.title.localeCompare(b.title, "de"));
       state.enriched.events = events;
+
+      // privateFirmId nach jedem enrich() neu auflösen — robust gegen SP-ID-Änderungen
+      const privateFirm = state.data.firms.find(
+        f => String(f.title).trim() === CONFIG.defaults.privateFirmTitle
+      );
+      state.meta.privateFirmId = privateFirm?.id || null;
     },
 
     getFirmById(id) { return state.enriched.firms.find(f => String(f.id) === String(id)) || null; },
@@ -887,7 +897,11 @@
       const contact = mode === "edit" ? dataModel.getContactById(itemId) : null;
       const title = mode === "edit" ? "Kontakt bearbeiten" : "Neuer Kontakt";
       const preselectedFirmId = Number(payload.prefillFirmId || contact?.firmId || 0) || "";
-      const L = CONFIG.lists.contacts; // Kurzreferenz für alle choiceSelectHtml/choiceMultiHtml Aufrufe
+      const L = CONFIG.lists.contacts;
+      // Privatpersonen-Modus: wenn Firma "Privatpersonen" vorgewählt oder gesetzt
+      const isPrivat = state.meta.privateFirmId !== null &&
+        (String(preselectedFirmId) === String(state.meta.privateFirmId) ||
+         (contact && contact.firmId === state.meta.privateFirmId));
 
       return `
         <div class="bbz-modal-backdrop show">
@@ -973,7 +987,7 @@
                   </div>
 
                   <div class="bbz-field bbz-span-2">
-                    <label>Kommentar</label>
+                    <label>${isPrivat ? 'Adresse / Notizen <span class="bbz-field-hint">(Privatperson — Adresse hier erfassen)</span>' : 'Kommentar'}</label>
                     <textarea class="bbz-textarea" name="kommentar">${helpers.escapeHtml(contact?.kommentar || "")}</textarea>
                   </div>
 
@@ -1216,6 +1230,7 @@
       if (!contact) return ui.emptyBlock("Der ausgewaehlte Kontakt wurde nicht gefunden.");
       const contactHistory = state.enriched.history.filter(h => h.contactId === contact.id).sort((a, b) => helpers.compareDateDesc(a.datum, b.datum));
       const contactTasks = state.enriched.tasks.filter(t => t.contactId === contact.id).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
+      const isPrivat = state.meta.privateFirmId !== null && contact.firmId === state.meta.privateFirmId;
 
       return `
         <div>
@@ -1224,7 +1239,12 @@
               <button class="bbz-button bbz-button-secondary mb-3" data-action="back-to-contacts">Zurueck zur Kontaktliste</button>
               <div class="bbz-detail-title">${helpers.escapeHtml(contact.fullName || contact.nachname)}</div>
               <div class="bbz-detail-subtitle">
-                ${contact.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${contact.firmId}">${helpers.escapeHtml(contact.firmTitle || "Firma")}</a>` : "Keine Firma verknuepft"}
+                ${isPrivat
+                  ? `<span class="bbz-pill" style="font-size:12px;">Privatperson</span>`
+                  : contact.firmId
+                    ? `<a class="bbz-link" data-action="open-firm" data-id="${contact.firmId}">${helpers.escapeHtml(contact.firmTitle || "Firma")}</a>`
+                    : "Keine Firma verknuepft"
+                }
                 ${contact.funktion ? ` · ${helpers.escapeHtml(contact.funktion)}` : ""}
                 ${contact.rolle ? ` · ${helpers.escapeHtml(contact.rolle)}` : ""}
               </div>
@@ -1247,7 +1267,10 @@
                 ${ui.kv("Anrede", helpers.escapeHtml(contact.anrede) || '<span class="bbz-muted">—</span>')}
                 ${ui.kv("Vorname", helpers.escapeHtml(contact.vorname) || '<span class="bbz-muted">—</span>')}
                 ${ui.kv("Nachname", helpers.escapeHtml(contact.nachname) || '<span class="bbz-muted">—</span>')}
-                ${ui.kv("Firma", contact.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${contact.firmId}">${helpers.escapeHtml(contact.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>')}
+                ${isPrivat
+                  ? ui.kv("Adresse / Notizen", helpers.escapeHtml(contact.kommentar) || '<span class="bbz-muted">—</span>')
+                  : ui.kv("Firma", contact.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${contact.firmId}">${helpers.escapeHtml(contact.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>')
+                }
                 ${ui.kv("Funktion", helpers.escapeHtml(contact.funktion) || '<span class="bbz-muted">—</span>')}
                 ${ui.kv("Rolle", helpers.escapeHtml(contact.rolle) || '<span class="bbz-muted">—</span>')}
                 ${ui.kv("Email 1", contact.email1 ? `<a class="bbz-link" href="mailto:${helpers.escapeHtml(contact.email1)}">${helpers.escapeHtml(contact.email1)}</a>` : '<span class="bbz-muted">—</span>')}
@@ -1265,7 +1288,7 @@
                 ${ui.kv("SGF", helpers.multiChoiceHtml(contact.sgf))}
                 ${ui.kv("Event", helpers.multiChoiceHtml(contact.event))}
                 ${ui.kv("Eventhistory", helpers.escapeHtml(contact.eventhistory) || '<span class="bbz-muted">—</span>')}
-                ${ui.kv("Kommentar", helpers.escapeHtml(contact.kommentar) || '<span class="bbz-muted">—</span>')}
+                ${isPrivat ? "" : ui.kv("Kommentar", helpers.escapeHtml(contact.kommentar) || '<span class="bbz-muted">—</span>')}
               </div></div>
             </section>
             <section class="bbz-section">
