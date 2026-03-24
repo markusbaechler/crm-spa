@@ -412,6 +412,25 @@
           return;
         }
 
+        // History-Formular öffnen
+        const openHistoryForm = event.target.closest("[data-action='open-history-form']");
+        if (openHistoryForm) {
+          // Kann von contactDetail (data-contact-id) oder firmDetail (data-firm-id) kommen
+          const contactId = openHistoryForm.dataset.contactId || null;
+          const firmId = openHistoryForm.dataset.firmId || null;
+          controller.openHistoryForm(contactId ? Number(contactId) : null, firmId ? Number(firmId) : null);
+          return;
+        }
+
+        // Task-Formular öffnen
+        const openTaskForm = event.target.closest("[data-action='open-task-form']");
+        if (openTaskForm) {
+          const contactId = openTaskForm.dataset.contactId || null;
+          const firmId = openTaskForm.dataset.firmId || null;
+          controller.openTaskForm(contactId ? Number(contactId) : null, firmId ? Number(firmId) : null);
+          return;
+        }
+
         // Firma löschen
         const deleteFirm = event.target.closest("[data-action='delete-firm']");
         if (deleteFirm) {
@@ -438,6 +457,10 @@
           const formType = form.dataset.modalForm;
           if (formType === "firm") {
             controller.handleFirmModalSubmit(form, form.dataset.mode, form.dataset.itemId || null);
+          } else if (formType === "history") {
+            controller.handleHistoryModalSubmit(form);
+          } else if (formType === "task") {
+            controller.handleTaskModalSubmit(form);
           } else {
             controller.handleModalSubmit(form, form.dataset.mode, form.dataset.itemId || null);
           }
@@ -462,6 +485,9 @@
         if (el.matches("[data-filter='planning-open']")) { state.filters.planning.onlyOpen = el.checked; controller.render(); }
         if (el.matches("[data-filter='planning-overdue']")) { state.filters.planning.onlyOverdue = el.checked; controller.render(); }
         if (el.matches("[data-filter='events-open']")) { state.filters.events.onlyWithOpenTasks = el.checked; controller.render(); }
+        if (el.matches("[data-action='task-status-change']")) {
+          controller.handleTaskStatusChange(Number(el.dataset.taskId), el.value);
+        }
       });
     },
 
@@ -925,6 +951,8 @@
       let modalHtml = "";
       if (state.modal?.type === "contact") modalHtml = views.renderContactForm(state.modal.mode, state.modal.payload);
       if (state.modal?.type === "firm")    modalHtml = views.renderFirmForm(state.modal.mode, state.modal.payload?.firmId);
+      if (state.modal?.type === "history") modalHtml = views.renderHistoryForm(state.modal.payload);
+      if (state.modal?.type === "task")    modalHtml = views.renderTaskForm(state.modal.payload);
       return viewHtml + modalHtml;
     },
 
@@ -1106,6 +1134,109 @@
       `;
     },
 
+    renderHistoryForm(payload = {}) {
+      const prefillContactId = Number(payload.prefillContactId || 0) || "";
+      const LH = CONFIG.lists.history;
+      return `
+        <div class="bbz-modal-backdrop show">
+          <div class="bbz-modal">
+            <div class="bbz-modal-header">
+              <div class="bbz-modal-title">Aktivitaet erfassen</div>
+              <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
+            </div>
+            <form data-modal-form="history" data-mode="create">
+              <div class="bbz-modal-body">
+                <div class="bbz-form-grid">
+                  <div class="bbz-field">
+                    <label>Kontakt *</label>
+                    <select class="bbz-select" name="kontaktLookupId" required>
+                      <option value="">— bitte waehlen —</option>
+                      ${state.enriched.contacts.filter(c => !c.archiviert).map(c => `<option value="${c.id}" ${String(prefillContactId) === String(c.id) ? "selected" : ""}>${helpers.escapeHtml(c.fullName || c.nachname)}${c.firmTitle ? " — " + helpers.escapeHtml(c.firmTitle) : ""}</option>`).join("")}
+                    </select>
+                  </div>
+                  <div class="bbz-field">
+                    <label>Datum *</label>
+                    <input type="date" class="bbz-input" name="datum" required value="${helpers.toDateInput(new Date())}" />
+                  </div>
+                  <div class="bbz-field">
+                    <label>Kontaktart</label>
+                    ${helpers.choiceSelectHtml("kontaktart", LH, "Kontaktart", "")}
+                  </div>
+                  <div class="bbz-field">
+                    <label>Leadbbz</label>
+                    ${helpers.choiceSelectHtml("leadbbz", LH, "Leadbbz", "")}
+                  </div>
+                  <div class="bbz-field bbz-span-2">
+                    <label>Projektbezug</label>
+                    <label class="bbz-checkbox" style="border:none;padding:0;">
+                      <input type="checkbox" name="projektbezug" />
+                      Ja, mit Projektbezug
+                    </label>
+                  </div>
+                  <div class="bbz-field bbz-span-2">
+                    <label>Notizen</label>
+                    <textarea class="bbz-textarea" name="notizen" rows="4" placeholder="Was wurde besprochen?"></textarea>
+                  </div>
+                </div>
+              </div>
+              <div class="bbz-modal-footer">
+                <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Abbrechen</button>
+                <button type="submit" class="bbz-button bbz-button-primary" ${state.meta.loading ? "disabled" : ""}>Speichern</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+    },
+
+    renderTaskForm(payload = {}) {
+      const prefillContactId = Number(payload.prefillContactId || 0) || "";
+      const LT = CONFIG.lists.tasks;
+      return `
+        <div class="bbz-modal-backdrop show">
+          <div class="bbz-modal">
+            <div class="bbz-modal-header">
+              <div class="bbz-modal-title">Aufgabe erfassen</div>
+              <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
+            </div>
+            <form data-modal-form="task" data-mode="create">
+              <div class="bbz-modal-body">
+                <div class="bbz-form-grid">
+                  <div class="bbz-field bbz-span-2">
+                    <label>Titel *</label>
+                    <input class="bbz-input" name="title" required placeholder="Was ist zu tun?" />
+                  </div>
+                  <div class="bbz-field">
+                    <label>Kontakt *</label>
+                    <select class="bbz-select" name="kontaktLookupId" required>
+                      <option value="">— bitte waehlen —</option>
+                      ${state.enriched.contacts.filter(c => !c.archiviert).map(c => `<option value="${c.id}" ${String(prefillContactId) === String(c.id) ? "selected" : ""}>${helpers.escapeHtml(c.fullName || c.nachname)}${c.firmTitle ? " — " + helpers.escapeHtml(c.firmTitle) : ""}</option>`).join("")}
+                    </select>
+                  </div>
+                  <div class="bbz-field">
+                    <label>Deadline</label>
+                    <input type="date" class="bbz-input" name="deadline" />
+                  </div>
+                  <div class="bbz-field">
+                    <label>Status</label>
+                    ${helpers.choiceSelectHtml("status", LT, "Status", "")}
+                  </div>
+                  <div class="bbz-field">
+                    <label>Leadbbz</label>
+                    ${helpers.choiceSelectHtml("leadbbz", LT, "Leadbbz", "")}
+                  </div>
+                </div>
+              </div>
+              <div class="bbz-modal-footer">
+                <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Abbrechen</button>
+                <button type="submit" class="bbz-button bbz-button-primary" ${state.meta.loading ? "disabled" : ""}>Speichern</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+    },
+
     firms() {
       const filters = state.filters.firms;
       const rows = state.enriched.firms.filter(firm => {
@@ -1208,6 +1339,8 @@
             <div class="flex items-center gap-2 flex-wrap">
               <button class="bbz-button bbz-button-secondary" style="${firm.contactsCount > 0 ? "opacity:0.4;cursor:not-allowed;" : "color:var(--red);border-color:var(--red);"}" data-action="delete-firm" data-id="${firm.id}" data-name="${helpers.escapeHtml(firm.title)}" data-contacts="${firm.contactsCount}">Löschen</button>
               <button class="bbz-button bbz-button-secondary" data-action="open-firm-form" data-id="${firm.id}">Bearbeiten</button>
+              <button class="bbz-button bbz-button-secondary" data-action="open-task-form" data-firm-id="${firm.id}">+ Task</button>
+              <button class="bbz-button bbz-button-secondary" data-action="open-history-form" data-firm-id="${firm.id}">+ Aktivitaet</button>
               <button class="bbz-button bbz-button-primary" data-action="open-contact-form" data-firm-id="${firm.id}">+ Kontakt</button>
             </div>
           </div>
@@ -1356,7 +1489,9 @@
             <div class="flex items-center gap-2 flex-wrap">
               ${contact.email1 ? `<a class="bbz-button bbz-button-secondary" href="mailto:${helpers.escapeHtml(contact.email1)}">Mail senden</a>` : ""}
               <button class="bbz-button bbz-button-secondary" style="color:var(--red);border-color:var(--red);" data-action="delete-contact" data-id="${contact.id}" data-name="${helpers.escapeHtml(contact.fullName || contact.nachname)}">Löschen</button>
-              <button class="bbz-button bbz-button-primary" data-action="open-contact-form" data-item-id="${contact.id}">Bearbeiten</button>
+              <button class="bbz-button bbz-button-secondary" data-action="open-contact-form" data-item-id="${contact.id}">Bearbeiten</button>
+              <button class="bbz-button bbz-button-secondary" data-action="open-task-form" data-contact-id="${contact.id}">+ Task</button>
+              <button class="bbz-button bbz-button-primary" data-action="open-history-form" data-contact-id="${contact.id}">+ Aktivitaet</button>
             </div>
           </div>
           <div class="bbz-kpis">
@@ -1470,7 +1605,9 @@
             ${this.kpiBlock("Naechste 7 Tage", nextWeekTasks)}
           </div>
           <section class="bbz-section">
-            <div class="bbz-section-header"><div><div class="bbz-section-title">Planung</div><div class="bbz-section-subtitle">Aufgabenuebersicht mit Fokus auf offen und ueberfaellig</div></div></div>
+            <div class="bbz-section-header"><div><div class="bbz-section-title">Planung</div><div class="bbz-section-subtitle">Aufgabenuebersicht mit Fokus auf offen und ueberfaellig</div></div>
+              <button class="bbz-button bbz-button-primary" data-action="open-task-form">+ Task</button>
+            </div>
             <div class="bbz-section-body">
               <div class="bbz-filters-3">
                 <input class="bbz-input" data-filter="planning-search" type="text" placeholder="Suche nach Titel, Firma, Kontakt, Status ..." value="${helpers.escapeHtml(filters.search)}" />
@@ -1481,14 +1618,19 @@
                 <table class="bbz-table">
                   <thead><tr><th>Titel</th><th>Deadline</th><th>Status</th><th>Kontaktperson</th><th>Firma</th></tr></thead>
                   <tbody>
-                    ${rows.length ? rows.map(t => `
+                    ${rows.length ? rows.map(t => {
+                      const statusChoices = state.meta.choices?.[CONFIG.lists.tasks]?.["Status"] || [];
+                      const statusCell = statusChoices.length
+                        ? `<select class="bbz-select" style="height:32px;font-size:13px;" data-action="task-status-change" data-task-id="${t.id}">${statusChoices.map(s => `<option value="${helpers.escapeHtml(s)}" ${t.status === s ? "selected" : ""}>${helpers.escapeHtml(s)}</option>`).join("")}</select>`
+                        : `<span class="${helpers.statusClass(t.status, t.deadline)}">${helpers.escapeHtml(t.status) || "—"}</span>`;
+                      return `
                       <tr>
                         <td>${helpers.escapeHtml(t.title) || '<span class="bbz-muted">—</span>'}</td>
                         <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
-                        <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.escapeHtml(t.status) || '<span class="bbz-muted">—</span>'}</td>
+                        <td>${statusCell}</td>
                         <td>${t.contactId ? `<a class="bbz-link" data-action="open-contact" data-id="${t.contactId}">${helpers.escapeHtml(t.contactName || "Kontakt")}</a>` : helpers.escapeHtml(t.contactName || "—")}</td>
                         <td>${t.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${t.firmId}">${helpers.escapeHtml(t.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
-                      </tr>`).join("") : `<tr><td colspan="5">${ui.emptyBlock("Keine Tasks fuer die aktuelle Filterung gefunden.")}</td></tr>`}
+                      </tr>`;}).join("") : `<tr><td colspan="5">${ui.emptyBlock("Keine Tasks fuer die aktuelle Filterung gefunden.")}</td></tr>`}
                   </tbody>
                 </table>
               </div>
@@ -1861,6 +2003,140 @@
         if (msg.includes("409")) msg = "Fehler 409: Konflikt — Eintrag wurde zwischenzeitlich geändert.";
 
         ui.setMessage(msg, "error");
+      } finally {
+        ui.setLoading(false);
+        this.render();
+      }
+    },
+
+    openHistoryForm(contactId = null, firmId = null) {
+      // Wenn von firmDetail: ersten Kontakt dieser Firma vorauswählen (oder leer lassen)
+      let prefillContactId = contactId;
+      if (!prefillContactId && firmId) {
+        const firm = dataModel.getFirmById(firmId);
+        prefillContactId = firm?.contacts?.[0]?.id || null;
+      }
+      state.modal = { type: "history", payload: { prefillContactId } };
+      this.render();
+    },
+
+    openTaskForm(contactId = null, firmId = null) {
+      let prefillContactId = contactId;
+      if (!prefillContactId && firmId) {
+        const firm = dataModel.getFirmById(firmId);
+        prefillContactId = firm?.contacts?.[0]?.id || null;
+      }
+      state.modal = { type: "task", payload: { prefillContactId } };
+      this.render();
+    },
+
+    async handleHistoryModalSubmit(form) {
+      const fd = new FormData(form);
+      const kontaktLookupId = fd.get("kontaktLookupId") || "";
+      const datum = fd.get("datum") || "";
+
+      if (!kontaktLookupId) { ui.setMessage("Bitte einen Kontakt waehlen.", "error"); return; }
+      if (!datum) { ui.setMessage("Datum ist ein Pflichtfeld.", "error"); return; }
+
+      // POST: nur Pflichtfelder (Title wird aus Kontakt-ID generiert — SP braucht Title)
+      const createFields = {
+        Title: `Aktivitaet-${datum}`,
+        NachnameLookupId: Number(kontaktLookupId)
+      };
+
+      // PATCH-Felder
+      const patchFields = {
+        Datum: datum + "T00:00:00Z"
+      };
+      const kontaktart = fd.get("kontaktart") || "";
+      const leadbbz = fd.get("leadbbz") || "";
+      const notizen = fd.get("notizen") || "";
+      const projektbezug = form.querySelector("[name='projektbezug']")?.checked ?? false;
+
+      if (kontaktart) patchFields.Kontaktart = kontaktart;
+      if (leadbbz) patchFields.Leadbbz = leadbbz;
+      if (notizen.trim()) patchFields.Notizen = notizen.trim();
+      patchFields.Projektbezug = projektbezug;
+
+      ui.setLoading(true);
+      ui.setMessage("");
+      try {
+        const created = await api.postItem(SCHEMA.history.listTitle, createFields);
+        const newId = created?.id || created?.fields?.id;
+        if (!newId) throw new Error("Neue Item-ID fehlt im POST-Response.");
+        await api.patchItem(SCHEMA.history.listTitle, Number(newId), patchFields);
+        ui.setMessage("Aktivitaet wurde erfolgreich erfasst.", "success");
+        await api.loadAll();
+        this.closeModal();
+      } catch (error) {
+        console.error("handleHistoryModalSubmit:", error);
+        let msg = error.message || "Unbekannter Fehler";
+        if (msg.includes("400")) msg = "Fehler 400: Ungueltige Felddaten. Bitte Konsole pruefen.";
+        if (msg.includes("403")) msg = "Fehler 403: Keine Schreibberechtigung.";
+        ui.setMessage(msg, "error");
+      } finally {
+        ui.setLoading(false);
+        this.render();
+      }
+    },
+
+    async handleTaskModalSubmit(form) {
+      const fd = new FormData(form);
+      const title = fd.get("title") || "";
+      const kontaktLookupId = fd.get("kontaktLookupId") || "";
+
+      if (!title.trim()) { ui.setMessage("Titel ist ein Pflichtfeld.", "error"); return; }
+      if (!kontaktLookupId) { ui.setMessage("Bitte einen Kontakt waehlen.", "error"); return; }
+
+      const createFields = {
+        Title: title.trim(),
+        NameLookupId: Number(kontaktLookupId)
+      };
+
+      const patchFields = {};
+      const deadline = fd.get("deadline") || "";
+      const status = fd.get("status") || "";
+      const leadbbz = fd.get("leadbbz") || "";
+
+      if (deadline) patchFields.Deadline = deadline + "T00:00:00Z";
+      if (status) patchFields.Status = status;
+      if (leadbbz) patchFields.Leadbbz = leadbbz;
+
+      ui.setLoading(true);
+      ui.setMessage("");
+      try {
+        const created = await api.postItem(SCHEMA.tasks.listTitle, createFields);
+        const newId = created?.id || created?.fields?.id;
+        if (!newId) throw new Error("Neue Item-ID fehlt im POST-Response.");
+        if (Object.keys(patchFields).length > 0) {
+          await api.patchItem(SCHEMA.tasks.listTitle, Number(newId), patchFields);
+        }
+        ui.setMessage("Aufgabe wurde erfolgreich erstellt.", "success");
+        await api.loadAll();
+        this.closeModal();
+      } catch (error) {
+        console.error("handleTaskModalSubmit:", error);
+        let msg = error.message || "Unbekannter Fehler";
+        if (msg.includes("400")) msg = "Fehler 400: Ungueltige Felddaten. Bitte Konsole pruefen.";
+        if (msg.includes("403")) msg = "Fehler 403: Keine Schreibberechtigung.";
+        ui.setMessage(msg, "error");
+      } finally {
+        ui.setLoading(false);
+        this.render();
+      }
+    },
+
+    async handleTaskStatusChange(taskId, newStatus) {
+      if (!taskId || !newStatus) return;
+      try {
+        ui.setLoading(true);
+        ui.setMessage("");
+        await api.patchItem(SCHEMA.tasks.listTitle, taskId, { Status: newStatus });
+        ui.setMessage(`Task-Status auf "${newStatus}" gesetzt.`, "success");
+        await api.loadAll();
+      } catch (error) {
+        console.error("handleTaskStatusChange:", error);
+        ui.setMessage(`Fehler beim Status-Update: ${error.message}`, "error");
       } finally {
         ui.setLoading(false);
         this.render();
