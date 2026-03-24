@@ -744,7 +744,8 @@
         geburtstag: this.getField(item, f.geburtstag) || "",
         kommentar: this.getField(item, f.kommentar) || "",
         event: helpers.normalizeChoiceList(this.getField(item, f.event)),
-        eventhistory: this.getField(item, f.eventhistory) || "",
+        // FIX: eventhistory konsistent als Array normalisieren (wie sgf und event)
+        eventhistory: helpers.normalizeChoiceList(this.getField(item, f.eventhistory)),
         archiviert: helpers.bool(this.getField(item, f.archiviert))
       };
     },
@@ -988,7 +989,7 @@
 
                   <div class="bbz-field bbz-span-2">
                     <label>Eventhistory <span class="bbz-field-hint">(Mehrfachauswahl)</span></label>
-                    ${helpers.choiceMultiHtml("eventhistory", L, "Eventhistory", helpers.toArray(contact?.eventhistory))}
+                    ${helpers.choiceMultiHtml("eventhistory", L, "Eventhistory", contact?.eventhistory || [])}
                   </div>
 
                   <div class="bbz-field bbz-span-2">
@@ -1292,7 +1293,7 @@
                 ${ui.kv("Leadbbz0", helpers.escapeHtml(contact.leadbbz0) || '<span class="bbz-muted">—</span>')}
                 ${ui.kv("SGF", helpers.multiChoiceHtml(contact.sgf))}
                 ${ui.kv("Event", helpers.multiChoiceHtml(contact.event))}
-                ${ui.kv("Eventhistory", helpers.multiChoiceHtml(helpers.toArray(contact.eventhistory)))}
+                ${ui.kv("Eventhistory", helpers.multiChoiceHtml(contact.eventhistory))}
                 ${isPrivat ? "" : ui.kv("Kommentar", helpers.escapeHtml(contact.kommentar) || '<span class="bbz-muted">—</span>')}
               </div></div>
             </section>
