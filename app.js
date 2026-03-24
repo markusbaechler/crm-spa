@@ -621,13 +621,11 @@
     },
 
     async loadAll() {
-      // Choices und Items parallel laden — Choices sind Voraussetzung für korrekte Formulare
       const [firms, contacts, history, tasks] = await Promise.all([
         this.getListItems(SCHEMA.firms.listTitle),
         this.getListItems(SCHEMA.contacts.listTitle),
         this.getListItems(SCHEMA.history.listTitle),
-        this.getListItems(SCHEMA.tasks.listTitle),
-        this.loadColumnChoices()  // parallel, kein destructuring nötig — schreibt direkt in state.meta.choices
+        this.getListItems(SCHEMA.tasks.listTitle)
       ]);
 
       state.data.firms = firms.map(item => normalizer.firm(item));
@@ -1288,7 +1286,7 @@
                 ${ui.kv("Leadbbz0", helpers.escapeHtml(contact.leadbbz0) || '<span class="bbz-muted">—</span>')}
                 ${ui.kv("SGF", helpers.multiChoiceHtml(contact.sgf))}
                 ${ui.kv("Event", helpers.multiChoiceHtml(contact.event))}
-                ${ui.kv("Eventhistory", helpers.escapeHtml(contact.eventhistory) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Eventhistory", helpers.multiChoiceHtml(helpers.toArray(contact.eventhistory)))}
                 ${isPrivat ? "" : ui.kv("Kommentar", helpers.escapeHtml(contact.kommentar) || '<span class="bbz-muted">—</span>')}
               </div></div>
             </section>
@@ -1467,7 +1465,8 @@
 
         if (state.auth.isAuthenticated) {
           await api.acquireToken();
-          await api.loadAll();
+          // Choices und Daten beim ersten Laden parallel — Choices nur einmal nötig
+          await Promise.all([api.loadAll(), api.loadColumnChoices()]);
           ui.setMessage("Anmeldung erkannt. Daten wurden geladen.", "success");
         } else {
           ui.setMessage("Bitte anmelden, um die SharePoint-Listen ueber Microsoft Graph zu laden.", "warning");
@@ -1488,7 +1487,8 @@
         ui.setLoading(true);
         ui.setMessage("");
         await api.login();
-        await api.loadAll();
+        // Choices und Daten beim Login parallel laden
+        await Promise.all([api.loadAll(), api.loadColumnChoices()]);
         ui.setMessage("Anmeldung erfolgreich. Daten wurden geladen.", "success");
       } catch (error) {
         console.error(error);
@@ -1506,7 +1506,8 @@
         ui.setLoading(true);
         ui.setMessage("");
         await api.acquireToken();
-        await api.loadAll();
+        // Refresh: Choices ebenfalls neu laden — SP-Schema könnte sich geändert haben
+        await Promise.all([api.loadAll(), api.loadColumnChoices()]);
         ui.setMessage("Daten erfolgreich neu geladen.", "success");
       } catch (error) {
         console.error(error);
@@ -1575,24 +1576,24 @@
       const joinMulti = (values) => values.length ? values.join(";#") : "";
 
       const fields = {
-        Title:         raw.nachname.trim(),
-        Vorname:       raw.vorname.trim(),
-        Anrede:        raw.anrede,
-        // WICHTIG: SharePoint Graph Write verwendet "FirmaId" (ohne LookupId-Suffix)
-        // Beim Lesen kommt "FirmaLookupId", beim Schreiben muss "FirmaId" verwendet werden
-        FirmaId:       Number(raw.firmaLookupId),
-        Funktion:      raw.funktion.trim(),
-        Rolle:         raw.rolle,
-        Email1:        raw.email1.trim(),
-        Email2:        raw.email2.trim(),
-        Direktwahl:    raw.direktwahl.trim(),
-        Mobile:        raw.mobile.trim(),
-        Leadbbz0:      raw.leadbbz0,
-        SGF:           joinMulti(raw.sgf),
-        Event:         joinMulti(raw.event),
-        Eventhistory:  joinMulti(raw.eventhistory),
-        Kommentar:     raw.kommentar.trim(),
-        Archiviert:    raw.archiviert
+        Title:          raw.nachname.trim(),
+        Vorname:        raw.vorname.trim(),
+        Anrede:         raw.anrede,
+        // BESTÄTIGT: SharePoint Graph erwartet "FirmaLookupId" (nicht "FirmaId")
+        // Fehler "Field 'FirmaId' is not recognized" vom 24.03.2026 bestätigt dies
+        FirmaLookupId:  Number(raw.firmaLookupId),
+        Funktion:       raw.funktion.trim(),
+        Rolle:          raw.rolle,
+        Email1:         raw.email1.trim(),
+        Email2:         raw.email2.trim(),
+        Direktwahl:     raw.direktwahl.trim(),
+        Mobile:         raw.mobile.trim(),
+        Leadbbz0:       raw.leadbbz0,
+        SGF:            joinMulti(raw.sgf),
+        Event:          joinMulti(raw.event),
+        Eventhistory:   joinMulti(raw.eventhistory),
+        Kommentar:      raw.kommentar.trim(),
+        Archiviert:     raw.archiviert
       };
 
       // Geburtstag nur setzen wenn befüllt (leerer String → Graph 400)
