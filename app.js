@@ -659,6 +659,8 @@
             // Graph gibt Choice-Felder mit col.choice.choices[] zurück
             if (col.choice && Array.isArray(col.choice.choices) && col.choice.choices.length > 0) {
               choicesForList[col.name] = col.choice.choices;
+              // Debug: zeigt internen SP-Feldnamen — wichtig für Write-Layer
+              console.log(`[${listTitle}] Choice-Feld: name="${col.name}" displayName="${col.displayName}" multiSelect=${col.choice.allowTextEntry ?? col.choice.displayAs}`);
             }
           }
           state.meta.choices[listTitle] = choicesForList;
@@ -981,7 +983,7 @@
 
                   <div class="bbz-field bbz-span-2">
                     <label>Eventhistory <span class="bbz-field-hint">(Mehrfachauswahl)</span></label>
-                    ${helpers.choiceMultiHtml("eventhistory", L, "Eventhistory", contact?.eventhistory ? helpers.toArray(contact.eventhistory) : [])}
+                    ${helpers.choiceMultiHtml("eventhistory", L, "Eventhistory", helpers.toArray(contact?.eventhistory))}
                   </div>
 
                   <div class="bbz-field bbz-span-2">
@@ -1594,11 +1596,13 @@
       // Datum — nur wenn befüllt, SP erwartet volles ISO-8601 Datetime (nicht nur YYYY-MM-DD)
       if (raw.geburtstag.trim()) fields.Geburtstag = raw.geburtstag.trim() + "T00:00:00Z";
 
-      // Multi-Choice — Array wenn Werte, weglassen wenn leer
-      // BESTÄTIGT: [] → 400, null → 400, weglassen → SP behält bestehenden Wert
-      if (raw.sgf.length)          fields.SGF          = raw.sgf;
-      if (raw.event.length)        fields.Event        = raw.event;
-      if (raw.eventhistory.length) fields.Eventhistory = raw.eventhistory;
+      // Multi-Choice — SP erwartet möglicherweise results-Wrapper
+      // Format A (Graph standard): ["Wert1", "Wert2"] → bisher 400
+      // Format B (SP REST legacy): { results: ["Wert1"] } → zu testen
+      const multiVal = (arr) => arr.length ? { results: arr } : { results: [] };
+      fields.SGF          = multiVal(raw.sgf);
+      fields.Event        = multiVal(raw.event);
+      fields.Eventhistory = multiVal(raw.eventhistory);
 
       // Debug-Log (kann nach stabilem Betrieb entfernt werden)
       console.log("handleModalSubmit fields →", JSON.stringify(fields, null, 2));
