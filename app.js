@@ -398,20 +398,19 @@
         const backdrop = event.target.closest(".bbz-modal-backdrop");
         if (backdrop && !event.target.closest(".bbz-modal")) { controller.closeModal(); return; }
 
-        // FIX 2b: Submit-Button loest Form-Submit aus
-        const submitBtn = event.target.closest("[data-modal-submit]");
-        if (submitBtn) {
-          const form = document.querySelector("[data-modal-form]");
-          if (form) form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-          return;
-        }
+        // KEIN separater Handler für [data-modal-submit] nötig:
+        // Der Button hat type="submit" und löst den nativen Form-Submit aus,
+        // der vom submit-Listener unten abgefangen wird.
+        // Ein zusätzlicher dispatchEvent hier würde double-submit verursachen.
       });
 
-      // FIX 2c: Zentraler Form-Submit-Handler
+      // FIX 2c: Zentraler Form-Submit-Handler — Guard gegen Double-Submit
       document.addEventListener("submit", (event) => {
         const form = event.target.closest("[data-modal-form]");
         if (form) {
           event.preventDefault();
+          // Guard: kein zweiter Submit wenn bereits ein Request läuft
+          if (state.meta.loading) return;
           controller.handleModalSubmit(form, form.dataset.mode, form.dataset.itemId || null);
         }
       });
@@ -999,7 +998,7 @@
               </div>
               <div class="bbz-modal-footer">
                 <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Abbrechen</button>
-                <button type="submit" class="bbz-button bbz-button-primary" data-modal-submit>Speichern</button>
+                <button type="submit" class="bbz-button bbz-button-primary" ${state.meta.loading ? "disabled" : ""}>Speichern</button>
               </div>
             </form>
           </div>
