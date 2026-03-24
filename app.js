@@ -141,6 +141,7 @@
       firms: { search: "", klassifizierung: "", vip: "" },
       contacts: { search: "", archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden },
       planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, onlyOverdue: false },
+      history: { search: "", kontaktart: "", leadbbz: "" },
       events: { search: "", onlyWithOpenTasks: false }
     },
 
@@ -415,10 +416,16 @@
         // History-Formular öffnen
         const openHistoryForm = event.target.closest("[data-action='open-history-form']");
         if (openHistoryForm) {
-          // Kann von contactDetail (data-contact-id) oder firmDetail (data-firm-id) kommen
           const contactId = openHistoryForm.dataset.contactId || null;
           const firmId = openHistoryForm.dataset.firmId || null;
-          controller.openHistoryForm(contactId ? Number(contactId) : null, firmId ? Number(firmId) : null);
+          controller.openHistoryForm(contactId ? Number(contactId) : null, firmId ? Number(firmId) : null, null);
+          return;
+        }
+
+        // History-Eintrag bearbeiten
+        const editHistory = event.target.closest("[data-action='edit-history']");
+        if (editHistory) {
+          controller.openHistoryForm(null, null, Number(editHistory.dataset.id));
           return;
         }
 
@@ -474,6 +481,7 @@
         if (el.matches("[data-filter='firms-search']")) { state.filters.firms.search = el.value; debouncedRender(); }
         if (el.matches("[data-filter='contacts-search']")) { state.filters.contacts.search = el.value; debouncedRender(); }
         if (el.matches("[data-filter='planning-search']")) { state.filters.planning.search = el.value; debouncedRender(); }
+        if (el.matches("[data-filter='history-search']")) { state.filters.history.search = el.value; debouncedRender(); }
         if (el.matches("[data-filter='events-search']")) { state.filters.events.search = el.value; debouncedRender(); }
       });
 
@@ -484,6 +492,8 @@
         if (el.matches("[data-filter='contacts-archiviert']")) { state.filters.contacts.archiviertAusblenden = el.checked; controller.render(); }
         if (el.matches("[data-filter='planning-open']")) { state.filters.planning.onlyOpen = el.checked; controller.render(); }
         if (el.matches("[data-filter='planning-overdue']")) { state.filters.planning.onlyOverdue = el.checked; controller.render(); }
+        if (el.matches("[data-filter='history-kontaktart']")) { state.filters.history.kontaktart = el.value; controller.render(); }
+        if (el.matches("[data-filter='history-leadbbz']")) { state.filters.history.leadbbz = el.value; controller.render(); }
         if (el.matches("[data-filter='events-open']")) { state.filters.events.onlyWithOpenTasks = el.checked; controller.render(); }
         if (el.matches("[data-action='task-status-change']")) {
           controller.handleTaskStatusChange(Number(el.dataset.taskId), el.value);
@@ -943,6 +953,7 @@
         case "firms": viewHtml = state.selection.firmId ? this.firmDetail() : this.firms(); break;
         case "contacts": viewHtml = state.selection.contactId ? this.contactDetail() : this.contacts(); break;
         case "planning": viewHtml = this.planning(); break;
+        case "history": viewHtml = this.historyView(); break;
         case "events": viewHtml = this.events(); break;
         default: viewHtml = this.firms();
       }
@@ -1135,47 +1146,53 @@
     },
 
     renderHistoryForm(payload = {}) {
-      const prefillContactId = Number(payload.prefillContactId || 0) || "";
+      const mode = payload.mode || "create";
+      const itemId = Number(payload.itemId || 0) || null;
+      const entry = mode === "edit" ? state.enriched.history.find(h => h.id === itemId) || null : null;
+      const prefillContactId = Number(payload.prefillContactId || entry?.contactId || 0) || "";
       const LH = CONFIG.lists.history;
+      const title = mode === "edit" ? "Aktivitaet bearbeiten" : "Aktivitaet erfassen";
+
       return `
         <div class="bbz-modal-backdrop show">
           <div class="bbz-modal">
             <div class="bbz-modal-header">
-              <div class="bbz-modal-title">Aktivitaet erfassen</div>
+              <div class="bbz-modal-title">${title}</div>
               <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
             </div>
-            <form data-modal-form="history" data-mode="create">
+            <form data-modal-form="history" data-mode="${mode}" data-item-id="${itemId || ""}">
               <div class="bbz-modal-body">
                 <div class="bbz-form-grid">
                   <div class="bbz-field">
                     <label>Kontakt *</label>
-                    <select class="bbz-select" name="kontaktLookupId" required>
+                    <select class="bbz-select" name="kontaktLookupId" required ${mode === "edit" ? "disabled" : ""}>
                       <option value="">— bitte waehlen —</option>
-                      ${state.enriched.contacts.filter(c => !c.archiviert).map(c => `<option value="${c.id}" ${String(prefillContactId) === String(c.id) ? "selected" : ""}>${helpers.escapeHtml(c.fullName || c.nachname)}${c.firmTitle ? " — " + helpers.escapeHtml(c.firmTitle) : ""}</option>`).join("")}
+                      ${state.enriched.contacts.filter(c => !c.archiviert || (entry && c.id === entry.contactId)).map(c => `<option value="${c.id}" ${String(prefillContactId) === String(c.id) ? "selected" : ""}>${helpers.escapeHtml(c.fullName || c.nachname)}${c.firmTitle ? " — " + helpers.escapeHtml(c.firmTitle) : ""}</option>`).join("")}
                     </select>
+                    ${mode === "edit" ? `<input type="hidden" name="kontaktLookupId" value="${prefillContactId}" />` : ""}
                   </div>
                   <div class="bbz-field">
                     <label>Datum *</label>
-                    <input type="date" class="bbz-input" name="datum" required value="${helpers.toDateInput(new Date())}" />
+                    <input type="date" class="bbz-input" name="datum" required value="${helpers.toDateInput(entry?.datum || new Date())}" />
                   </div>
                   <div class="bbz-field">
                     <label>Kontaktart</label>
-                    ${helpers.choiceSelectHtml("kontaktart", LH, "Kontaktart", "")}
+                    ${helpers.choiceSelectHtml("kontaktart", LH, "Kontaktart", entry?.typ || "")}
                   </div>
                   <div class="bbz-field">
                     <label>Leadbbz</label>
-                    ${helpers.choiceSelectHtml("leadbbz", LH, "Leadbbz", "")}
+                    ${helpers.choiceSelectHtml("leadbbz", LH, "Leadbbz", entry?.leadbbz || "")}
                   </div>
                   <div class="bbz-field bbz-span-2">
                     <label>Projektbezug</label>
                     <label class="bbz-checkbox" style="border:none;padding:0;">
-                      <input type="checkbox" name="projektbezug" />
+                      <input type="checkbox" name="projektbezug" ${entry?.projektbezugBool ? "checked" : ""} />
                       Ja, mit Projektbezug
                     </label>
                   </div>
                   <div class="bbz-field bbz-span-2">
                     <label>Notizen</label>
-                    <textarea class="bbz-textarea" name="notizen" rows="4" placeholder="Was wurde besprochen?"></textarea>
+                    <textarea class="bbz-textarea" name="notizen" rows="4" placeholder="Was wurde besprochen?">${helpers.escapeHtml(entry?.notizen || "")}</textarea>
                   </div>
                 </div>
               </div>
@@ -1387,12 +1404,18 @@
           </div>
           <div class="bbz-grid bbz-grid-2 mt-4">
             <section class="bbz-section">
-              <div class="bbz-section-header"><div><div class="bbz-section-title">Aktivitaeten</div><div class="bbz-section-subtitle">Aggregierte History ueber alle Kontakte</div></div></div>
+              <div class="bbz-section-header"><div><div class="bbz-section-title">Aktivitaeten</div><div class="bbz-section-subtitle">Aggregierte History ueber alle Kontakte</div></div>
+                <button class="bbz-button bbz-button-secondary" style="height:32px;font-size:13px;" data-action="open-history-form" data-firm-id="${firm.id}">+ Aktivitaet</button>
+              </div>
               <div class="bbz-section-body">
                 ${recentHistory.length ? `<div class="bbz-timeline">${recentHistory.map(h => `
                   <div class="bbz-timeline-item">
                     <div class="bbz-timeline-date">${helpers.formatDateTime(h.datum) || "—"}<br><span class="bbz-muted">${helpers.escapeHtml(h.contactName || "")}</span></div>
-                    <div><div class="bbz-timeline-title">${helpers.escapeHtml(h.typ || h.title || "Eintrag")} ${h.projektbezugBool ? '<span class="bbz-chip">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}</div><div class="bbz-timeline-text">${helpers.escapeHtml(h.notizen || "—")}</div></div>
+                    <div>
+                      <div class="bbz-timeline-title">${helpers.escapeHtml(h.typ || h.title || "Eintrag")} ${h.projektbezugBool ? '<span class="bbz-chip">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}</div>
+                      <div class="bbz-timeline-text">${helpers.escapeHtml(h.notizen || "—")}</div>
+                      <div style="margin-top:6px;"><button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 10px;" data-action="edit-history" data-id="${h.id}">Bearbeiten</button></div>
+                    </div>
                   </div>`).join("")}</div>` : ui.emptyBlock("Keine History-Eintraege vorhanden.")}
               </div>
             </section>
@@ -1432,7 +1455,10 @@
         <section class="bbz-section">
           <div class="bbz-section-header">
             <div><div class="bbz-section-title">Kontakte</div><div class="bbz-section-subtitle">Operative Ansprechpartner ueber alle Firmen</div></div>
-            <button class="bbz-button bbz-button-primary" data-action="open-contact-form">+ Kontakt</button>
+            <div class="flex items-center gap-2">
+              <button class="bbz-button bbz-button-secondary" data-action="open-history-form">+ Aktivitaet</button>
+              <button class="bbz-button bbz-button-primary" data-action="open-contact-form">+ Kontakt</button>
+            </div>
           </div>
           <div class="bbz-section-body">
             <div class="bbz-filters-3">
@@ -1543,12 +1569,18 @@
           </div>
           <div class="bbz-grid bbz-grid-2 mt-4">
             <section class="bbz-section">
-              <div class="bbz-section-header"><div><div class="bbz-section-title">Historie</div><div class="bbz-section-subtitle">Timeline aus CRMHistory</div></div></div>
+              <div class="bbz-section-header"><div><div class="bbz-section-title">Historie</div><div class="bbz-section-subtitle">Timeline aus CRMHistory</div></div>
+                <button class="bbz-button bbz-button-primary" style="height:32px;font-size:13px;" data-action="open-history-form" data-contact-id="${contact.id}">+ Aktivitaet</button>
+              </div>
               <div class="bbz-section-body">
                 ${contactHistory.length ? `<div class="bbz-timeline">${contactHistory.map(h => `
                   <div class="bbz-timeline-item">
                     <div class="bbz-timeline-date">${helpers.formatDateTime(h.datum) || "—"}</div>
-                    <div><div class="bbz-timeline-title">${helpers.escapeHtml(h.typ || h.title || "Eintrag")} ${h.projektbezugBool ? '<span class="bbz-chip">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}</div><div class="bbz-timeline-text">${helpers.escapeHtml(h.notizen || "—")}</div></div>
+                    <div>
+                      <div class="bbz-timeline-title">${helpers.escapeHtml(h.typ || h.title || "Eintrag")} ${h.projektbezugBool ? '<span class="bbz-chip">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}</div>
+                      <div class="bbz-timeline-text">${helpers.escapeHtml(h.notizen || "—")}</div>
+                      <div style="margin-top:6px;"><button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 10px;" data-action="edit-history" data-id="${h.id}">Bearbeiten</button></div>
+                    </div>
                   </div>`).join("")}</div>` : ui.emptyBlock("Keine Historie vorhanden.")}
               </div>
             </section>
@@ -1634,6 +1666,80 @@
                   </tbody>
                 </table>
               </div>
+            </div>
+          </section>
+        </div>
+      `;
+    },
+
+    historyView() {
+      const filters = state.filters.history;
+      const allKontaktart = [...new Set(state.enriched.history.map(h => h.typ).filter(Boolean))].sort();
+      const allLeadbbz   = [...new Set(state.enriched.history.map(h => h.leadbbz).filter(Boolean))].sort();
+
+      const rows = state.enriched.history.filter(h => {
+        const search = filters.search.trim().toLowerCase();
+        const searchMatch = !search || [h.contactName, h.firmTitle, h.typ, h.notizen, h.leadbbz].some(v => helpers.textIncludes(v, search));
+        const artMatch = !filters.kontaktart || h.typ === filters.kontaktart;
+        const leadMatch = !filters.leadbbz || h.leadbbz === filters.leadbbz;
+        return searchMatch && artMatch && leadMatch;
+      });
+
+      const totalEntries = state.enriched.history.length;
+      const mitProjekt = state.enriched.history.filter(h => h.projektbezugBool).length;
+      const letzteWoche = state.enriched.history.filter(h => {
+        const d = helpers.toDate(h.datum);
+        if (!d) return false;
+        const vor7 = new Date(); vor7.setDate(vor7.getDate() - 7);
+        return d >= vor7;
+      }).length;
+
+      return `
+        <div>
+          <div class="bbz-kpis">
+            ${this.kpiBlock("Aktivitaeten", totalEntries, "gesamt")}
+            ${this.kpiBlock("Mit Projektbezug", mitProjekt)}
+            ${this.kpiBlock("Letzte 7 Tage", letzteWoche)}
+            ${this.kpiBlock("Sichtbar", rows.length, "nach Filter")}
+          </div>
+          <section class="bbz-section">
+            <div class="bbz-section-header">
+              <div><div class="bbz-section-title">Aktivitaeten</div><div class="bbz-section-subtitle">Globale History-Timeline — alle Kontakte</div></div>
+              <button class="bbz-button bbz-button-primary" data-action="open-history-form">+ Aktivitaet</button>
+            </div>
+            <div class="bbz-section-body">
+              <div class="bbz-filters-4">
+                <input class="bbz-input" data-filter="history-search" type="text" placeholder="Suche nach Kontakt, Firma, Notizen ..." value="${helpers.escapeHtml(filters.search)}" />
+                <select class="bbz-select" data-filter="history-kontaktart">
+                  <option value="">Alle Kontaktarten</option>
+                  ${allKontaktart.map(k => `<option value="${helpers.escapeHtml(k)}" ${filters.kontaktart === k ? "selected" : ""}>${helpers.escapeHtml(k)}</option>`).join("")}
+                </select>
+                <select class="bbz-select" data-filter="history-leadbbz">
+                  <option value="">Alle Leadbbz</option>
+                  ${allLeadbbz.map(l => `<option value="${helpers.escapeHtml(l)}" ${filters.leadbbz === l ? "selected" : ""}>${helpers.escapeHtml(l)}</option>`).join("")}
+                </select>
+                <div></div>
+              </div>
+              ${rows.length ? `<div class="bbz-timeline">${rows.map(h => `
+                <div class="bbz-timeline-item">
+                  <div class="bbz-timeline-date">
+                    ${helpers.formatDateTime(h.datum) || "—"}
+                    <br><span class="bbz-muted">${h.contactId ? `<a class="bbz-link" data-action="open-contact" data-id="${h.contactId}">${helpers.escapeHtml(h.contactName || "")}</a>` : helpers.escapeHtml(h.contactName || "")}</span>
+                    ${h.firmTitle ? `<br><span class="bbz-muted" style="font-size:11px;">${helpers.escapeHtml(h.firmTitle)}</span>` : ""}
+                  </div>
+                  <div>
+                    <div class="bbz-timeline-title">
+                      ${helpers.escapeHtml(h.typ || "Eintrag")}
+                      ${h.projektbezugBool ? '<span class="bbz-chip">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}
+                      ${h.leadbbz ? `<span class="bbz-chip">${helpers.escapeHtml(h.leadbbz)}</span>` : ""}
+                    </div>
+                    <div class="bbz-timeline-text">${helpers.escapeHtml(h.notizen || "—")}</div>
+                    <div style="margin-top:6px;">
+                      <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 10px;" data-action="edit-history" data-id="${h.id}">Bearbeiten</button>
+                    </div>
+                  </div>
+                </div>`).join("")}</div>`
+              : ui.emptyBlock("Keine Aktivitaeten fuer die aktuelle Filterung gefunden.")}
             </div>
           </section>
         </div>
@@ -2009,14 +2115,14 @@
       }
     },
 
-    openHistoryForm(contactId = null, firmId = null) {
-      // Wenn von firmDetail: ersten Kontakt dieser Firma vorauswählen (oder leer lassen)
+    openHistoryForm(contactId = null, firmId = null, itemId = null) {
       let prefillContactId = contactId;
       if (!prefillContactId && firmId) {
         const firm = dataModel.getFirmById(firmId);
         prefillContactId = firm?.contacts?.[0]?.id || null;
       }
-      state.modal = { type: "history", payload: { prefillContactId } };
+      const mode = itemId ? "edit" : "create";
+      state.modal = { type: "history", payload: { prefillContactId, mode, itemId } };
       this.render();
     },
 
@@ -2032,40 +2138,46 @@
 
     async handleHistoryModalSubmit(form) {
       const fd = new FormData(form);
+      const mode = form.dataset.mode || "create";
+      const itemId = Number(form.dataset.itemId || 0) || null;
       const kontaktLookupId = fd.get("kontaktLookupId") || "";
       const datum = fd.get("datum") || "";
 
       if (!kontaktLookupId) { ui.setMessage("Bitte einen Kontakt waehlen.", "error"); return; }
       if (!datum) { ui.setMessage("Datum ist ein Pflichtfeld.", "error"); return; }
 
-      // POST: nur Pflichtfelder (Title wird aus Kontakt-ID generiert — SP braucht Title)
-      const createFields = {
-        Title: `Aktivitaet-${datum}`,
-        NachnameLookupId: Number(kontaktLookupId)
-      };
-
-      // PATCH-Felder
-      const patchFields = {
-        Datum: datum + "T00:00:00Z"
-      };
       const kontaktart = fd.get("kontaktart") || "";
       const leadbbz = fd.get("leadbbz") || "";
       const notizen = fd.get("notizen") || "";
       const projektbezug = form.querySelector("[name='projektbezug']")?.checked ?? false;
 
-      if (kontaktart) patchFields.Kontaktart = kontaktart;
-      if (leadbbz) patchFields.Leadbbz = leadbbz;
-      if (notizen.trim()) patchFields.Notizen = notizen.trim();
-      patchFields.Projektbezug = projektbezug;
-
       ui.setLoading(true);
       ui.setMessage("");
       try {
-        const created = await api.postItem(SCHEMA.history.listTitle, createFields);
-        const newId = created?.id || created?.fields?.id;
-        if (!newId) throw new Error("Neue Item-ID fehlt im POST-Response.");
-        await api.patchItem(SCHEMA.history.listTitle, Number(newId), patchFields);
-        ui.setMessage("Aktivitaet wurde erfolgreich erfasst.", "success");
+        if (mode === "edit") {
+          if (!itemId) throw new Error("itemId fehlt fuer PATCH.");
+          const patchFields = { Datum: datum + "T00:00:00Z", Projektbezug: projektbezug };
+          if (kontaktart) patchFields.Kontaktart = kontaktart;
+          if (leadbbz) patchFields.Leadbbz = leadbbz;
+          if (notizen.trim()) patchFields.Notizen = notizen.trim();
+          await api.patchItem(SCHEMA.history.listTitle, itemId, patchFields);
+          ui.setMessage("Aktivitaet wurde gespeichert.", "success");
+        } else {
+          // POST: nur Pflichtfelder, dann PATCH mit Rest
+          const createFields = {
+            Title: `Aktivitaet-${datum}`,
+            NachnameLookupId: Number(kontaktLookupId)
+          };
+          const patchFields = { Datum: datum + "T00:00:00Z", Projektbezug: projektbezug };
+          if (kontaktart) patchFields.Kontaktart = kontaktart;
+          if (leadbbz) patchFields.Leadbbz = leadbbz;
+          if (notizen.trim()) patchFields.Notizen = notizen.trim();
+          const created = await api.postItem(SCHEMA.history.listTitle, createFields);
+          const newId = created?.id || created?.fields?.id;
+          if (!newId) throw new Error("Neue Item-ID fehlt im POST-Response.");
+          await api.patchItem(SCHEMA.history.listTitle, Number(newId), patchFields);
+          ui.setMessage("Aktivitaet wurde erfasst.", "success");
+        }
         await api.loadAll();
         this.closeModal();
       } catch (error) {
