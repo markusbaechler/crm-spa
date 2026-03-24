@@ -1591,8 +1591,8 @@
       if (raw.direktwahl.trim()) fields.Direktwahl = raw.direktwahl.trim();
       if (raw.mobile.trim())     fields.Mobile     = raw.mobile.trim();
 
-      // Datum — nur wenn befüllt
-      if (raw.geburtstag.trim()) fields.Geburtstag = raw.geburtstag.trim();
+      // Datum — nur wenn befüllt, SP erwartet volles ISO-8601 Datetime (nicht nur YYYY-MM-DD)
+      if (raw.geburtstag.trim()) fields.Geburtstag = raw.geburtstag.trim() + "T00:00:00Z";
 
       // Multi-Choice — Array wenn Werte, weglassen wenn leer
       // BESTÄTIGT: [] → 400, null → 400, weglassen → SP behält bestehenden Wert
