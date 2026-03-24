@@ -1365,27 +1365,32 @@
     },
 
     async saveTask(formData) {
-      const kontaktLookupId = Number(formData.get("kontaktLookupId") || 0);
-      if (!kontaktLookupId) throw new Error("Bitte einen Kontakt auswählen.");
+  const kontaktLookupId = Number(formData.get("kontaktLookupId") || 0);
+  if (!kontaktLookupId) throw new Error("Bitte einen Kontakt auswählen.");
 
-      const leadbbzLookupId = Number(formData.get("leadbbzLookupId") || 0) || null;
-      const fields = {};
+  const fields = {};
 
-      fields[resolver.writeKeyLoose("tasks", FIELD_SPECS.tasks.title)] = String(formData.get("title") || "").trim();
-      fields[resolver.writeKeyLoose("tasks", FIELD_SPECS.tasks.kontakt, true)] = kontaktLookupId;
-      fields[resolver.writeKeyLoose("tasks", FIELD_SPECS.tasks.deadline)] =
-        formData.get("deadline") ? new Date(`${formData.get("deadline")}T00:00:00`).toISOString() : null;
-      fields[resolver.writeKeyLoose("tasks", FIELD_SPECS.tasks.status)] = String(formData.get("status") || "").trim();
+  fields[resolver.writeKeyLoose("tasks", FIELD_SPECS.tasks.title)] =
+    String(formData.get("title") || "").trim();
 
-      if (resolver.writeKeyStrict("tasks", FIELD_SPECS.tasks.leadbbz, true)) {
-        fields[resolver.writeKeyStrict("tasks", FIELD_SPECS.tasks.leadbbz, true)] = leadbbzLookupId || null;
-      }
+  fields[resolver.writeKeyLoose("tasks", FIELD_SPECS.tasks.kontakt, true)] =
+    kontaktLookupId;
 
-      if (!fields[resolver.writeKeyLoose("tasks", FIELD_SPECS.tasks.title)]) throw new Error("Titel fehlt.");
+  fields[resolver.writeKeyLoose("tasks", FIELD_SPECS.tasks.deadline)] =
+    formData.get("deadline")
+      ? new Date(`${formData.get("deadline")}T00:00:00`).toISOString()
+      : null;
 
-      await api.createListItem(CONFIG.lists.tasks, fields);
-      ui.setMessage("Task angelegt.", "success");
-    },
+  fields[resolver.writeKeyLoose("tasks", FIELD_SPECS.tasks.status)] =
+    String(formData.get("status") || "").trim();
+
+  if (!fields[resolver.writeKeyLoose("tasks", FIELD_SPECS.tasks.title)]) {
+    throw new Error("Titel fehlt.");
+  }
+
+  await api.createListItem(CONFIG.lists.tasks, fields);
+  ui.setMessage("Task angelegt.", "success");
+}
 
     async saveHistory(formData) {
       const kontaktLookupId = Number(formData.get("kontaktLookupId") || 0);
