@@ -972,18 +972,18 @@
                   </div>
 
                   <div class="bbz-field bbz-span-2">
-                    <label>SGF <span class="bbz-field-hint">(Mehrfachauswahl)</span></label>
-                    ${helpers.choiceMultiHtml("sgf", L, "SGF", contact?.sgf || [])}
+                    <label>SGF <span class="bbz-field-hint">(Mehrfachauswahl — Pflege direkt in SharePoint)</span></label>
+                    <div class="bbz-readonly-chips">${helpers.multiChoiceHtml(contact?.sgf || [])}</div>
                   </div>
 
                   <div class="bbz-field bbz-span-2">
-                    <label>Event <span class="bbz-field-hint">(Mehrfachauswahl)</span></label>
-                    ${helpers.choiceMultiHtml("event", L, "Event", contact?.event || [])}
+                    <label>Event <span class="bbz-field-hint">(Mehrfachauswahl — Pflege direkt in SharePoint)</span></label>
+                    <div class="bbz-readonly-chips">${helpers.multiChoiceHtml(contact?.event || [])}</div>
                   </div>
 
                   <div class="bbz-field bbz-span-2">
-                    <label>Eventhistory <span class="bbz-field-hint">(Mehrfachauswahl)</span></label>
-                    ${helpers.choiceMultiHtml("eventhistory", L, "Eventhistory", helpers.toArray(contact?.eventhistory))}
+                    <label>Eventhistory <span class="bbz-field-hint">(Mehrfachauswahl — Pflege direkt in SharePoint)</span></label>
+                    <div class="bbz-readonly-chips">${helpers.multiChoiceHtml(helpers.toArray(contact?.eventhistory))}</div>
                   </div>
 
                   <div class="bbz-field bbz-span-2">
@@ -1596,12 +1596,11 @@
       // Datum — nur wenn befüllt, SP erwartet volles ISO-8601 Datetime (nicht nur YYYY-MM-DD)
       if (raw.geburtstag.trim()) fields.Geburtstag = raw.geburtstag.trim() + "T00:00:00Z";
 
-      // Multi-Choice — SP Graph meldet multiselect=false aber Felder sind Mehrfachauswahl in SP-UI
-      // Array → 400, {results:[]} → 400, "" → leert Feld
-      // Lösung: Werte als ;#-getrennten String senden (SP-internes Format)
-      fields.SGF          = raw.sgf.length          ? raw.sgf.join(";#")          : "";
-      fields.Event        = raw.event.length        ? raw.event.join(";#")        : "";
-      fields.Eventhistory = raw.eventhistory.length ? raw.eventhistory.join(";#") : "";
+      // Multi-Choice-Felder (SGF, Event, Eventhistory) werden NICHT via Graph geschrieben.
+      // Grund: SP-Tenant behandelt diese Felder als Single-Choice intern (multiSelect=false in API),
+      // keines der getesteten Formate funktioniert: Array, ;#-String, results-Wrapper, @odata.type.
+      // Diese Felder müssen direkt in SharePoint gepflegt werden.
+      // TODO: Separate Lösung evaluieren (z.B. SP REST API statt Graph, oder SP-Felder neu anlegen)
 
       // Debug-Log (kann nach stabilem Betrieb entfernt werden)
       console.log("handleModalSubmit fields →", JSON.stringify(fields, null, 2));
