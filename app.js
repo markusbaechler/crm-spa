@@ -114,7 +114,10 @@
     meta: {
       siteId: null,
       loading: false,
-      lastError: null
+      lastError: null,
+      // Choice-Werte aus SharePoint — pro Liste, pro SP-Feldname
+      // Struktur: { "CRMContacts": { "Anrede": ["Herr", "Frau", ...], ... }, ... }
+      choices: {}
     },
 
     data: {
@@ -285,6 +288,41 @@
         clearTimeout(timer);
         timer = setTimeout(() => fn(...args), ms);
       };
+    },
+
+    // Rendert ein <select> aus SP-Choices — fällt auf <input> zurück wenn keine Choices geladen
+    choiceSelectHtml(name, listTitle, spFieldName, currentValue, required = false) {
+      const choices = state.meta.choices?.[listTitle]?.[spFieldName] || [];
+      if (!choices.length) {
+        // Fallback: Freitext — tritt auf wenn Choices noch nicht geladen oder SP-Feld kein Choice
+        return `<input class="bbz-input" name="${name}" value="${helpers.escapeHtml(currentValue || "")}" ${required ? "required" : ""} placeholder="Wird geladen..." />`;
+      }
+      return `
+        <select class="bbz-select" name="${name}" ${required ? "required" : ""}>
+          <option value="">— bitte wählen —</option>
+          ${choices.map(c => `<option value="${helpers.escapeHtml(c)}" ${currentValue === c ? "selected" : ""}>${helpers.escapeHtml(c)}</option>`).join("")}
+        </select>
+      `;
+    },
+
+    // Rendert Checkboxen für Multi-Choice-Felder aus SP
+    // currentValues: string[] der aktuell gesetzten Werte
+    choiceMultiHtml(name, listTitle, spFieldName, currentValues) {
+      const choices = state.meta.choices?.[listTitle]?.[spFieldName] || [];
+      const selected = new Set(Array.isArray(currentValues) ? currentValues : []);
+      if (!choices.length) {
+        return `<input class="bbz-input" name="${name}" value="${helpers.escapeHtml([...selected].join(", "))}" placeholder="Wird geladen..." />`;
+      }
+      return `
+        <div class="bbz-multi-choice">
+          ${choices.map(c => `
+            <label class="bbz-multi-choice-item">
+              <input type="checkbox" name="${name}" value="${helpers.escapeHtml(c)}" ${selected.has(c) ? "checked" : ""} />
+              <span>${helpers.escapeHtml(c)}</span>
+            </label>
+          `).join("")}
+        </div>
+      `;
     },
 
     ensureMsalAvailable() {
@@ -578,11 +616,13 @@
     },
 
     async loadAll() {
+      // Choices und Items parallel laden — Choices sind Voraussetzung für korrekte Formulare
       const [firms, contacts, history, tasks] = await Promise.all([
         this.getListItems(SCHEMA.firms.listTitle),
         this.getListItems(SCHEMA.contacts.listTitle),
         this.getListItems(SCHEMA.history.listTitle),
-        this.getListItems(SCHEMA.tasks.listTitle)
+        this.getListItems(SCHEMA.tasks.listTitle),
+        this.loadColumnChoices()  // parallel, kein destructuring nötig — schreibt direkt in state.meta.choices
       ]);
 
       state.data.firms = firms.map(item => normalizer.firm(item));
@@ -591,6 +631,41 @@
       state.data.tasks = tasks.map(item => normalizer.task(item));
 
       dataModel.enrich();
+    },
+
+    // Liest alle Choice-Felder aller relevanten Listen aus SharePoint
+    // Schreibt in state.meta.choices[listTitle][spFieldName] = ["Wert1", "Wert2", ...]
+    // Wird bei loadAll() und handleRefresh() mitgeladen — SP ist Single Source of Truth
+    async loadColumnChoices() {
+      const lists = [
+        CONFIG.lists.firms,
+        CONFIG.lists.contacts,
+        CONFIG.lists.history,
+        CONFIG.lists.tasks
+      ];
+
+      const siteId = await this.getSiteId();
+
+      await Promise.all(lists.map(async (listTitle) => {
+        try {
+          const data = await this.graphRequest(
+            `/sites/${siteId}/lists/${encodeURIComponent(listTitle)}/columns`
+          );
+
+          const choicesForList = {};
+          for (const col of (data.value || [])) {
+            // Graph gibt Choice-Felder mit col.choice.choices[] zurück
+            if (col.choice && Array.isArray(col.choice.choices) && col.choice.choices.length > 0) {
+              choicesForList[col.name] = col.choice.choices;
+            }
+          }
+          state.meta.choices[listTitle] = choicesForList;
+        } catch (err) {
+          // Nicht-fatal: Choices bleiben leer, Formular fällt auf Freitext zurück
+          console.warn(`loadColumnChoices fehlgeschlagen für ${listTitle}:`, err);
+          state.meta.choices[listTitle] = {};
+        }
+      }));
     },
 
     // Write-Layer — POST (neues Item anlegen)
@@ -812,6 +887,7 @@
       const contact = mode === "edit" ? dataModel.getContactById(itemId) : null;
       const title = mode === "edit" ? "Kontakt bearbeiten" : "Neuer Kontakt";
       const preselectedFirmId = Number(payload.prefillFirmId || contact?.firmId || 0) || "";
+      const L = CONFIG.lists.contacts; // Kurzreferenz für alle choiceSelectHtml/choiceMultiHtml Aufrufe
 
       return `
         <div class="bbz-modal-backdrop show">
@@ -823,33 +899,89 @@
             <form data-modal-form="contact" data-mode="${mode}" data-item-id="${itemId || ""}">
               <div class="bbz-modal-body">
                 <div class="bbz-form-grid">
-                  <div class="bbz-field"><label>Nachname *</label><input class="bbz-input" name="nachname" required value="${helpers.escapeHtml(contact?.nachname || "")}" /></div>
-                  <div class="bbz-field"><label>Vorname</label><input class="bbz-input" name="vorname" value="${helpers.escapeHtml(contact?.vorname || "")}" /></div>
-                  <div class="bbz-field"><label>Anrede</label><input class="bbz-input" name="anrede" value="${helpers.escapeHtml(contact?.anrede || "")}" /></div>
+
+                  <div class="bbz-field">
+                    <label>Nachname *</label>
+                    <input class="bbz-input" name="nachname" required value="${helpers.escapeHtml(contact?.nachname || "")}" />
+                  </div>
+                  <div class="bbz-field">
+                    <label>Vorname</label>
+                    <input class="bbz-input" name="vorname" value="${helpers.escapeHtml(contact?.vorname || "")}" />
+                  </div>
+
+                  <div class="bbz-field">
+                    <label>Anrede</label>
+                    ${helpers.choiceSelectHtml("anrede", L, "Anrede", contact?.anrede || "")}
+                  </div>
                   <div class="bbz-field">
                     <label>Firma *</label>
                     <select class="bbz-select" name="firmaLookupId" required>
-                      <option value="">Bitte waehlen</option>
+                      <option value="">— bitte wählen —</option>
                       ${state.enriched.firms.map(f => `<option value="${f.id}" ${String(preselectedFirmId) === String(f.id) ? "selected" : ""}>${helpers.escapeHtml(f.title)}</option>`).join("")}
                     </select>
                   </div>
-                  <div class="bbz-field"><label>Funktion</label><input class="bbz-input" name="funktion" value="${helpers.escapeHtml(contact?.funktion || "")}" /></div>
-                  <div class="bbz-field"><label>Rolle</label><input class="bbz-input" name="rolle" value="${helpers.escapeHtml(contact?.rolle || "")}" /></div>
-                  <div class="bbz-field"><label>Email 1</label><input class="bbz-input" name="email1" value="${helpers.escapeHtml(contact?.email1 || "")}" /></div>
-                  <div class="bbz-field"><label>Email 2</label><input class="bbz-input" name="email2" value="${helpers.escapeHtml(contact?.email2 || "")}" /></div>
-                  <div class="bbz-field"><label>Direktwahl</label><input class="bbz-input" name="direktwahl" value="${helpers.escapeHtml(contact?.direktwahl || "")}" /></div>
-                  <div class="bbz-field"><label>Mobile</label><input class="bbz-input" name="mobile" value="${helpers.escapeHtml(contact?.mobile || "")}" /></div>
+
+                  <div class="bbz-field">
+                    <label>Funktion</label>
+                    <input class="bbz-input" name="funktion" value="${helpers.escapeHtml(contact?.funktion || "")}" />
+                  </div>
+                  <div class="bbz-field">
+                    <label>Rolle</label>
+                    ${helpers.choiceSelectHtml("rolle", L, "Rolle", contact?.rolle || "")}
+                  </div>
+
+                  <div class="bbz-field">
+                    <label>Email 1</label>
+                    <input class="bbz-input" name="email1" value="${helpers.escapeHtml(contact?.email1 || "")}" />
+                  </div>
+                  <div class="bbz-field">
+                    <label>Email 2</label>
+                    <input class="bbz-input" name="email2" value="${helpers.escapeHtml(contact?.email2 || "")}" />
+                  </div>
+
+                  <div class="bbz-field">
+                    <label>Direktwahl</label>
+                    <input class="bbz-input" name="direktwahl" value="${helpers.escapeHtml(contact?.direktwahl || "")}" />
+                  </div>
+                  <div class="bbz-field">
+                    <label>Mobile</label>
+                    <input class="bbz-input" name="mobile" value="${helpers.escapeHtml(contact?.mobile || "")}" />
+                  </div>
+
                   <div class="bbz-field">
                     <label>Geburtstag</label>
-                    <!-- FIX 1: helpers.toDateInput() gibt YYYY-MM-DD zurueck -->
                     <input type="date" class="bbz-input" name="geburtstag" value="${helpers.escapeHtml(helpers.toDateInput(contact?.geburtstag || ""))}" />
                   </div>
-                  <div class="bbz-field"><label>Leadbbz0</label><input class="bbz-input" value="${helpers.escapeHtml(contact?.leadbbz0 || "")}" disabled placeholder="Lookup-Feld, vorlaeufig nur Anzeige" /></div>
-                  <div class="bbz-field"><label>SGF (Komma getrennt)</label><input class="bbz-input" name="sgf" value="${helpers.escapeHtml((contact?.sgf || []).join(", "))}" /></div>
-                  <div class="bbz-field"><label>Event (Komma getrennt)</label><input class="bbz-input" name="event" value="${helpers.escapeHtml((contact?.event || []).join(", "))}" /></div>
-                  <div class="bbz-field bbz-span-2"><label>Eventhistory</label><textarea class="bbz-textarea" name="eventhistory">${helpers.escapeHtml(contact?.eventhistory || "")}</textarea></div>
-                  <div class="bbz-field bbz-span-2"><label>Kommentar</label><textarea class="bbz-textarea" name="kommentar">${helpers.escapeHtml(contact?.kommentar || "")}</textarea></div>
-                  <label class="bbz-checkbox"><input type="checkbox" name="archiviert" ${contact?.archiviert ? "checked" : ""} /> Archiviert</label>
+                  <div class="bbz-field">
+                    <label>Leadbbz</label>
+                    ${helpers.choiceSelectHtml("leadbbz0", L, "Leadbbz0", contact?.leadbbz0 || "")}
+                  </div>
+
+                  <div class="bbz-field bbz-span-2">
+                    <label>SGF <span class="bbz-field-hint">(Mehrfachauswahl)</span></label>
+                    ${helpers.choiceMultiHtml("sgf", L, "SGF", contact?.sgf || [])}
+                  </div>
+
+                  <div class="bbz-field bbz-span-2">
+                    <label>Event <span class="bbz-field-hint">(Mehrfachauswahl)</span></label>
+                    ${helpers.choiceMultiHtml("event", L, "Event", contact?.event || [])}
+                  </div>
+
+                  <div class="bbz-field bbz-span-2">
+                    <label>Eventhistory <span class="bbz-field-hint">(Mehrfachauswahl)</span></label>
+                    ${helpers.choiceMultiHtml("eventhistory", L, "Eventhistory", contact?.eventhistory ? helpers.toArray(contact.eventhistory) : [])}
+                  </div>
+
+                  <div class="bbz-field bbz-span-2">
+                    <label>Kommentar</label>
+                    <textarea class="bbz-textarea" name="kommentar">${helpers.escapeHtml(contact?.kommentar || "")}</textarea>
+                  </div>
+
+                  <label class="bbz-checkbox">
+                    <input type="checkbox" name="archiviert" ${contact?.archiviert ? "checked" : ""} />
+                    Archiviert
+                  </label>
+
                 </div>
               </div>
               <div class="bbz-modal-footer">
@@ -1378,14 +1510,34 @@
 
     // Write-Layer: Kontakt speichern (create oder edit)
     async handleModalSubmit(form, mode, itemId) {
-      const raw = Object.fromEntries(new FormData(form).entries());
+      // FormData.entries() gibt bei gleichnamigen Checkboxen nur den letzten Wert zurück.
+      // Deshalb getAll() für Multi-Choice-Felder verwenden.
+      const fd = new FormData(form);
 
-      // Checkbox ist nicht in FormData wenn unchecked — explizit setzen
-      raw.archiviert = form.querySelector("[name='archiviert']")?.checked ?? false;
+      const raw = {
+        nachname:      fd.get("nachname") || "",
+        vorname:       fd.get("vorname") || "",
+        anrede:        fd.get("anrede") || "",
+        firmaLookupId: fd.get("firmaLookupId") || "",
+        funktion:      fd.get("funktion") || "",
+        rolle:         fd.get("rolle") || "",
+        email1:        fd.get("email1") || "",
+        email2:        fd.get("email2") || "",
+        direktwahl:    fd.get("direktwahl") || "",
+        mobile:        fd.get("mobile") || "",
+        geburtstag:    fd.get("geburtstag") || "",
+        leadbbz0:      fd.get("leadbbz0") || "",
+        kommentar:     fd.get("kommentar") || "",
+        // Multi-Choice: getAll() sammelt alle checked Werte
+        sgf:           fd.getAll("sgf"),
+        event:         fd.getAll("event"),
+        eventhistory:  fd.getAll("eventhistory"),
+        // Checkbox Archiviert
+        archiviert:    form.querySelector("[name='archiviert']")?.checked ?? false
+      };
 
-      // FormData → SharePoint-Feldnamen mappen
       // Pflichtfeld-Validierung
-      if (!raw.nachname?.trim()) {
+      if (!raw.nachname.trim()) {
         ui.setMessage("Nachname ist ein Pflichtfeld.", "error");
         return;
       }
@@ -1394,28 +1546,31 @@
         return;
       }
 
-      // Felder für Graph API aufbauen
-      // Hinweis: SharePoint Lookup-Felder benötigen den Key "FeldnameId" (Integer)
+      // SharePoint Multi-Choice-Format: Werte mit ";#" getrennt
+      // Einzelwerte werden als normaler String übergeben
+      const joinMulti = (values) => values.length ? values.join(";#") : "";
+
       const fields = {
-        Title:          raw.nachname.trim(),
-        Vorname:        raw.vorname?.trim() || "",
-        Anrede:         raw.anrede?.trim() || "",
-        FirmaLookupId:  Number(raw.firmaLookupId),
-        Funktion:       raw.funktion?.trim() || "",
-        Rolle:          raw.rolle?.trim() || "",
-        Email1:         raw.email1?.trim() || "",
-        Email2:         raw.email2?.trim() || "",
-        Direktwahl:     raw.direktwahl?.trim() || "",
-        Mobile:         raw.mobile?.trim() || "",
-        SGF:            raw.sgf?.trim() || "",
-        Event:          raw.event?.trim() || "",
-        Eventhistory:   raw.eventhistory?.trim() || "",
-        Kommentar:      raw.kommentar?.trim() || "",
-        Archiviert:     raw.archiviert
+        Title:         raw.nachname.trim(),
+        Vorname:       raw.vorname.trim(),
+        Anrede:        raw.anrede,
+        FirmaLookupId: Number(raw.firmaLookupId),
+        Funktion:      raw.funktion.trim(),
+        Rolle:         raw.rolle,
+        Email1:        raw.email1.trim(),
+        Email2:        raw.email2.trim(),
+        Direktwahl:    raw.direktwahl.trim(),
+        Mobile:        raw.mobile.trim(),
+        Leadbbz0:      raw.leadbbz0,
+        SGF:           joinMulti(raw.sgf),
+        Event:         joinMulti(raw.event),
+        Eventhistory:  joinMulti(raw.eventhistory),
+        Kommentar:     raw.kommentar.trim(),
+        Archiviert:    raw.archiviert
       };
 
-      // Geburtstag nur setzen wenn befüllt (leerer String würde Graph-Fehler geben)
-      if (raw.geburtstag?.trim()) {
+      // Geburtstag nur setzen wenn befüllt (leerer String → Graph 400)
+      if (raw.geburtstag.trim()) {
         fields.Geburtstag = raw.geburtstag.trim();
       }
 
@@ -1437,7 +1592,6 @@
       } catch (error) {
         console.error("handleModalSubmit Fehler:", error);
 
-        // Graph-Fehlermeldung lesbar aufbereiten
         let msg = error.message || "Unbekannter Fehler";
         if (msg.includes("400")) msg = "Fehler 400: Ungültige Felddaten. Bitte Eingaben prüfen.";
         if (msg.includes("403")) msg = "Fehler 403: Keine Schreibberechtigung auf diese Liste.";
