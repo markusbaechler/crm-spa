@@ -1567,33 +1567,31 @@
         return;
       }
 
-      // SharePoint Graph v1.0: Multi-Choice-Felder als JSON-Array (nicht ;# wie bei REST)
-      // Leere Arrays und leere optionale Strings werden weggelassen (SP lehnt [] und "" ab)
+      // Pflichtfelder — immer senden
       const fields = {
-        Title:          raw.nachname.trim(),
-        Vorname:        raw.vorname.trim(),
-        FirmaLookupId:  Number(raw.firmaLookupId),
-        Funktion:       raw.funktion.trim(),
-        Kommentar:      raw.kommentar.trim(),
-        Archiviert:     raw.archiviert
+        Title:         raw.nachname.trim(),
+        FirmaLookupId: Number(raw.firmaLookupId),
+        Archiviert:    raw.archiviert
       };
 
-      // Einzelwahl-Felder: nur setzen wenn Wert vorhanden
+      // Einzelwahl — nur wenn Wert vorhanden
       if (raw.anrede)    fields.Anrede    = raw.anrede;
       if (raw.rolle)     fields.Rolle     = raw.rolle;
       if (raw.leadbbz0)  fields.Leadbbz0  = raw.leadbbz0;
 
-      // Optionale Textfelder: nur setzen wenn befüllt
+      // Optionaler Text — nur wenn befüllt (leerer String → SP 400)
+      if (raw.vorname.trim())    fields.Vorname    = raw.vorname.trim();
+      if (raw.funktion.trim())   fields.Funktion   = raw.funktion.trim();
+      if (raw.kommentar.trim())  fields.Kommentar  = raw.kommentar.trim();
       if (raw.email1.trim())     fields.Email1     = raw.email1.trim();
       if (raw.email2.trim())     fields.Email2     = raw.email2.trim();
       if (raw.direktwahl.trim()) fields.Direktwahl = raw.direktwahl.trim();
       if (raw.mobile.trim())     fields.Mobile     = raw.mobile.trim();
 
-      // Datum: nur setzen wenn befüllt (leerer String → Graph 400)
+      // Datum — nur wenn befüllt
       if (raw.geburtstag.trim()) fields.Geburtstag = raw.geburtstag.trim();
 
-      // Multi-Choice: Array wenn Werte gewählt, null zum expliziten Leeren
-      // Leeres Array [] → SP 400; null → SP leert das Feld korrekt
+      // Multi-Choice — Array wenn Werte, null zum expliziten Leeren
       fields.SGF          = raw.sgf.length          ? raw.sgf          : null;
       fields.Event        = raw.event.length        ? raw.event        : null;
       fields.Eventhistory = raw.eventhistory.length ? raw.eventhistory : null;
