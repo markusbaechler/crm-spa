@@ -1,1236 +1,1388 @@
-(function () {
-  'use strict';
+(() => {
+  "use strict";
 
   const CONFIG = {
+    appName: "bbz CRM",
+
+    graph: {
+      tenantId: "3643e7ab-d166-4e27-bd5f-c5bbfcd282d7",
+      clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a",
+      authority: "https://login.microsoftonline.com/3643e7ab-d166-4e27-bd5f-c5bbfcd282d7",
+      redirectUri: "https://markusbaechler.github.io/crm-spa/",
+      // FIX 3a: Scope auf ReadWrite erweitert — verhindert zweiten Login-Prompt beim Write-Layer
+      scopes: ["User.Read", "Sites.ReadWrite.All"]
+    },
+
     sharePoint: {
-      hostname: 'bbzsg.sharepoint.com',
-      sitePath: '/sites/CRM'
+      siteHostname: "bbzsg.sharepoint.com",
+      sitePath: "/sites/CRM"
     },
+
     lists: {
-      firms: 'CRMFirms',
-      contacts: 'CRMContacts',
-      history: 'CRMHistory',
-      tasks: 'CRMTasks'
+      firms: "CRMFirms",
+      contacts: "CRMContacts",
+      history: "CRMHistory",
+      tasks: "CRMTasks"
     },
-    fields: {
-      firms: {
-        title: 'Title',
-        abc: 'ABCSegment',
-        email: 'Email',
-        phone: 'Phone',
-        website: 'Website',
-        notes: 'Notes'
-      },
-      contacts: {
-        title: 'Title',
-        firstName: 'FirstName',
-        lastName: 'LastName',
-        email: 'Email',
-        phone: 'Phone',
-        mobile: 'Mobile',
-        role: 'Role',
-        firmLookupId: 'FirmLookupId',
-        notes: 'Notes',
-        leadDisplay: 'Leadbbz0'
-      },
-      history: {
-        contactLookupId: 'ContactLookupId',
-        date: 'Date',
-        type: 'Type',
-        notes: 'Notes',
-        projectRelated: 'ProjectRelated'
-      },
-      tasks: {
-        title: 'Title',
-        contactLookupId: 'ContactLookupId',
-        dueDate: 'DueDate',
-        status: 'Status',
-        notes: 'Notes'
+
+    defaults: {
+      route: "firms",
+      contactArchiveDefaultHidden: true,
+      planningShowOnlyOpen: true
+    }
+  };
+
+  const SCHEMA = {
+    firms: {
+      listTitle: CONFIG.lists.firms,
+      fields: {
+        id: "id",
+        title: "Title",
+        adresse: "Adresse",
+        plz: "PLZ",
+        ort: "Ort",
+        land: "Land",
+        hauptnummer: "Hauptnummer",
+        klassifizierung: "Klassifizierung",
+        vip: "VIP"
       }
     },
-    pageSize: 500,
-    debug: true
+
+    contacts: {
+      listTitle: CONFIG.lists.contacts,
+      fields: {
+        id: "id",
+        nachname: "Title",
+        vorname: "Vorname",
+        anrede: "Anrede",
+        firma: "Firma",
+        firmaLookupId: "FirmaLookupId",
+        funktion: "Funktion",
+        email1: "Email1",
+        email2: "Email2",
+        direktwahl: "Direktwahl",
+        mobile: "Mobile",
+        rolle: "Rolle",
+        leadbbz0: "Leadbbz0",
+        sgf: "SGF",
+        geburtstag: "Geburtstag",
+        kommentar: "Kommentar",
+        event: "Event",
+        eventhistory: "Eventhistory",
+        archiviert: "Archiviert"
+      }
+    },
+
+    history: {
+      listTitle: CONFIG.lists.history,
+      fields: {
+        id: "id",
+        title: "Title",
+        kontakt: "Nachname",
+        kontaktLookupId: "NachnameLookupId",
+        datum: "Datum",
+        typ: "Typ",
+        notizen: "Notizen",
+        projektbezug: "Projektbezug",
+        leadbbz: "Leadbbz"
+      }
+    },
+
+    tasks: {
+      listTitle: CONFIG.lists.tasks,
+      fields: {
+        id: "id",
+        title: "Title",
+        kontakt: "Name",
+        kontaktLookupId: "NameLookupId",
+        deadline: "Deadline",
+        status: "Status",
+        leadbbz: "Leadbbz"
+      }
+    }
   };
 
   const state = {
-    initialized: false,
-    loading: false,
-    authToken: null,
-    siteId: null,
-    listIds: {},
-    firms: [],
-    contacts: [],
-    history: [],
-    tasks: [],
-    selectedFirmId: null,
-    selectedContactId: null,
+    auth: {
+      msal: null,
+      account: null,
+      token: null,
+      isAuthenticated: false,
+      isReady: false
+    },
+
+    meta: {
+      siteId: null,
+      loading: false,
+      lastError: null
+    },
+
+    data: {
+      firms: [],
+      contacts: [],
+      history: [],
+      tasks: []
+    },
+
+    enriched: {
+      firms: [],
+      contacts: [],
+      history: [],
+      tasks: [],
+      events: []
+    },
+
     filters: {
-      firmSearch: '',
-      contactSearch: ''
+      route: CONFIG.defaults.route,
+      firms: { search: "", klassifizierung: "", vip: "" },
+      contacts: { search: "", archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden },
+      planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, onlyOverdue: false },
+      events: { search: "", onlyWithOpenTasks: false }
+    },
+
+    selection: {
+      firmId: null,
+      contactId: null
+    },
+
+    // Modal-State fuer Write-Layer
+    modal: null
+  };
+
+  const helpers = {
+    escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    },
+
+    bool(value) {
+      if (typeof value === "boolean") return value;
+      if (typeof value === "number") return value === 1;
+      if (typeof value === "string") {
+        const v = value.trim().toLowerCase();
+        return ["true", "1", "ja", "yes"].includes(v);
+      }
+      return false;
+    },
+
+    isEmpty(value) {
+      return value === null || value === undefined || value === "";
+    },
+
+    toArray(value) {
+      if (Array.isArray(value)) return value;
+      if (value === null || value === undefined || value === "") return [];
+      if (typeof value === "string") {
+        if (value.includes(";#")) return value.split(";#").map(v => v.trim()).filter(Boolean);
+        if (value.includes(",")) return value.split(",").map(v => v.trim()).filter(Boolean);
+        return [value.trim()].filter(Boolean);
+      }
+      return [value];
+    },
+
+    normalizeChoiceList(value) {
+      return helpers.toArray(value).filter(Boolean);
+    },
+
+    toDate(value) {
+      if (!value) return null;
+      const d = new Date(value);
+      return Number.isNaN(d.getTime()) ? null : d;
+    },
+
+    formatDate(value) {
+      const d = helpers.toDate(value);
+      if (!d) return "";
+      return d.toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" });
+    },
+
+    formatDateTime(value) {
+      const d = helpers.toDate(value);
+      if (!d) return "";
+      return d.toLocaleString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    },
+
+    // FIX 1: fehlende Hilfsfunktion fuer <input type="date"> — gibt YYYY-MM-DD zurueck
+    toDateInput(value) {
+      const d = helpers.toDate(value);
+      if (!d) return "";
+      return d.toISOString().split("T")[0];
+    },
+
+    todayStart() {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      return d;
+    },
+
+    isOpenTask(status) {
+      const v = String(status || "").trim().toLowerCase();
+      return !["erledigt", "geschlossen", "completed", "done", "closed"].includes(v);
+    },
+
+    isOverdue(deadline) {
+      const d = helpers.toDate(deadline);
+      if (!d) return false;
+      return d < helpers.todayStart();
+    },
+
+    compareDateAsc(a, b) {
+      const ad = helpers.toDate(a), bd = helpers.toDate(b);
+      if (!ad && !bd) return 0;
+      if (!ad) return 1;
+      if (!bd) return -1;
+      return ad - bd;
+    },
+
+    compareDateDesc(a, b) {
+      const ad = helpers.toDate(a), bd = helpers.toDate(b);
+      if (!ad && !bd) return 0;
+      if (!ad) return 1;
+      if (!bd) return -1;
+      return bd - ad;
+    },
+
+    textIncludes(haystack, needle) {
+      return String(haystack || "").toLowerCase().includes(String(needle || "").toLowerCase());
+    },
+
+    joinNonEmpty(values, sep = " · ") {
+      return values.filter(v => !helpers.isEmpty(v)).join(sep);
+    },
+
+    fullName(contact) {
+      return helpers.joinNonEmpty([contact.vorname, contact.nachname], " ").trim();
+    },
+
+    firmBadgeClass(value) {
+      const v = String(value || "").toUpperCase();
+      if (v === "A" || v === "A-KUNDE") return "bbz-pill bbz-pill-a";
+      if (v === "B" || v === "B-KUNDE") return "bbz-pill bbz-pill-b";
+      if (v === "C" || v === "C-KUNDE") return "bbz-pill bbz-pill-c";
+      return "bbz-pill";
+    },
+
+    statusClass(status, deadline) {
+      if (!helpers.isOpenTask(status)) return "bbz-success";
+      if (helpers.isOverdue(deadline)) return "bbz-danger";
+      return "bbz-warning";
+    },
+
+    multiChoiceHtml(values) {
+      const list = helpers.normalizeChoiceList(values);
+      if (!list.length) return '<span class="bbz-muted">—</span>';
+      return list.map(v => `<span class="bbz-chip">${helpers.escapeHtml(v)}</span>`).join("");
+    },
+
+    ensureMsalAvailable() {
+      if (!window.msal || !window.msal.PublicClientApplication) {
+        throw new Error("MSAL-Bibliothek wurde nicht geladen.");
+      }
+    },
+
+    validateConfig() {
+      const missing = [];
+      if (!CONFIG.graph.clientId) missing.push("clientId");
+      if (!CONFIG.graph.tenantId) missing.push("tenantId");
+      if (!CONFIG.graph.authority) missing.push("authority");
+      if (!CONFIG.graph.redirectUri) missing.push("redirectUri");
+      if (!CONFIG.sharePoint.siteHostname) missing.push("sharePoint.siteHostname");
+      if (!CONFIG.sharePoint.sitePath) missing.push("sharePoint.sitePath");
+      if (missing.length) throw new Error(`Konfiguration unvollstaendig: ${missing.join(", ")}`);
     }
   };
 
-  const dom = {};
-
-  function log() {
-    if (!CONFIG.debug) return;
-    const args = Array.prototype.slice.call(arguments);
-    args.unshift('[CRM]');
-    console.log.apply(console, args);
-  }
-
-  function $(selector) {
-    return document.querySelector(selector);
-  }
-
-  function byId(id) {
-    return document.getElementById(id);
-  }
-
-  function qsAny(selectors) {
-    for (let i = 0; i < selectors.length; i += 1) {
-      const selector = selectors[i];
-      const el = selector.charAt(0) === '#' ? byId(selector.slice(1)) : $(selector);
-      if (el) return el;
-    }
-    return null;
-  }
-
-  function collectDom() {
-    dom.appStatus = qsAny(['#appStatus', '#statusMessage']);
-    dom.reloadButton = qsAny(['#btnReloadAll', '#reloadApp']);
-
-    dom.firmList = qsAny(['#firmList', '#firmsList', '#companyList']);
-    dom.firmSearch = qsAny(['#firmSearch', '#searchFirms', '#companySearch']);
-    dom.firmCount = qsAny(['#firmCount', '#firmsCount']);
-    dom.firmDetail = qsAny(['#firmDetail', '#firmDetails', '#companyDetail']);
-    dom.firmDetailTitle = qsAny(['#firmDetailTitle', '#companyDetailTitle']);
-    dom.firmDetailMeta = qsAny(['#firmDetailMeta', '#companyDetailMeta']);
-
-    dom.contactList = qsAny(['#contactList', '#contactsList']);
-    dom.contactSearch = qsAny(['#contactSearch', '#searchContacts']);
-    dom.contactCount = qsAny(['#contactCount', '#contactsCount']);
-    dom.contactDetail = qsAny(['#contactDetail', '#contactDetails']);
-    dom.contactDetailTitle = qsAny(['#contactDetailTitle']);
-    dom.contactDetailMeta = qsAny(['#contactDetailMeta']);
-
-    dom.contactForm = qsAny(['#contactForm', '#formContact']);
-    dom.contactFirmId = qsAny(['#contactFirmId', '#contactCompanyId']);
-    dom.contactTitle = qsAny(['#contactTitle']);
-    dom.contactFirstName = qsAny(['#contactFirstName']);
-    dom.contactLastName = qsAny(['#contactLastName']);
-    dom.contactEmail = qsAny(['#contactEmail']);
-    dom.contactPhone = qsAny(['#contactPhone']);
-    dom.contactMobile = qsAny(['#contactMobile']);
-    dom.contactRole = qsAny(['#contactRole']);
-    dom.contactNotes = qsAny(['#contactNotes']);
-    dom.contactLeadDisplay = qsAny(['#contactLeadDisplay', '#contactLeadbbz0']);
-
-    dom.taskForm = qsAny(['#taskForm', '#formTask']);
-    dom.taskContactId = qsAny(['#taskContactId']);
-    dom.taskTitle = qsAny(['#taskTitle']);
-    dom.taskDueDate = qsAny(['#taskDueDate']);
-    dom.taskStatus = qsAny(['#taskStatus']);
-    dom.taskNotes = qsAny(['#taskNotes']);
-
-    dom.historyForm = qsAny(['#historyForm', '#formHistory']);
-    dom.historyContactId = qsAny(['#historyContactId']);
-    dom.historyDate = qsAny(['#historyDate']);
-    dom.historyType = qsAny(['#historyType']);
-    dom.historyNotes = qsAny(['#historyNotes']);
-    dom.historyProjectRelated = qsAny(['#historyProjectRelated']);
-  }
-
-  function setStatus(message, isError) {
-    if (dom.appStatus) {
-      dom.appStatus.textContent = message || '';
-    }
-
-    if (!message) return;
-
-    if (isError) {
-      console.error('[CRM STATUS]', message);
-    } else {
-      console.log('[CRM STATUS]', message);
-    }
-  }
-
-  function handleError(error) {
-    console.error(error);
-    const message = error && error.message ? error.message : String(error);
-    setStatus(message, true);
-  }
-
-  function escapeHtml(value) {
-    return String(value == null ? '' : value)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-
-  function normalizeText(value) {
-    return String(value || '').trim().toLowerCase();
-  }
-
-  function valueOrEmpty(value) {
-    return value == null ? '' : String(value);
-  }
-
-  function boolFromField(value) {
-    return value === true || value === 1 || value === '1' || value === 'true' || value === 'Ja';
-  }
-
-  function formatDate(value) {
-    if (!value) return '—';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return String(value);
-    return new Intl.DateTimeFormat('de-CH', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    }).format(date);
-  }
-
-  function formatDateTimeLocalValue(value) {
-    if (!value) return '';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
-    const pad = function (n) {
-      return String(n).padStart(2, '0');
-    };
-    return (
-      date.getFullYear() +
-      '-' +
-      pad(date.getMonth() + 1) +
-      '-' +
-      pad(date.getDate()) +
-      'T' +
-      pad(date.getHours()) +
-      ':' +
-      pad(date.getMinutes())
-    );
-  }
-
-  function maybeJwt(value) {
-    return typeof value === 'string' && value.split('.').length === 3 && value.length > 100;
-  }
-
-  function setAccessToken(token) {
-    if (!maybeJwt(token)) {
-      throw new Error('Ungültiger Access Token übergeben.');
-    }
-    state.authToken = token;
-    window.CRM_APP_AUTH_TOKEN = token;
-    log('Access token übernommen');
-    setStatus('Login erkannt. CRM kann Daten laden.', false);
-  }
-
-  async function resolveAccessToken() {
-    if (state.authToken && maybeJwt(state.authToken)) {
-      return state.authToken;
-    }
-
-    if (window.CRM_APP_AUTH_TOKEN && maybeJwt(window.CRM_APP_AUTH_TOKEN)) {
-      state.authToken = window.CRM_APP_AUTH_TOKEN;
-      return state.authToken;
-    }
-
-    if (window.CRM_AUTH && typeof window.CRM_AUTH.getAccessToken === 'function') {
-      const token = await window.CRM_AUTH.getAccessToken();
-      if (maybeJwt(token)) {
-        state.authToken = token;
-        return state.authToken;
-      }
-    }
-
-    throw new Error('Nicht angemeldet. Bitte zuerst anmelden.');
-  }
-
-  async function graphFetch(path, options) {
-    const token = await resolveAccessToken();
-
-    const headers = Object.assign(
-      {
-        Authorization: 'Bearer ' + token,
-        Accept: 'application/json'
-      },
-      options && options.body ? { 'Content-Type': 'application/json' } : {},
-      (options && options.headers) || {}
-    );
-
-    const response = await fetch('https://graph.microsoft.com/v1.0' + path, Object.assign({}, options, { headers }));
-    const text = await response.text();
-    const payload = text ? JSON.parse(text) : {};
-
-    if (!response.ok) {
-      if (response.status === 401 || response.status === 403) {
-        state.authToken = null;
-      }
-      throw new Error('Graph ' + response.status + ': ' + JSON.stringify(payload));
-    }
-
-    return payload;
-  }
-
-  async function ensureSite() {
-    if (state.siteId) return state.siteId;
-
-    const site = await graphFetch('/sites/' + CONFIG.sharePoint.hostname + ':' + CONFIG.sharePoint.sitePath);
-
-    if (!site || !site.id) {
-      throw new Error('Site-ID konnte nicht geladen werden.');
-    }
-
-    state.siteId = site.id;
-    return state.siteId;
-  }
-
-  async function ensureListId(listTitle) {
-    await ensureSite();
-
-    if (state.listIds[listTitle]) {
-      return state.listIds[listTitle];
-    }
-
-    const data = await graphFetch(
-      '/sites/' +
-        state.siteId +
-        '/lists?$filter=displayName eq ' +
-        "'" +
-        String(listTitle).replace(/'/g, "''") +
-        "'"
-    );
-
-    const list = data && data.value && data.value.length ? data.value[0] : null;
-
-    if (!list || !list.id) {
-      throw new Error('Liste nicht gefunden: ' + listTitle);
-    }
-
-    state.listIds[listTitle] = list.id;
-    return state.listIds[listTitle];
-  }
-
-  async function getAllItems(listTitle) {
-    await ensureSite();
-    const listId = await ensureListId(listTitle);
-
-    const items = [];
-    let path = '/sites/' + state.siteId + '/lists/' + listId + '/items?expand=fields&top=' + CONFIG.pageSize;
-
-    while (path) {
-      const data = await graphFetch(path);
-      items.push.apply(items, data.value || []);
-      const next = data['@odata.nextLink'];
-      path = next ? next.replace('https://graph.microsoft.com/v1.0', '') : null;
-    }
-
-    return items;
-  }
-
-  async function createItem(listTitle, fields) {
-    await ensureSite();
-    const listId = await ensureListId(listTitle);
-
-    return graphFetch('/sites/' + state.siteId + '/lists/' + listId + '/items', {
-      method: 'POST',
-      body: JSON.stringify({ fields: fields })
-    });
-  }
-
-  function getField(item, fieldName, fallback) {
-    if (!item || !item.fields) return fallback;
-    const value = item.fields[fieldName];
-    return value == null ? fallback : value;
-  }
-
-  function getItemId(item) {
-    if (!item) return null;
-    return item.id != null ? item.id : null;
-  }
-
-  function sortByField(items, fieldName) {
-    return items.slice().sort(function (a, b) {
-      const left = normalizeText(getField(a, fieldName, ''));
-      const right = normalizeText(getField(b, fieldName, ''));
-      return left.localeCompare(right, 'de');
-    });
-  }
-
-  function matchesSearch(item, fieldNames, search) {
-    if (!search) return true;
-    const q = normalizeText(search);
-
-    for (let i = 0; i < fieldNames.length; i += 1) {
-      const value = normalizeText(getField(item, fieldNames[i], ''));
-      if (value.indexOf(q) !== -1) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  function getFirmName(firm) {
-    return valueOrEmpty(getField(firm, CONFIG.fields.firms.title, '')).trim() || 'Ohne Firmenname';
-  }
-
-  function getContactName(contact) {
-    if (!contact) return 'Ohne Name';
-
-    const f = CONFIG.fields.contacts;
-    const firstName = valueOrEmpty(getField(contact, f.firstName, '')).trim();
-    const lastName = valueOrEmpty(getField(contact, f.lastName, '')).trim();
-    const title = valueOrEmpty(getField(contact, f.title, '')).trim();
-    const combined = [firstName, lastName].filter(Boolean).join(' ').trim();
-
-    return combined || title || 'Ohne Name';
-  }
-
-  function getFirmById(firmId) {
-    return state.firms.find(function (firm) {
-      return String(getItemId(firm)) === String(firmId);
-    }) || null;
-  }
-
-  function getContactById(contactId) {
-    return state.contacts.find(function (contact) {
-      return String(getItemId(contact)) === String(contactId);
-    }) || null;
-  }
-
-  function getContactsForFirm(firmId) {
-    const field = CONFIG.fields.contacts.firmLookupId;
-    return state.contacts.filter(function (contact) {
-      return String(getField(contact, field, '')) === String(firmId);
-    });
-  }
-
-  function getTasksForContact(contactId) {
-    const field = CONFIG.fields.tasks.contactLookupId;
-    return state.tasks.filter(function (task) {
-      return String(getField(task, field, '')) === String(contactId);
-    });
-  }
-
-  function getHistoryForContact(contactId) {
-    const field = CONFIG.fields.history.contactLookupId;
-    return state.history.filter(function (entry) {
-      return String(getField(entry, field, '')) === String(contactId);
-    });
-  }
-
-  function getTasksForFirm(firmId) {
-    const contactIds = new Set(
-      getContactsForFirm(firmId).map(function (contact) {
-        return String(getItemId(contact));
-      })
-    );
-
-    return state.tasks.filter(function (task) {
-      return contactIds.has(String(getField(task, CONFIG.fields.tasks.contactLookupId, '')));
-    });
-  }
-
-  function getHistoryForFirm(firmId) {
-    const contactIds = new Set(
-      getContactsForFirm(firmId).map(function (contact) {
-        return String(getItemId(contact));
-      })
-    );
-
-    return state.history.filter(function (entry) {
-      return contactIds.has(String(getField(entry, CONFIG.fields.history.contactLookupId, '')));
-    });
-  }
-
-  function filteredFirms() {
-    const f = CONFIG.fields.firms;
-
-    return sortByField(
-      state.firms.filter(function (firm) {
-        return matchesSearch(
-          firm,
-          [f.title, f.abc, f.email, f.phone, f.website, f.notes],
-          state.filters.firmSearch
-        );
-      }),
-      f.title
-    );
-  }
-
-  function filteredContacts() {
-    const f = CONFIG.fields.contacts;
-
-    return state.contacts
-      .filter(function (contact) {
-        const match = matchesSearch(
-          contact,
-          [f.title, f.firstName, f.lastName, f.email, f.phone, f.mobile, f.role, f.notes, f.leadDisplay],
-          state.filters.contactSearch
-        );
-
-        if (!match) return false;
-        if (!state.selectedFirmId) return true;
-
-        return String(getField(contact, f.firmLookupId, '')) === String(state.selectedFirmId);
-      })
-      .sort(function (a, b) {
-        return getContactName(a).localeCompare(getContactName(b), 'de');
+  const ui = {
+    els: {
+      viewRoot: null,
+      authStatus: null,
+      globalMessage: null,
+      btnLogin: null,
+      btnRefresh: null,
+      navButtons: []
+    },
+
+    init() {
+      this.els.viewRoot = document.getElementById("view-root");
+      this.els.authStatus = document.getElementById("auth-status");
+      this.els.globalMessage = document.getElementById("global-message");
+      this.els.btnLogin = document.getElementById("btn-login");
+      this.els.btnRefresh = document.getElementById("btn-refresh");
+      this.els.navButtons = [...document.querySelectorAll(".bbz-nav-btn")];
+
+      if (this.els.btnLogin) this.els.btnLogin.addEventListener("click", () => controller.handleLogin());
+      if (this.els.btnRefresh) this.els.btnRefresh.addEventListener("click", () => controller.handleRefresh());
+
+      this.els.navButtons.forEach(btn => {
+        btn.addEventListener("click", () => controller.navigate(btn.dataset.route));
       });
-  }
 
-  function renderFirmList() {
-    if (!dom.firmList) return;
+      // Zentraler Click-Handler
+      document.addEventListener("click", (event) => {
+        const openFirm = event.target.closest("[data-action='open-firm']");
+        if (openFirm) { controller.openFirm(openFirm.dataset.id); return; }
 
-    const firms = filteredFirms();
+        const openContact = event.target.closest("[data-action='open-contact']");
+        if (openContact) { controller.openContact(openContact.dataset.id); return; }
 
-    if (dom.firmCount) {
-      dom.firmCount.textContent = String(firms.length);
-    }
+        const backToFirms = event.target.closest("[data-action='back-to-firms']");
+        if (backToFirms) { controller.navigate("firms"); return; }
 
-    if (!firms.length) {
-      dom.firmList.innerHTML = '<div class="text-slate-500">Keine Firmen gefunden.</div>';
-      return;
-    }
+        const backToContacts = event.target.closest("[data-action='back-to-contacts']");
+        if (backToContacts) { controller.navigate("contacts"); return; }
 
-    dom.firmList.innerHTML = firms
-      .map(function (firm) {
-        const id = String(getItemId(firm));
-        const selected = String(state.selectedFirmId) === id;
-        const abc = valueOrEmpty(getField(firm, CONFIG.fields.firms.abc, '—'));
-        const contactCount = getContactsForFirm(id).length;
+        const openForm = event.target.closest("[data-action='open-contact-form']");
+        if (openForm) {
+          const itemId = openForm.dataset.itemId ? Number(openForm.dataset.itemId) : null;
+          const firmId = openForm.dataset.firmId ? Number(openForm.dataset.firmId) : null;
+          controller.openContactForm(itemId, firmId);
+          return;
+        }
 
-        return (
-          '<button type="button" class="w-full text-left border rounded-2xl px-3 py-3 mb-2 ' +
-          (selected ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white') +
-          '" data-firm-id="' +
-          escapeHtml(id) +
-          '">' +
-          '<div class="font-semibold">' +
-          escapeHtml(getFirmName(firm)) +
-          '</div>' +
-          '<div class="text-sm text-slate-600">ABC: ' +
-          escapeHtml(abc) +
-          ' · Kontakte: ' +
-          contactCount +
-          '</div>' +
-          '</button>'
-        );
-      })
-      .join('');
-  }
+        // FIX 2a: Modal schliessen via Button oder Backdrop-Klick
+        const closeModal = event.target.closest("[data-close-modal]");
+        if (closeModal) { controller.closeModal(); return; }
 
-  function renderContactList() {
-    if (!dom.contactList) return;
+        const backdrop = event.target.closest(".bbz-modal-backdrop");
+        if (backdrop && !event.target.closest(".bbz-modal")) { controller.closeModal(); return; }
 
-    const contacts = filteredContacts();
+        // FIX 2b: Submit-Button loest Form-Submit aus
+        const submitBtn = event.target.closest("[data-modal-submit]");
+        if (submitBtn) {
+          const form = document.querySelector("[data-modal-form]");
+          if (form) form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+          return;
+        }
+      });
 
-    if (dom.contactCount) {
-      dom.contactCount.textContent = String(contacts.length);
-    }
+      // FIX 2c: Zentraler Form-Submit-Handler
+      document.addEventListener("submit", (event) => {
+        const form = event.target.closest("[data-modal-form]");
+        if (form) {
+          event.preventDefault();
+          controller.handleModalSubmit(form, form.dataset.mode, form.dataset.itemId || null);
+        }
+      });
 
-    if (!contacts.length) {
-      dom.contactList.innerHTML = '<div class="text-slate-500">Keine Kontakte gefunden.</div>';
-      return;
-    }
+      document.addEventListener("input", (event) => {
+        const el = event.target;
+        if (el.matches("[data-filter='firms-search']")) { state.filters.firms.search = el.value; controller.render(); }
+        if (el.matches("[data-filter='contacts-search']")) { state.filters.contacts.search = el.value; controller.render(); }
+        if (el.matches("[data-filter='planning-search']")) { state.filters.planning.search = el.value; controller.render(); }
+        if (el.matches("[data-filter='events-search']")) { state.filters.events.search = el.value; controller.render(); }
+      });
 
-    dom.contactList.innerHTML = contacts
-      .map(function (contact) {
-        const id = String(getItemId(contact));
-        const selected = String(state.selectedContactId) === id;
-        const firm = getFirmById(getField(contact, CONFIG.fields.contacts.firmLookupId, ''));
+      document.addEventListener("change", (event) => {
+        const el = event.target;
+        if (el.matches("[data-filter='firms-klassifizierung']")) { state.filters.firms.klassifizierung = el.value; controller.render(); }
+        if (el.matches("[data-filter='firms-vip']")) { state.filters.firms.vip = el.value; controller.render(); }
+        if (el.matches("[data-filter='contacts-archiviert']")) { state.filters.contacts.archiviertAusblenden = el.checked; controller.render(); }
+        if (el.matches("[data-filter='planning-open']")) { state.filters.planning.onlyOpen = el.checked; controller.render(); }
+        if (el.matches("[data-filter='planning-overdue']")) { state.filters.planning.onlyOverdue = el.checked; controller.render(); }
+        if (el.matches("[data-filter='events-open']")) { state.filters.events.onlyWithOpenTasks = el.checked; controller.render(); }
+      });
+    },
 
-        return (
-          '<button type="button" class="w-full text-left border rounded-2xl px-3 py-3 mb-2 ' +
-          (selected ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white') +
-          '" data-contact-id="' +
-          escapeHtml(id) +
-          '">' +
-          '<div class="font-semibold">' +
-          escapeHtml(getContactName(contact)) +
-          '</div>' +
-          '<div class="text-sm text-slate-600">' +
-          escapeHtml(valueOrEmpty(getField(contact, CONFIG.fields.contacts.email, ''))) +
-          '</div>' +
-          '<div class="text-xs text-slate-500">' +
-          escapeHtml(firm ? getFirmName(firm) : 'Ohne Firma') +
-          '</div>' +
-          '</button>'
-        );
-      })
-      .join('');
-  }
+    setLoading(isLoading) {
+      state.meta.loading = isLoading;
+      this.renderShell();
+    },
 
-  function renderFirmDetail() {
-    if (!dom.firmDetail) return;
+    setMessage(message, type = "info") {
+      const el = this.els.globalMessage;
+      if (!el) return;
+      if (!message) { el.className = "bbz-banner"; el.textContent = ""; return; }
+      const cls = { success: "bbz-banner bbz-banner-success show", warning: "bbz-banner bbz-banner-warning show", error: "bbz-banner bbz-banner-error show", info: "bbz-banner bbz-banner-info show" };
+      el.className = cls[type] || cls.info;
+      el.textContent = message;
+    },
 
-    if (!state.selectedFirmId) {
-      dom.firmDetail.innerHTML = '<div class="text-slate-500">Bitte eine Firma auswählen.</div>';
-      return;
-    }
+    renderShell() {
+      this.els.navButtons.forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.route === state.filters.route);
+      });
 
-    const firm = getFirmById(state.selectedFirmId);
-
-    if (!firm) {
-      dom.firmDetail.innerHTML = '<div class="text-red-600">Ausgewählte Firma nicht gefunden.</div>';
-      return;
-    }
-
-    if (dom.firmDetailTitle) {
-      dom.firmDetailTitle.textContent = getFirmName(firm);
-    }
-
-    if (dom.firmDetailMeta) {
-      dom.firmDetailMeta.textContent = 'ABC: ' + (valueOrEmpty(getField(firm, CONFIG.fields.firms.abc, '')) || '—');
-    }
-
-    const contacts = getContactsForFirm(getItemId(firm)).sort(function (a, b) {
-      return getContactName(a).localeCompare(getContactName(b), 'de');
-    });
-
-    const tasks = getTasksForFirm(getItemId(firm)).sort(function (a, b) {
-      const left = new Date(getField(a, CONFIG.fields.tasks.dueDate, '2999-12-31')).getTime();
-      const right = new Date(getField(b, CONFIG.fields.tasks.dueDate, '2999-12-31')).getTime();
-      return left - right;
-    });
-
-    const history = getHistoryForFirm(getItemId(firm)).sort(function (a, b) {
-      const left = new Date(getField(a, CONFIG.fields.history.date, '1900-01-01')).getTime();
-      const right = new Date(getField(b, CONFIG.fields.history.date, '1900-01-01')).getTime();
-      return right - left;
-    });
-
-    const contactsHtml = contacts.length
-      ? contacts
-          .map(function (contact) {
-            return (
-              '<button type="button" class="block w-full text-left border rounded-xl px-3 py-2 mb-2 border-slate-200" data-contact-id="' +
-              escapeHtml(String(getItemId(contact))) +
-              '">' +
-              '<div class="font-medium">' +
-              escapeHtml(getContactName(contact)) +
-              '</div>' +
-              '<div class="text-sm text-slate-600">' +
-              escapeHtml(valueOrEmpty(getField(contact, CONFIG.fields.contacts.email, ''))) +
-              '</div>' +
-              '</button>'
-            );
-          })
-          .join('')
-      : '<div class="text-slate-500">Keine Kontakte zugeordnet.</div>';
-
-    const tasksHtml = tasks.length
-      ? tasks
-          .map(function (task) {
-            const contact = getContactById(getField(task, CONFIG.fields.tasks.contactLookupId, ''));
-
-            return (
-              '<div class="border rounded-xl px-3 py-3 mb-2 border-slate-200">' +
-              '<div class="font-medium">' +
-              escapeHtml(valueOrEmpty(getField(task, CONFIG.fields.tasks.title, 'Ohne Titel'))) +
-              '</div>' +
-              '<div class="text-sm text-slate-600">Fällig: ' +
-              escapeHtml(formatDate(getField(task, CONFIG.fields.tasks.dueDate, ''))) +
-              ' · Status: ' +
-              escapeHtml(valueOrEmpty(getField(task, CONFIG.fields.tasks.status, '—'))) +
-              '</div>' +
-              '<div class="text-xs text-slate-500">Kontakt: ' +
-              escapeHtml(contact ? getContactName(contact) : '—') +
-              '</div>' +
-              '<div class="text-sm whitespace-pre-wrap mt-1">' +
-              escapeHtml(valueOrEmpty(getField(task, CONFIG.fields.tasks.notes, ''))) +
-              '</div>' +
-              '</div>'
-            );
-          })
-          .join('')
-      : '<div class="text-slate-500">Keine Tasks vorhanden.</div>';
-
-    const historyHtml = history.length
-      ? history
-          .map(function (entry) {
-            const contact = getContactById(getField(entry, CONFIG.fields.history.contactLookupId, ''));
-
-            return (
-              '<div class="border rounded-xl px-3 py-3 mb-2 border-slate-200">' +
-              '<div class="font-medium">' +
-              escapeHtml(formatDate(getField(entry, CONFIG.fields.history.date, ''))) +
-              ' · ' +
-              escapeHtml(valueOrEmpty(getField(entry, CONFIG.fields.history.type, ''))) +
-              '</div>' +
-              '<div class="text-sm whitespace-pre-wrap mt-1">' +
-              escapeHtml(valueOrEmpty(getField(entry, CONFIG.fields.history.notes, ''))) +
-              '</div>' +
-              '<div class="text-xs text-slate-500 mt-1">Kontakt: ' +
-              escapeHtml(contact ? getContactName(contact) : '—') +
-              ' · Projektbezug: ' +
-              (boolFromField(getField(entry, CONFIG.fields.history.projectRelated, false)) ? 'Ja' : 'Nein') +
-              '</div>' +
-              '</div>'
-            );
-          })
-          .join('')
-      : '<div class="text-slate-500">Keine History vorhanden.</div>';
-
-    dom.firmDetail.innerHTML =
-      '<div class="space-y-6">' +
-      '<section><h3 class="font-semibold mb-2">Kontakte</h3>' +
-      contactsHtml +
-      '</section>' +
-      '<section><h3 class="font-semibold mb-2">Tasks</h3>' +
-      tasksHtml +
-      '</section>' +
-      '<section><h3 class="font-semibold mb-2">History</h3>' +
-      historyHtml +
-      '</section>' +
-      '</div>';
-  }
-
-  function renderContactDetail() {
-    if (!dom.contactDetail) return;
-
-    if (!state.selectedContactId) {
-      dom.contactDetail.innerHTML = '<div class="text-slate-500">Bitte einen Kontakt auswählen.</div>';
-      if (dom.contactLeadDisplay) {
-        dom.contactLeadDisplay.value = '';
+      if (state.auth.isAuthenticated && state.auth.account) {
+        this.els.authStatus.innerHTML = `<span class="bbz-auth-dot"></span><span>Angemeldet: ${helpers.escapeHtml(state.auth.account.username || state.auth.account.name || "")}</span>`;
+      } else if (state.auth.isReady) {
+        this.els.authStatus.innerHTML = `<span class="bbz-auth-dot" style="background:#94a3b8;"></span><span>Nicht angemeldet</span>`;
+      } else {
+        this.els.authStatus.innerHTML = `<span class="bbz-auth-dot" style="background:#f59e0b;"></span><span>Authentifizierung wird initialisiert ...</span>`;
       }
-      return;
-    }
 
-    const contact = getContactById(state.selectedContactId);
-
-    if (!contact) {
-      dom.contactDetail.innerHTML = '<div class="text-red-600">Ausgewählter Kontakt nicht gefunden.</div>';
-      return;
-    }
-
-    const firm = getFirmById(getField(contact, CONFIG.fields.contacts.firmLookupId, ''));
-
-    const tasks = getTasksForContact(getItemId(contact)).sort(function (a, b) {
-      const left = new Date(getField(a, CONFIG.fields.tasks.dueDate, '2999-12-31')).getTime();
-      const right = new Date(getField(b, CONFIG.fields.tasks.dueDate, '2999-12-31')).getTime();
-      return left - right;
-    });
-
-    const history = getHistoryForContact(getItemId(contact)).sort(function (a, b) {
-      const left = new Date(getField(a, CONFIG.fields.history.date, '1900-01-01')).getTime();
-      const right = new Date(getField(b, CONFIG.fields.history.date, '1900-01-01')).getTime();
-      return right - left;
-    });
-
-    if (dom.contactDetailTitle) {
-      dom.contactDetailTitle.textContent = getContactName(contact);
-    }
-
-    if (dom.contactDetailMeta) {
-      dom.contactDetailMeta.textContent = [
-        firm ? getFirmName(firm) : 'Ohne Firma',
-        valueOrEmpty(getField(contact, CONFIG.fields.contacts.email, '')),
-        valueOrEmpty(getField(contact, CONFIG.fields.contacts.phone, ''))
-      ]
-        .filter(Boolean)
-        .join(' · ');
-    }
-
-    if (dom.contactLeadDisplay) {
-      dom.contactLeadDisplay.value = valueOrEmpty(getField(contact, CONFIG.fields.contacts.leadDisplay, ''));
-    }
-
-    const tasksHtml = tasks.length
-      ? tasks
-          .map(function (task) {
-            return (
-              '<div class="border rounded-xl px-3 py-3 mb-2 border-slate-200">' +
-              '<div class="font-medium">' +
-              escapeHtml(valueOrEmpty(getField(task, CONFIG.fields.tasks.title, 'Ohne Titel'))) +
-              '</div>' +
-              '<div class="text-sm text-slate-600">Fällig: ' +
-              escapeHtml(formatDate(getField(task, CONFIG.fields.tasks.dueDate, ''))) +
-              ' · Status: ' +
-              escapeHtml(valueOrEmpty(getField(task, CONFIG.fields.tasks.status, '—'))) +
-              '</div>' +
-              '<div class="text-sm whitespace-pre-wrap mt-1">' +
-              escapeHtml(valueOrEmpty(getField(task, CONFIG.fields.tasks.notes, ''))) +
-              '</div>' +
-              '</div>'
-            );
-          })
-          .join('')
-      : '<div class="text-slate-500">Keine Tasks vorhanden.</div>';
-
-    const historyHtml = history.length
-      ? history
-          .map(function (entry) {
-            return (
-              '<div class="border rounded-xl px-3 py-3 mb-2 border-slate-200">' +
-              '<div class="font-medium">' +
-              escapeHtml(formatDate(getField(entry, CONFIG.fields.history.date, ''))) +
-              ' · ' +
-              escapeHtml(valueOrEmpty(getField(entry, CONFIG.fields.history.type, ''))) +
-              '</div>' +
-              '<div class="text-sm whitespace-pre-wrap mt-1">' +
-              escapeHtml(valueOrEmpty(getField(entry, CONFIG.fields.history.notes, ''))) +
-              '</div>' +
-              '<div class="text-xs text-slate-500 mt-1">Projektbezug: ' +
-              (boolFromField(getField(entry, CONFIG.fields.history.projectRelated, false)) ? 'Ja' : 'Nein') +
-              '</div>' +
-              '</div>'
-            );
-          })
-          .join('')
-      : '<div class="text-slate-500">Keine History vorhanden.</div>';
-
-    dom.contactDetail.innerHTML =
-      '<div class="space-y-6">' +
-      '<section><h3 class="font-semibold mb-2">Kontakt</h3>' +
-      '<div class="border rounded-xl px-3 py-3 border-slate-200">' +
-      '<div><strong>Name:</strong> ' +
-      escapeHtml(getContactName(contact)) +
-      '</div>' +
-      '<div><strong>Firma:</strong> ' +
-      escapeHtml(firm ? getFirmName(firm) : '—') +
-      '</div>' +
-      '<div><strong>Rolle:</strong> ' +
-      escapeHtml(valueOrEmpty(getField(contact, CONFIG.fields.contacts.role, '—'))) +
-      '</div>' +
-      '<div><strong>E-Mail:</strong> ' +
-      escapeHtml(valueOrEmpty(getField(contact, CONFIG.fields.contacts.email, '—'))) +
-      '</div>' +
-      '<div><strong>Telefon:</strong> ' +
-      escapeHtml(valueOrEmpty(getField(contact, CONFIG.fields.contacts.phone, '—'))) +
-      '</div>' +
-      '<div><strong>Mobile:</strong> ' +
-      escapeHtml(valueOrEmpty(getField(contact, CONFIG.fields.contacts.mobile, '—'))) +
-      '</div>' +
-      '<div><strong>Leadbbz0:</strong> ' +
-      escapeHtml(valueOrEmpty(getField(contact, CONFIG.fields.contacts.leadDisplay, '—'))) +
-      '</div>' +
-      '</div></section>' +
-      '<section><h3 class="font-semibold mb-2">Tasks</h3>' +
-      tasksHtml +
-      '</section>' +
-      '<section><h3 class="font-semibold mb-2">History</h3>' +
-      historyHtml +
-      '</section>' +
-      '</div>';
-  }
-
-  function fillFirmSelectOptions() {
-    if (!dom.contactFirmId) return;
-
-    const current = dom.contactFirmId.value;
-    const options = ['<option value="">Firma wählen</option>']
-      .concat(
-        sortByField(state.firms, CONFIG.fields.firms.title).map(function (firm) {
-          return (
-            '<option value="' +
-            escapeHtml(String(getItemId(firm))) +
-            '">' +
-            escapeHtml(getFirmName(firm)) +
-            '</option>'
-          );
-        })
-      )
-      .join('');
-
-    dom.contactFirmId.innerHTML = options;
-
-    if (current) {
-      dom.contactFirmId.value = current;
-    } else if (state.selectedFirmId) {
-      dom.contactFirmId.value = String(state.selectedFirmId);
-    }
-  }
-
-  function fillContactSelectOptions() {
-    const options = ['<option value="">Kontakt wählen</option>']
-      .concat(
-        state.contacts
-          .slice()
-          .sort(function (a, b) {
-            return getContactName(a).localeCompare(getContactName(b), 'de');
-          })
-          .map(function (contact) {
-            const firm = getFirmById(getField(contact, CONFIG.fields.contacts.firmLookupId, ''));
-            const label = getContactName(contact) + (firm ? ' (' + getFirmName(firm) + ')' : '');
-
-            return (
-              '<option value="' +
-              escapeHtml(String(getItemId(contact))) +
-              '">' +
-              escapeHtml(label) +
-              '</option>'
-            );
-          })
-      )
-      .join('');
-
-    if (dom.taskContactId) {
-      const currentTask = dom.taskContactId.value;
-      dom.taskContactId.innerHTML = options;
-      if (currentTask) {
-        dom.taskContactId.value = currentTask;
-      } else if (state.selectedContactId) {
-        dom.taskContactId.value = String(state.selectedContactId);
+      if (this.els.btnLogin) {
+        this.els.btnLogin.textContent = state.auth.isAuthenticated ? "Erneut anmelden" : "Anmelden";
+        this.els.btnLogin.disabled = state.meta.loading || !state.auth.isReady;
       }
-    }
-
-    if (dom.historyContactId) {
-      const currentHistory = dom.historyContactId.value;
-      dom.historyContactId.innerHTML = options;
-      if (currentHistory) {
-        dom.historyContactId.value = currentHistory;
-      } else if (state.selectedContactId) {
-        dom.historyContactId.value = String(state.selectedContactId);
+      if (this.els.btnRefresh) {
+        this.els.btnRefresh.disabled = state.meta.loading || !state.auth.isReady;
       }
+    },
+
+    renderView(html) {
+      if (this.els.viewRoot) this.els.viewRoot.innerHTML = html;
+    },
+
+    loadingBlock(text = "Daten werden geladen ...") {
+      return `<section class="bbz-section"><div class="bbz-section-body"><div class="flex items-center gap-3"><div class="bbz-loader"></div><div class="text-sm text-slate-500">${helpers.escapeHtml(text)}</div></div></div></section>`;
+    },
+
+    emptyBlock(text = "Keine Daten vorhanden.") {
+      return `<div class="bbz-empty">${helpers.escapeHtml(text)}</div>`;
+    },
+
+    kv(label, value) {
+      return `<div class="bbz-kv"><div class="bbz-kv-label">${helpers.escapeHtml(label)}</div><div class="bbz-kv-value">${value || '<span class="bbz-muted">—</span>'}</div></div>`;
     }
-  }
+  };
 
-  function syncFormsWithSelection() {
-    if (dom.contactFirmId && state.selectedFirmId) {
-      dom.contactFirmId.value = String(state.selectedFirmId);
-    }
-    if (dom.taskContactId && state.selectedContactId) {
-      dom.taskContactId.value = String(state.selectedContactId);
-    }
-    if (dom.historyContactId && state.selectedContactId) {
-      dom.historyContactId.value = String(state.selectedContactId);
-    }
-  }
+  const api = {
+    async initAuth() {
+      helpers.ensureMsalAvailable();
+      helpers.validateConfig();
 
-  function renderAll() {
-    renderFirmList();
-    renderContactList();
-    renderFirmDetail();
-    renderContactDetail();
-    fillFirmSelectOptions();
-    fillContactSelectOptions();
-    syncFormsWithSelection();
-  }
+      state.auth.isReady = false;
+      state.auth.msal = null;
 
-  function resetContactForm() {
-    if (!dom.contactForm) return;
-    dom.contactForm.reset();
+      const msalInstance = new window.msal.PublicClientApplication({
+        auth: {
+          clientId: CONFIG.graph.clientId,
+          authority: CONFIG.graph.authority,
+          redirectUri: CONFIG.graph.redirectUri
+        },
+        cache: { cacheLocation: "localStorage" }
+      });
 
-    if (dom.contactFirmId && state.selectedFirmId) {
-      dom.contactFirmId.value = String(state.selectedFirmId);
-    }
-  }
+      await msalInstance.initialize();
+      state.auth.msal = msalInstance;
 
-  function resetTaskForm() {
-    if (!dom.taskForm) return;
-    dom.taskForm.reset();
+      try {
+        const redirectResponse = await state.auth.msal.handleRedirectPromise();
+        if (redirectResponse?.account) {
+          state.auth.account = redirectResponse.account;
+          state.auth.isAuthenticated = true;
+        }
+      } catch (error) {
+        console.warn("handleRedirectPromise Fehler", error);
+      }
 
-    if (dom.taskContactId && state.selectedContactId) {
-      dom.taskContactId.value = String(state.selectedContactId);
-    }
-  }
+      // Accounts aus Cache nachladen falls kein Redirect-Response
+      if (!state.auth.account) {
+        const accounts = state.auth.msal.getAllAccounts();
+        if (accounts.length > 0) {
+          state.auth.account = accounts[0];
+          state.auth.isAuthenticated = true;
+        }
+      }
 
-  function resetHistoryForm() {
-    if (!dom.historyForm) return;
-    dom.historyForm.reset();
+      state.auth.isReady = true;
+    },
 
-    if (dom.historyContactId && state.selectedContactId) {
-      dom.historyContactId.value = String(state.selectedContactId);
-    }
+    async login() {
+      if (!state.auth.msal) throw new Error("MSAL ist nicht initialisiert.");
 
-    if (dom.historyDate) {
-      dom.historyDate.value = formatDateTimeLocalValue(new Date().toISOString());
-    }
-  }
+      const loginResponse = await state.auth.msal.loginPopup({
+        scopes: CONFIG.graph.scopes,
+        prompt: "select_account"
+      });
 
-  async function loadAllData() {
-    if (state.loading) return;
+      if (!loginResponse?.account) throw new Error("Keine Kontoinformation aus dem Login erhalten.");
 
-    state.loading = true;
-    setStatus('Lade CRM-Daten ...', false);
+      state.auth.account = loginResponse.account;
+      state.auth.isAuthenticated = true;
+      await this.acquireToken();
+    },
 
-    try {
-      await resolveAccessToken();
+    // FIX 3b: robusteres Token-Handling mit Account-Fallback
+    async acquireToken() {
+      if (!state.auth.msal) throw new Error("MSAL ist nicht initialisiert.");
 
-      const results = await Promise.all([
-        getAllItems(CONFIG.lists.firms),
-        getAllItems(CONFIG.lists.contacts),
-        getAllItems(CONFIG.lists.history),
-        getAllItems(CONFIG.lists.tasks)
+      // Account aus Cache nachladen falls leer
+      if (!state.auth.account) {
+        const accounts = state.auth.msal.getAllAccounts();
+        if (accounts.length > 0) {
+          state.auth.account = accounts[0];
+          state.auth.isAuthenticated = true;
+        } else {
+          throw new Error("Kein angemeldetes Konto gefunden.");
+        }
+      }
+
+      try {
+        const tokenResponse = await state.auth.msal.acquireTokenSilent({
+          account: state.auth.account,
+          scopes: CONFIG.graph.scopes,
+          forceRefresh: false
+        });
+        if (!tokenResponse?.accessToken) throw new Error("Kein Token aus acquireTokenSilent erhalten.");
+        state.auth.token = tokenResponse.accessToken;
+        return state.auth.token;
+      } catch (silentError) {
+        console.warn("Silent token fehlgeschlagen, versuche Popup:", silentError);
+        const tokenResponse = await state.auth.msal.acquireTokenPopup({
+          account: state.auth.account,
+          scopes: CONFIG.graph.scopes
+        });
+        if (!tokenResponse?.accessToken) throw new Error("Kein Token aus acquireTokenPopup erhalten.");
+        state.auth.token = tokenResponse.accessToken;
+        return state.auth.token;
+      }
+    },
+
+    async graphRequest(path, options = {}) {
+      // Token immer frisch via acquireToken — nicht auf gecachten state.auth.token verlassen
+      const token = await this.acquireToken();
+      const response = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+        method: options.method || "GET",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(options.headers || {}) },
+        body: options.body ? JSON.stringify(options.body) : undefined
+      });
+
+      if (!response.ok) {
+        let detail = "";
+        try { detail = await response.text(); } catch { detail = ""; }
+        throw new Error(`Graph ${response.status}: ${detail || response.statusText}`);
+      }
+
+      if (response.status === 204) return null;
+      return await response.json();
+    },
+
+    async getSiteId() {
+      if (state.meta.siteId) return state.meta.siteId;
+      const siteRef = `${CONFIG.sharePoint.siteHostname}:${CONFIG.sharePoint.sitePath}`;
+      const data = await this.graphRequest(`/sites/${siteRef}`);
+      state.meta.siteId = data.id;
+      return state.meta.siteId;
+    },
+
+    async getListItems(listTitle) {
+      const siteId = await this.getSiteId();
+      const data = await this.graphRequest(`/sites/${siteId}/lists/${encodeURIComponent(listTitle)}/items?expand=fields&top=5000`);
+      return data.value || [];
+    },
+
+    async loadAll() {
+      const [firms, contacts, history, tasks] = await Promise.all([
+        this.getListItems(SCHEMA.firms.listTitle),
+        this.getListItems(SCHEMA.contacts.listTitle),
+        this.getListItems(SCHEMA.history.listTitle),
+        this.getListItems(SCHEMA.tasks.listTitle)
       ]);
 
-      state.firms = results[0] || [];
-      state.contacts = results[1] || [];
-      state.history = results[2] || [];
-      state.tasks = results[3] || [];
+      state.data.firms = firms.map(item => normalizer.firm(item));
+      state.data.contacts = contacts.map(item => normalizer.contact(item));
+      state.data.history = history.map(item => normalizer.history(item));
+      state.data.tasks = tasks.map(item => normalizer.task(item));
 
-      if (!state.selectedFirmId && state.firms.length) {
-        state.selectedFirmId = String(getItemId(state.firms[0]));
-      }
-
-      if (state.selectedFirmId) {
-        const firmExists = !!getFirmById(state.selectedFirmId);
-        if (!firmExists) {
-          state.selectedFirmId = state.firms.length ? String(getItemId(state.firms[0])) : null;
-        }
-      }
-
-      if (state.selectedFirmId) {
-        const contactsForFirm = getContactsForFirm(state.selectedFirmId);
-        const currentStillValid = contactsForFirm.some(function (contact) {
-          return String(getItemId(contact)) === String(state.selectedContactId);
-        });
-
-        if (!currentStillValid) {
-          state.selectedContactId = contactsForFirm.length ? String(getItemId(contactsForFirm[0])) : null;
-        }
-      } else {
-        state.selectedContactId = null;
-      }
-
-      renderAll();
-      setStatus('CRM-Daten geladen.', false);
-    } finally {
-      state.loading = false;
+      dataModel.enrich();
     }
-  }
-
-  function selectFirm(firmId) {
-    state.selectedFirmId = String(firmId);
-
-    const contacts = getContactsForFirm(state.selectedFirmId);
-    const stillValid = contacts.some(function (contact) {
-      return String(getItemId(contact)) === String(state.selectedContactId);
-    });
-
-    if (!stillValid) {
-      state.selectedContactId = contacts.length ? String(getItemId(contacts[0])) : null;
-    }
-
-    renderAll();
-  }
-
-  function selectContact(contactId) {
-    const contact = getContactById(contactId);
-    state.selectedContactId = String(contactId);
-
-    if (contact) {
-      state.selectedFirmId = String(getField(contact, CONFIG.fields.contacts.firmLookupId, state.selectedFirmId || ''));
-    }
-
-    renderAll();
-  }
-
-  async function onCreateContact(event) {
-    event.preventDefault();
-
-    const f = CONFIG.fields.contacts;
-    const firmId = valueOrEmpty(dom.contactFirmId && dom.contactFirmId.value).trim();
-    const titleInput = valueOrEmpty(dom.contactTitle && dom.contactTitle.value).trim();
-    const firstName = valueOrEmpty(dom.contactFirstName && dom.contactFirstName.value).trim();
-    const lastName = valueOrEmpty(dom.contactLastName && dom.contactLastName.value).trim();
-    const title = titleInput || [firstName, lastName].filter(Boolean).join(' ').trim();
-
-    if (!firmId) {
-      throw new Error('Kontakt kann nicht gespeichert werden: Firma fehlt.');
-    }
-
-    if (!title) {
-      throw new Error('Kontakt kann nicht gespeichert werden: Name fehlt.');
-    }
-
-    const payload = {};
-    payload[f.title] = title;
-    payload[f.firstName] = firstName;
-    payload[f.lastName] = lastName;
-    payload[f.email] = valueOrEmpty(dom.contactEmail && dom.contactEmail.value).trim();
-    payload[f.phone] = valueOrEmpty(dom.contactPhone && dom.contactPhone.value).trim();
-    payload[f.mobile] = valueOrEmpty(dom.contactMobile && dom.contactMobile.value).trim();
-    payload[f.role] = valueOrEmpty(dom.contactRole && dom.contactRole.value).trim();
-    payload[f.notes] = valueOrEmpty(dom.contactNotes && dom.contactNotes.value).trim();
-    payload[f.firmLookupId] = Number(firmId);
-
-    await createItem(CONFIG.lists.contacts, payload);
-    await loadAllData();
-    resetContactForm();
-  }
-
-  async function onCreateTask(event) {
-    event.preventDefault();
-
-    const f = CONFIG.fields.tasks;
-    const contactId = valueOrEmpty(dom.taskContactId && dom.taskContactId.value).trim();
-    const title = valueOrEmpty(dom.taskTitle && dom.taskTitle.value).trim();
-    const dueDate = valueOrEmpty(dom.taskDueDate && dom.taskDueDate.value).trim();
-
-    if (!contactId) {
-      throw new Error('Task kann nicht gespeichert werden: Kontakt fehlt.');
-    }
-
-    if (!title) {
-      throw new Error('Task kann nicht gespeichert werden: Titel fehlt.');
-    }
-
-    const payload = {};
-    payload[f.title] = title;
-    payload[f.contactLookupId] = Number(contactId);
-    payload[f.status] = valueOrEmpty(dom.taskStatus && dom.taskStatus.value).trim();
-    payload[f.notes] = valueOrEmpty(dom.taskNotes && dom.taskNotes.value).trim();
-
-    if (dueDate) {
-      payload[f.dueDate] = new Date(dueDate).toISOString();
-    }
-
-    await createItem(CONFIG.lists.tasks, payload);
-    await loadAllData();
-    resetTaskForm();
-  }
-
-  async function onCreateHistory(event) {
-    event.preventDefault();
-
-    const f = CONFIG.fields.history;
-    const contactId = valueOrEmpty(dom.historyContactId && dom.historyContactId.value).trim();
-    const dateValue = valueOrEmpty(dom.historyDate && dom.historyDate.value).trim();
-    const type = valueOrEmpty(dom.historyType && dom.historyType.value).trim();
-    const notes = valueOrEmpty(dom.historyNotes && dom.historyNotes.value).trim();
-
-    if (!contactId) {
-      throw new Error('History kann nicht gespeichert werden: Kontakt fehlt.');
-    }
-
-    if (!dateValue) {
-      throw new Error('History kann nicht gespeichert werden: Datum fehlt.');
-    }
-
-    if (!type) {
-      throw new Error('History kann nicht gespeichert werden: Typ fehlt.');
-    }
-
-    if (!notes) {
-      throw new Error('History kann nicht gespeichert werden: Notizen fehlen.');
-    }
-
-    const payload = {};
-    payload[f.contactLookupId] = Number(contactId);
-    payload[f.date] = new Date(dateValue).toISOString();
-    payload[f.type] = type;
-    payload[f.notes] = notes;
-    payload[f.projectRelated] = !!(dom.historyProjectRelated && dom.historyProjectRelated.checked);
-
-    await createItem(CONFIG.lists.history, payload);
-    await loadAllData();
-    resetHistoryForm();
-  }
-
-  function bindEvents() {
-    if (dom.reloadButton) {
-      dom.reloadButton.addEventListener('click', function () {
-        loadAllData().catch(handleError);
-      });
-    }
-
-    if (dom.firmSearch) {
-      dom.firmSearch.addEventListener('input', function (event) {
-        state.filters.firmSearch = event.target.value || '';
-        renderFirmList();
-      });
-    }
-
-    if (dom.contactSearch) {
-      dom.contactSearch.addEventListener('input', function (event) {
-        state.filters.contactSearch = event.target.value || '';
-        renderContactList();
-      });
-    }
-
-    if (dom.firmList) {
-      dom.firmList.addEventListener('click', function (event) {
-        const button = event.target.closest('[data-firm-id]');
-        if (!button) return;
-        selectFirm(button.getAttribute('data-firm-id'));
-      });
-    }
-
-    if (dom.contactList) {
-      dom.contactList.addEventListener('click', function (event) {
-        const button = event.target.closest('[data-contact-id]');
-        if (!button) return;
-        selectContact(button.getAttribute('data-contact-id'));
-      });
-    }
-
-    if (dom.firmDetail) {
-      dom.firmDetail.addEventListener('click', function (event) {
-        const button = event.target.closest('[data-contact-id]');
-        if (!button) return;
-        selectContact(button.getAttribute('data-contact-id'));
-      });
-    }
-
-    if (dom.contactForm) {
-      dom.contactForm.addEventListener('submit', function (event) {
-        onCreateContact(event).catch(handleError);
-      });
-    }
-
-    if (dom.taskForm) {
-      dom.taskForm.addEventListener('submit', function (event) {
-        onCreateTask(event).catch(handleError);
-      });
-    }
-
-    if (dom.historyForm) {
-      dom.historyForm.addEventListener('submit', function (event) {
-        onCreateHistory(event).catch(handleError);
-      });
-    }
-  }
-
-  function validateConfig() {
-    const missing = [];
-
-    Object.keys(CONFIG.fields).forEach(function (entity) {
-      Object.keys(CONFIG.fields[entity]).forEach(function (key) {
-        if (!CONFIG.fields[entity][key]) {
-          missing.push(entity + '.' + key);
-        }
-      });
-    });
-
-    if (missing.length) {
-      throw new Error('Konfiguration unvollständig: ' + missing.join(', '));
-    }
-  }
-
-  async function init() {
-    if (state.initialized) return;
-    state.initialized = true;
-
-    collectDom();
-    validateConfig();
-    bindEvents();
-    resetHistoryForm();
-
-    try {
-      await resolveAccessToken();
-      setStatus('Login erkannt. Neu laden lädt CRM-Daten.', false);
-    } catch (error) {
-      setStatus('Bitte zuerst anmelden und danach Neu laden.', false);
-      log('Initialer Token nicht gefunden:', error.message);
-    }
-  }
-
-  document.addEventListener('DOMContentLoaded', function () {
-    init().catch(handleError);
-  });
-
-  window.CRM_APP = {
-    init: init,
-    reload: loadAllData,
-    setAccessToken: setAccessToken,
-    selectFirm: selectFirm,
-    selectContact: selectContact,
-    state: state,
-    config: CONFIG
   };
+
+  const normalizer = {
+    getField(item, fieldName) { return item?.fields?.[fieldName]; },
+    itemId(item) { return Number(item?.id) || null; },
+
+    firm(item) {
+      const f = SCHEMA.firms.fields;
+      return {
+        id: this.itemId(item),
+        title: this.getField(item, f.title) || "",
+        adresse: this.getField(item, f.adresse) || "",
+        plz: this.getField(item, f.plz) || "",
+        ort: this.getField(item, f.ort) || "",
+        land: this.getField(item, f.land) || "",
+        hauptnummer: this.getField(item, f.hauptnummer) || "",
+        klassifizierung: this.getField(item, f.klassifizierung) || "",
+        vip: helpers.bool(this.getField(item, f.vip))
+      };
+    },
+
+    contact(item) {
+      const f = SCHEMA.contacts.fields;
+      return {
+        id: this.itemId(item),
+        nachname: this.getField(item, f.nachname) || "",
+        vorname: this.getField(item, f.vorname) || "",
+        anrede: this.getField(item, f.anrede) || "",
+        firmaRaw: this.getField(item, f.firma),
+        firmaLookupId: Number(this.getField(item, f.firmaLookupId)) || null,
+        funktion: this.getField(item, f.funktion) || "",
+        email1: this.getField(item, f.email1) || "",
+        email2: this.getField(item, f.email2) || "",
+        direktwahl: this.getField(item, f.direktwahl) || "",
+        mobile: this.getField(item, f.mobile) || "",
+        rolle: this.getField(item, f.rolle) || "",
+        leadbbz0: this.getField(item, f.leadbbz0) || "",
+        sgf: helpers.normalizeChoiceList(this.getField(item, f.sgf)),
+        geburtstag: this.getField(item, f.geburtstag) || "",
+        kommentar: this.getField(item, f.kommentar) || "",
+        event: helpers.normalizeChoiceList(this.getField(item, f.event)),
+        eventhistory: this.getField(item, f.eventhistory) || "",
+        archiviert: helpers.bool(this.getField(item, f.archiviert))
+      };
+    },
+
+    history(item) {
+      const f = SCHEMA.history.fields;
+      return {
+        id: this.itemId(item),
+        title: this.getField(item, f.title) || "",
+        kontaktRaw: this.getField(item, f.kontakt),
+        kontaktLookupId: Number(this.getField(item, f.kontaktLookupId)) || null,
+        datum: this.getField(item, f.datum) || "",
+        typ: this.getField(item, f.typ) || "",
+        notizen: this.getField(item, f.notizen) || "",
+        projektbezug: this.getField(item, f.projektbezug) || "",
+        leadbbz: this.getField(item, f.leadbbz) || ""
+      };
+    },
+
+    task(item) {
+      const f = SCHEMA.tasks.fields;
+      return {
+        id: this.itemId(item),
+        title: this.getField(item, f.title) || "",
+        kontaktRaw: this.getField(item, f.kontakt),
+        kontaktLookupId: Number(this.getField(item, f.kontaktLookupId)) || null,
+        deadline: this.getField(item, f.deadline) || "",
+        status: this.getField(item, f.status) || "",
+        leadbbz: this.getField(item, f.leadbbz) || ""
+      };
+    }
+  };
+
+  const dataModel = {
+    enrich() {
+      const firmById = new Map(state.data.firms.map(f => [f.id, f]));
+      const contactById = new Map(state.data.contacts.map(c => [c.id, c]));
+
+      const contacts = state.data.contacts.map(contact => {
+        const firm = firmById.get(contact.firmaLookupId) || null;
+        return { ...contact, fullName: helpers.fullName(contact), firmId: firm?.id || contact.firmaLookupId || null, firmTitle: firm?.title || contact.firmaRaw || "", firm };
+      });
+
+      const history = state.data.history.map(entry => {
+        const contact = contactById.get(entry.kontaktLookupId) || null;
+        const firm = contact ? firmById.get(contact.firmaLookupId) || null : null;
+        return { ...entry, contactId: contact?.id || entry.kontaktLookupId || null, contactName: contact ? helpers.fullName(contact) : (entry.kontaktRaw || ""), firmId: firm?.id || null, firmTitle: firm?.title || "", projektbezugBool: helpers.bool(entry.projektbezug) };
+      });
+
+      const tasks = state.data.tasks.map(task => {
+        const contact = contactById.get(task.kontaktLookupId) || null;
+        const firm = contact ? firmById.get(contact.firmaLookupId) || null : null;
+        return { ...task, contactId: contact?.id || task.kontaktLookupId || null, contactName: contact ? helpers.fullName(contact) : (task.kontaktRaw || ""), firmId: firm?.id || null, firmTitle: firm?.title || "", isOpen: helpers.isOpenTask(task.status), isOverdue: helpers.isOverdue(task.deadline) };
+      });
+
+      const firms = state.data.firms.map(firm => {
+        const firmContacts = contacts.filter(c => c.firmId === firm.id);
+        const firmContactIds = new Set(firmContacts.map(c => c.id));
+        const firmTasks = tasks.filter(t => firmContactIds.has(t.contactId));
+        const firmHistory = history.filter(h => firmContactIds.has(h.contactId));
+        const openTasks = firmTasks.filter(t => t.isOpen);
+        const nextDeadlineTask = openTasks.filter(t => helpers.toDate(t.deadline)).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline))[0] || null;
+        const latestHistory = [...firmHistory].sort((a, b) => helpers.compareDateDesc(a.datum, b.datum))[0] || null;
+
+        return {
+          ...firm,
+          contactsCount: firmContacts.length,
+          contacts: firmContacts.sort((a, b) => a.fullName.localeCompare(b.fullName, "de")),
+          tasks: firmTasks.sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline)),
+          history: firmHistory.sort((a, b) => helpers.compareDateDesc(a.datum, b.datum)),
+          openTasksCount: openTasks.length,
+          nextDeadline: nextDeadlineTask?.deadline || "",
+          latestActivity: latestHistory?.datum || ""
+        };
+      });
+
+      const eventMap = new Map();
+      contacts.forEach(contact => {
+        const contactTasks = tasks.filter(t => t.contactId === contact.id);
+        const contactHistory = history.filter(h => h.contactId === contact.id).sort((a, b) => helpers.compareDateDesc(a.datum, b.datum));
+        const latestH = contactHistory[0] || null;
+        const openTasks = contactTasks.filter(t => t.isOpen);
+
+        contact.event.forEach(eventName => {
+          const key = String(eventName || "").trim();
+          if (!key) return;
+          if (!eventMap.has(key)) eventMap.set(key, { name: key, contacts: [], contactCount: 0, openTasksCount: 0 });
+          eventMap.get(key).contacts.push({
+            contactId: contact.id,
+            contactName: contact.fullName || contact.nachname,
+            firmId: contact.firmId,
+            firmTitle: contact.firmTitle,
+            rolle: contact.rolle,
+            funktion: contact.funktion,
+            eventhistory: contact.eventhistory,
+            latestHistoryDate: latestH?.datum || "",
+            latestHistoryType: latestH?.typ || "",
+            latestHistoryText: latestH?.notizen || "",
+            openTasksCount: openTasks.length,
+            email1: contact.email1
+          });
+        });
+      });
+
+      const events = [...eventMap.values()]
+        .map(group => ({ ...group, contactCount: group.contacts.length, openTasksCount: group.contacts.reduce((sum, c) => sum + c.openTasksCount, 0), contacts: group.contacts.sort((a, b) => String(a.contactName).localeCompare(String(b.contactName), "de")) }))
+        .sort((a, b) => a.name.localeCompare(b.name, "de"));
+
+      state.enriched.contacts = contacts.sort((a, b) => a.fullName.localeCompare(b.fullName, "de"));
+      state.enriched.history = history.sort((a, b) => helpers.compareDateDesc(a.datum, b.datum));
+      state.enriched.tasks = tasks.sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
+      state.enriched.firms = firms.sort((a, b) => a.title.localeCompare(b.title, "de"));
+      state.enriched.events = events;
+    },
+
+    getFirmById(id) { return state.enriched.firms.find(f => String(f.id) === String(id)) || null; },
+    getContactById(id) { return state.enriched.contacts.find(c => String(c.id) === String(id)) || null; }
+  };
+
+  const views = {
+    kpiBlock(label, value, meta = "") {
+      return `<div class="bbz-kpi"><div class="bbz-kpi-label">${helpers.escapeHtml(label)}</div><div class="bbz-kpi-value">${helpers.escapeHtml(String(value))}</div>${meta ? `<div class="bbz-kpi-meta">${helpers.escapeHtml(meta)}</div>` : ""}</div>`;
+    },
+
+    miniItem(title, meta) {
+      return `<div class="bbz-mini-item"><div class="bbz-mini-title">${title}</div><div class="bbz-mini-meta">${meta}</div></div>`;
+    },
+
+    renderRoute() {
+      if (state.meta.loading) return ui.loadingBlock();
+
+      let viewHtml = "";
+      switch (state.filters.route) {
+        case "firms": viewHtml = state.selection.firmId ? this.firmDetail() : this.firms(); break;
+        case "contacts": viewHtml = state.selection.contactId ? this.contactDetail() : this.contacts(); break;
+        case "planning": viewHtml = this.planning(); break;
+        case "events": viewHtml = this.events(); break;
+        default: viewHtml = this.firms();
+      }
+
+      // Modal wird ueber dem View gerendert
+      const modalHtml = state.modal ? this.renderContactForm(state.modal.mode, state.modal.payload) : "";
+      return viewHtml + modalHtml;
+    },
+
+    // Kontakt-Formular — FIX 1 (toDateInput) integriert, FIX 2 (Modal-Infrastruktur) verdrahtet
+    renderContactForm(mode, payload = {}) {
+      const itemId = Number(payload.itemId || 0) || null;
+      const contact = mode === "edit" ? dataModel.getContactById(itemId) : null;
+      const title = mode === "edit" ? "Kontakt bearbeiten" : "Neuer Kontakt";
+      const preselectedFirmId = Number(payload.prefillFirmId || contact?.firmId || 0) || "";
+
+      return `
+        <div class="bbz-modal-backdrop show">
+          <div class="bbz-modal">
+            <div class="bbz-modal-header">
+              <div class="bbz-modal-title">${title}</div>
+              <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
+            </div>
+            <form data-modal-form="contact" data-mode="${mode}" data-item-id="${itemId || ""}">
+              <div class="bbz-modal-body">
+                <div class="bbz-form-grid">
+                  <div class="bbz-field"><label>Nachname *</label><input class="bbz-input" name="nachname" required value="${helpers.escapeHtml(contact?.nachname || "")}" /></div>
+                  <div class="bbz-field"><label>Vorname</label><input class="bbz-input" name="vorname" value="${helpers.escapeHtml(contact?.vorname || "")}" /></div>
+                  <div class="bbz-field"><label>Anrede</label><input class="bbz-input" name="anrede" value="${helpers.escapeHtml(contact?.anrede || "")}" /></div>
+                  <div class="bbz-field">
+                    <label>Firma *</label>
+                    <select class="bbz-select" name="firmaLookupId" required>
+                      <option value="">Bitte waehlen</option>
+                      ${state.enriched.firms.map(f => `<option value="${f.id}" ${String(preselectedFirmId) === String(f.id) ? "selected" : ""}>${helpers.escapeHtml(f.title)}</option>`).join("")}
+                    </select>
+                  </div>
+                  <div class="bbz-field"><label>Funktion</label><input class="bbz-input" name="funktion" value="${helpers.escapeHtml(contact?.funktion || "")}" /></div>
+                  <div class="bbz-field"><label>Rolle</label><input class="bbz-input" name="rolle" value="${helpers.escapeHtml(contact?.rolle || "")}" /></div>
+                  <div class="bbz-field"><label>Email 1</label><input class="bbz-input" name="email1" value="${helpers.escapeHtml(contact?.email1 || "")}" /></div>
+                  <div class="bbz-field"><label>Email 2</label><input class="bbz-input" name="email2" value="${helpers.escapeHtml(contact?.email2 || "")}" /></div>
+                  <div class="bbz-field"><label>Direktwahl</label><input class="bbz-input" name="direktwahl" value="${helpers.escapeHtml(contact?.direktwahl || "")}" /></div>
+                  <div class="bbz-field"><label>Mobile</label><input class="bbz-input" name="mobile" value="${helpers.escapeHtml(contact?.mobile || "")}" /></div>
+                  <div class="bbz-field">
+                    <label>Geburtstag</label>
+                    <!-- FIX 1: helpers.toDateInput() gibt YYYY-MM-DD zurueck -->
+                    <input type="date" class="bbz-input" name="geburtstag" value="${helpers.escapeHtml(helpers.toDateInput(contact?.geburtstag || ""))}" />
+                  </div>
+                  <div class="bbz-field"><label>Leadbbz0</label><input class="bbz-input" value="${helpers.escapeHtml(contact?.leadbbz0 || "")}" disabled placeholder="Lookup-Feld, vorlaeufig nur Anzeige" /></div>
+                  <div class="bbz-field"><label>SGF (Komma getrennt)</label><input class="bbz-input" name="sgf" value="${helpers.escapeHtml((contact?.sgf || []).join(", "))}" /></div>
+                  <div class="bbz-field"><label>Event (Komma getrennt)</label><input class="bbz-input" name="event" value="${helpers.escapeHtml((contact?.event || []).join(", "))}" /></div>
+                  <div class="bbz-field bbz-span-2"><label>Eventhistory</label><textarea class="bbz-textarea" name="eventhistory">${helpers.escapeHtml(contact?.eventhistory || "")}</textarea></div>
+                  <div class="bbz-field bbz-span-2"><label>Kommentar</label><textarea class="bbz-textarea" name="kommentar">${helpers.escapeHtml(contact?.kommentar || "")}</textarea></div>
+                  <label class="bbz-checkbox"><input type="checkbox" name="archiviert" ${contact?.archiviert ? "checked" : ""} /> Archiviert</label>
+                </div>
+              </div>
+              <div class="bbz-modal-footer">
+                <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Abbrechen</button>
+                <button type="submit" class="bbz-button bbz-button-primary" data-modal-submit>Speichern</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+    },
+
+    firms() {
+      const filters = state.filters.firms;
+      const rows = state.enriched.firms.filter(firm => {
+        const search = filters.search.trim().toLowerCase();
+        const searchMatch = !search || [firm.title, firm.ort, firm.klassifizierung, firm.hauptnummer, firm.adresse, firm.land, ...firm.contacts.map(c => c.fullName)].some(v => helpers.textIncludes(v, search));
+        const klassMatch = !filters.klassifizierung || String(firm.klassifizierung || "").toLowerCase() === filters.klassifizierung.toLowerCase();
+        const vipMatch = !filters.vip || (filters.vip === "yes" && firm.vip) || (filters.vip === "no" && !firm.vip);
+        return searchMatch && klassMatch && vipMatch;
+      });
+
+      const aCount = state.enriched.firms.filter(f => String(f.klassifizierung).toUpperCase().includes("A")).length;
+      const bCount = state.enriched.firms.filter(f => String(f.klassifizierung).toUpperCase().includes("B")).length;
+      const cCount = state.enriched.firms.filter(f => String(f.klassifizierung).toUpperCase().includes("C")).length;
+      const overdueTasks = state.enriched.tasks.filter(t => t.isOpen && t.isOverdue).length;
+      const urgentFirms = [...state.enriched.firms].filter(f => f.openTasksCount > 0).sort((a, b) => helpers.compareDateAsc(a.nextDeadline, b.nextDeadline)).slice(0, 6);
+      const latestFirms = [...state.enriched.firms].filter(f => f.latestActivity).sort((a, b) => helpers.compareDateDesc(a.latestActivity, b.latestActivity)).slice(0, 6);
+
+      return `
+        <div>
+          <div class="bbz-kpis">
+            ${this.kpiBlock("Firmen", state.enriched.firms.length, "gesamt")}
+            ${this.kpiBlock("A / B / C", `${aCount} / ${bCount} / ${cCount}`, "Segmente")}
+            ${this.kpiBlock("Kontakte", state.enriched.contacts.length, "Ansprechpartner")}
+            ${this.kpiBlock("Ueberfaellige Tasks", overdueTasks, "sofort pruefen")}
+          </div>
+          <div class="bbz-grid bbz-grid-70-30">
+            <section class="bbz-section">
+              <div class="bbz-section-header"><div><div class="bbz-section-title">Firmen-Cockpit</div><div class="bbz-section-subtitle">Hauptarbeitsliste mit Fokus auf Segment, Tasks und Fristen</div></div></div>
+              <div class="bbz-section-body">
+                <div class="bbz-filters-3">
+                  <input class="bbz-input" data-filter="firms-search" type="text" placeholder="Suche nach Firma, Ort, Ansprechpartner ..." value="${helpers.escapeHtml(filters.search)}" />
+                  <select class="bbz-select" data-filter="firms-klassifizierung">
+                    <option value="">Alle Klassifizierungen</option>
+                    <option value="A-Kunde" ${filters.klassifizierung === "A-Kunde" ? "selected" : ""}>A-Kunde</option>
+                    <option value="B-Kunde" ${filters.klassifizierung === "B-Kunde" ? "selected" : ""}>B-Kunde</option>
+                    <option value="C-Kunde" ${filters.klassifizierung === "C-Kunde" ? "selected" : ""}>C-Kunde</option>
+                    <option value="A" ${filters.klassifizierung === "A" ? "selected" : ""}>A</option>
+                    <option value="B" ${filters.klassifizierung === "B" ? "selected" : ""}>B</option>
+                    <option value="C" ${filters.klassifizierung === "C" ? "selected" : ""}>C</option>
+                  </select>
+                  <select class="bbz-select" data-filter="firms-vip">
+                    <option value="">VIP egal</option>
+                    <option value="yes" ${filters.vip === "yes" ? "selected" : ""}>Nur VIP</option>
+                    <option value="no" ${filters.vip === "no" ? "selected" : ""}>Nur nicht VIP</option>
+                  </select>
+                </div>
+                <div class="bbz-table-wrap">
+                  <table class="bbz-table">
+                    <thead><tr><th>Firma</th><th>Ort</th><th>Klassifizierung</th><th>VIP</th><th>Kontakte</th><th>Offene Tasks</th><th>Naechste Deadline</th></tr></thead>
+                    <tbody>
+                      ${rows.length ? rows.map(firm => `
+                        <tr>
+                          <td><a class="bbz-link" data-action="open-firm" data-id="${firm.id}">${helpers.escapeHtml(firm.title)}</a><div class="bbz-subtext">${helpers.escapeHtml(firm.hauptnummer || "—")}</div></td>
+                          <td>${helpers.escapeHtml(helpers.joinNonEmpty([firm.plz, firm.ort], " ")) || '<span class="bbz-muted">—</span>'}</td>
+                          <td>${firm.klassifizierung ? `<span class="${helpers.firmBadgeClass(firm.klassifizierung)}">${helpers.escapeHtml(firm.klassifizierung)}</span>` : '<span class="bbz-muted">—</span>'}</td>
+                          <td>${firm.vip ? '<span class="bbz-pill bbz-pill-vip">VIP</span>' : '<span class="bbz-muted">—</span>'}</td>
+                          <td>${firm.contactsCount}</td>
+                          <td>${firm.openTasksCount}</td>
+                          <td class="${firm.nextDeadline && helpers.isOverdue(firm.nextDeadline) ? "bbz-danger" : ""}">${helpers.formatDate(firm.nextDeadline) || '<span class="bbz-muted">—</span>'}</td>
+                        </tr>`).join("") : `<tr><td colspan="7">${ui.emptyBlock("Keine Firmen fuer die aktuelle Filterung gefunden.")}</td></tr>`}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+            <div class="bbz-cockpit-stack">
+              <section class="bbz-section">
+                <div class="bbz-section-header"><div><div class="bbz-section-title">Dringend</div><div class="bbz-section-subtitle">Firmen mit offenen Tasks</div></div></div>
+                <div class="bbz-section-body">${urgentFirms.length ? `<div class="bbz-mini-list">${urgentFirms.map(f => this.miniItem(`<a class="bbz-link" data-action="open-firm" data-id="${f.id}">${helpers.escapeHtml(f.title)}</a>`, `${f.openTasksCount} offene Tasks · naechste Deadline ${helpers.formatDate(f.nextDeadline) || "—"}`)).join("")}</div>` : ui.emptyBlock("Keine dringenden Firmen.")}</div>
+              </section>
+              <section class="bbz-section">
+                <div class="bbz-section-header"><div><div class="bbz-section-title">Zuletzt aktiv</div><div class="bbz-section-subtitle">Firmen mit juengster History</div></div></div>
+                <div class="bbz-section-body">${latestFirms.length ? `<div class="bbz-mini-list">${latestFirms.map(f => this.miniItem(`<a class="bbz-link" data-action="open-firm" data-id="${f.id}">${helpers.escapeHtml(f.title)}</a>`, `Letzte Aktivitaet ${helpers.formatDateTime(f.latestActivity) || "—"}`)).join("")}</div>` : ui.emptyBlock("Noch keine Aktivitaeten vorhanden.")}</div>
+              </section>
+            </div>
+          </div>
+        </div>
+      `;
+    },
+
+    firmDetail() {
+      const firm = dataModel.getFirmById(state.selection.firmId);
+      if (!firm) return ui.emptyBlock("Die ausgewaehlte Firma wurde nicht gefunden.");
+      const recentHistory = [...firm.history].slice(0, 20);
+
+      return `
+        <div>
+          <div class="bbz-detail-header">
+            <div>
+              <button class="bbz-button bbz-button-secondary mb-3" data-action="back-to-firms">Zurueck zur Firmenliste</button>
+              <div class="bbz-detail-title">${helpers.escapeHtml(firm.title)}</div>
+              <div class="bbz-detail-subtitle">${helpers.escapeHtml(helpers.joinNonEmpty([firm.adresse, helpers.joinNonEmpty([firm.plz, firm.ort], " "), firm.land], " · ")) || "Keine erweiterten Stammdaten"}</div>
+              <div class="flex items-center gap-2 flex-wrap mt-3">
+                ${firm.klassifizierung ? `<span class="${helpers.firmBadgeClass(firm.klassifizierung)}">${helpers.escapeHtml(firm.klassifizierung)}</span>` : ""}
+                ${firm.vip ? `<span class="bbz-pill bbz-pill-vip">VIP</span>` : ""}
+              </div>
+            </div>
+            <button class="bbz-button bbz-button-primary" data-action="open-contact-form" data-firm-id="${firm.id}">+ Kontakt</button>
+          </div>
+          <div class="bbz-kpis">
+            ${this.kpiBlock("Kontakte", firm.contactsCount)}
+            ${this.kpiBlock("Offene Tasks", firm.openTasksCount)}
+            ${this.kpiBlock("Naechste Deadline", helpers.formatDate(firm.nextDeadline) || "—")}
+            ${this.kpiBlock("History", firm.history.length)}
+          </div>
+          <div class="bbz-grid bbz-grid-3">
+            <section class="bbz-section">
+              <div class="bbz-section-header"><div class="bbz-section-title">Uebersicht</div></div>
+              <div class="bbz-section-body"><div class="bbz-meta-grid">
+                ${ui.kv("Firma", helpers.escapeHtml(firm.title))}
+                ${ui.kv("Klassifizierung", firm.klassifizierung ? `<span class="${helpers.firmBadgeClass(firm.klassifizierung)}">${helpers.escapeHtml(firm.klassifizierung)}</span>` : '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Adresse", helpers.escapeHtml(firm.adresse) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("PLZ / Ort", helpers.escapeHtml(helpers.joinNonEmpty([firm.plz, firm.ort], " ")) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Land", helpers.escapeHtml(firm.land) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Hauptnummer", helpers.escapeHtml(firm.hauptnummer) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("VIP", firm.vip ? '<span class="bbz-pill bbz-pill-vip">Ja</span>' : '<span class="bbz-muted">Nein</span>')}
+              </div></div>
+            </section>
+            <section class="bbz-section" style="grid-column: span 2;">
+              <div class="bbz-section-header"><div><div class="bbz-section-title">Kontakte</div><div class="bbz-section-subtitle">Alle Ansprechpartner dieser Firma</div></div></div>
+              <div class="bbz-section-body">
+                <div class="bbz-table-wrap">
+                  <table class="bbz-table">
+                    <thead><tr><th>Name</th><th>Funktion</th><th>Rolle</th><th>E-Mail</th><th>Telefon</th><th>Archiviert</th></tr></thead>
+                    <tbody>
+                      ${firm.contacts.length ? firm.contacts.map(c => `
+                        <tr>
+                          <td><a class="bbz-link" data-action="open-contact" data-id="${c.id}">${helpers.escapeHtml(c.fullName || c.nachname)}</a></td>
+                          <td>${helpers.escapeHtml(c.funktion) || '<span class="bbz-muted">—</span>'}</td>
+                          <td>${helpers.escapeHtml(c.rolle) || '<span class="bbz-muted">—</span>'}</td>
+                          <td>${c.email1 ? `<a class="bbz-link" href="mailto:${helpers.escapeHtml(c.email1)}">${helpers.escapeHtml(c.email1)}</a>` : '<span class="bbz-muted">—</span>'}</td>
+                          <td>${helpers.escapeHtml(helpers.joinNonEmpty([c.direktwahl, c.mobile], " / ")) || '<span class="bbz-muted">—</span>'}</td>
+                          <td>${c.archiviert ? '<span class="bbz-danger">Ja</span>' : '<span class="bbz-muted">Nein</span>'}</td>
+                        </tr>`).join("") : `<tr><td colspan="6">${ui.emptyBlock("Keine Kontakte vorhanden.")}</td></tr>`}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+          </div>
+          <div class="bbz-grid bbz-grid-2 mt-4">
+            <section class="bbz-section">
+              <div class="bbz-section-header"><div><div class="bbz-section-title">Aktivitaeten</div><div class="bbz-section-subtitle">Aggregierte History ueber alle Kontakte</div></div></div>
+              <div class="bbz-section-body">
+                ${recentHistory.length ? `<div class="bbz-timeline">${recentHistory.map(h => `
+                  <div class="bbz-timeline-item">
+                    <div class="bbz-timeline-date">${helpers.formatDateTime(h.datum) || "—"}<br><span class="bbz-muted">${helpers.escapeHtml(h.contactName || "")}</span></div>
+                    <div><div class="bbz-timeline-title">${helpers.escapeHtml(h.typ || h.title || "Eintrag")} ${h.projektbezugBool ? '<span class="bbz-chip">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}</div><div class="bbz-timeline-text">${helpers.escapeHtml(h.notizen || "—")}</div></div>
+                  </div>`).join("")}</div>` : ui.emptyBlock("Keine History-Eintraege vorhanden.")}
+              </div>
+            </section>
+            <section class="bbz-section">
+              <div class="bbz-section-header"><div><div class="bbz-section-title">Aufgaben</div><div class="bbz-section-subtitle">Alle Tasks der Firma</div></div></div>
+              <div class="bbz-section-body">
+                <div class="bbz-table-wrap">
+                  <table class="bbz-table">
+                    <thead><tr><th>Titel</th><th>Deadline</th><th>Status</th><th>Kontaktperson</th></tr></thead>
+                    <tbody>
+                      ${firm.tasks.length ? firm.tasks.map(t => `
+                        <tr>
+                          <td>${helpers.escapeHtml(t.title) || '<span class="bbz-muted">—</span>'}</td>
+                          <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
+                          <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.escapeHtml(t.status) || '<span class="bbz-muted">—</span>'}</td>
+                          <td>${t.contactId ? `<a class="bbz-link" data-action="open-contact" data-id="${t.contactId}">${helpers.escapeHtml(t.contactName || "Kontakt")}</a>` : helpers.escapeHtml(t.contactName || "—")}</td>
+                        </tr>`).join("") : `<tr><td colspan="4">${ui.emptyBlock("Keine Aufgaben vorhanden.")}</td></tr>`}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      `;
+    },
+
+    contacts() {
+      const filters = state.filters.contacts;
+      const rows = state.enriched.contacts.filter(c => {
+        const search = filters.search.trim().toLowerCase();
+        const searchMatch = !search || [c.fullName, c.firmTitle, c.funktion, c.rolle, c.email1, c.email2, c.direktwahl, c.mobile, c.kommentar, ...c.sgf, ...c.event].some(v => helpers.textIncludes(v, search));
+        return searchMatch && (!filters.archiviertAusblenden || !c.archiviert);
+      });
+
+      return `
+        <section class="bbz-section">
+          <div class="bbz-section-header">
+            <div><div class="bbz-section-title">Kontakte</div><div class="bbz-section-subtitle">Operative Ansprechpartner ueber alle Firmen</div></div>
+            <button class="bbz-button bbz-button-primary" data-action="open-contact-form">+ Kontakt</button>
+          </div>
+          <div class="bbz-section-body">
+            <div class="bbz-filters-3">
+              <input class="bbz-input" data-filter="contacts-search" type="text" placeholder="Suche nach Name, Firma, Funktion, Rolle, E-Mail ..." value="${helpers.escapeHtml(filters.search)}" />
+              <label class="bbz-checkbox"><input type="checkbox" data-filter="contacts-archiviert" ${filters.archiviertAusblenden ? "checked" : ""} /> Archivierte ausblenden</label>
+              <div></div>
+            </div>
+            <div class="bbz-table-wrap">
+              <table class="bbz-table">
+                <thead><tr><th>Name</th><th>Firma</th><th>Funktion</th><th>Rolle</th><th>E-Mail</th><th>Telefon</th><th>Archiviert</th></tr></thead>
+                <tbody>
+                  ${rows.length ? rows.map(c => `
+                    <tr>
+                      <td><a class="bbz-link" data-action="open-contact" data-id="${c.id}">${helpers.escapeHtml(c.fullName || c.nachname)}</a></td>
+                      <td>${c.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${c.firmId}">${helpers.escapeHtml(c.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
+                      <td>${helpers.escapeHtml(c.funktion) || '<span class="bbz-muted">—</span>'}</td>
+                      <td>${helpers.escapeHtml(c.rolle) || '<span class="bbz-muted">—</span>'}</td>
+                      <td>${c.email1 ? `<a class="bbz-link" href="mailto:${helpers.escapeHtml(c.email1)}">${helpers.escapeHtml(c.email1)}</a>` : '<span class="bbz-muted">—</span>'}</td>
+                      <td>${helpers.escapeHtml(helpers.joinNonEmpty([c.direktwahl, c.mobile], " / ")) || '<span class="bbz-muted">—</span>'}</td>
+                      <td>${c.archiviert ? '<span class="bbz-danger">Ja</span>' : '<span class="bbz-muted">Nein</span>'}</td>
+                    </tr>`).join("") : `<tr><td colspan="7">${ui.emptyBlock("Keine Kontakte fuer die aktuelle Filterung gefunden.")}</td></tr>`}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      `;
+    },
+
+    contactDetail() {
+      const contact = dataModel.getContactById(state.selection.contactId);
+      if (!contact) return ui.emptyBlock("Der ausgewaehlte Kontakt wurde nicht gefunden.");
+      const contactHistory = state.enriched.history.filter(h => h.contactId === contact.id).sort((a, b) => helpers.compareDateDesc(a.datum, b.datum));
+      const contactTasks = state.enriched.tasks.filter(t => t.contactId === contact.id).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
+
+      return `
+        <div>
+          <div class="bbz-detail-header">
+            <div>
+              <button class="bbz-button bbz-button-secondary mb-3" data-action="back-to-contacts">Zurueck zur Kontaktliste</button>
+              <div class="bbz-detail-title">${helpers.escapeHtml(contact.fullName || contact.nachname)}</div>
+              <div class="bbz-detail-subtitle">
+                ${contact.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${contact.firmId}">${helpers.escapeHtml(contact.firmTitle || "Firma")}</a>` : "Keine Firma verknuepft"}
+                ${contact.funktion ? ` · ${helpers.escapeHtml(contact.funktion)}` : ""}
+                ${contact.rolle ? ` · ${helpers.escapeHtml(contact.rolle)}` : ""}
+              </div>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              ${contact.email1 ? `<a class="bbz-button bbz-button-secondary" href="mailto:${helpers.escapeHtml(contact.email1)}">Mail senden</a>` : ""}
+              <button class="bbz-button bbz-button-primary" data-action="open-contact-form" data-item-id="${contact.id}">Bearbeiten</button>
+            </div>
+          </div>
+          <div class="bbz-kpis">
+            ${this.kpiBlock("Tasks", contactTasks.length)}
+            ${this.kpiBlock("Offene Tasks", contactTasks.filter(t => t.isOpen).length)}
+            ${this.kpiBlock("History", contactHistory.length)}
+            ${this.kpiBlock("Letzte Aktivitaet", helpers.formatDate(contactHistory[0]?.datum) || "—")}
+          </div>
+          <div class="bbz-grid bbz-grid-3">
+            <section class="bbz-section">
+              <div class="bbz-section-header"><div class="bbz-section-title">Stammdaten</div></div>
+              <div class="bbz-section-body"><div class="bbz-meta-grid">
+                ${ui.kv("Anrede", helpers.escapeHtml(contact.anrede) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Vorname", helpers.escapeHtml(contact.vorname) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Nachname", helpers.escapeHtml(contact.nachname) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Firma", contact.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${contact.firmId}">${helpers.escapeHtml(contact.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Funktion", helpers.escapeHtml(contact.funktion) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Rolle", helpers.escapeHtml(contact.rolle) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Email 1", contact.email1 ? `<a class="bbz-link" href="mailto:${helpers.escapeHtml(contact.email1)}">${helpers.escapeHtml(contact.email1)}</a>` : '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Email 2", contact.email2 ? `<a class="bbz-link" href="mailto:${helpers.escapeHtml(contact.email2)}">${helpers.escapeHtml(contact.email2)}</a>` : '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Direktwahl", helpers.escapeHtml(contact.direktwahl) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Mobile", helpers.escapeHtml(contact.mobile) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Geburtstag", helpers.formatDate(contact.geburtstag) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Archiviert", contact.archiviert ? '<span class="bbz-danger">Ja</span>' : '<span class="bbz-muted">Nein</span>')}
+              </div></div>
+            </section>
+            <section class="bbz-section">
+              <div class="bbz-section-header"><div class="bbz-section-title">CRM-Kontext</div></div>
+              <div class="bbz-section-body"><div class="bbz-meta-grid">
+                ${ui.kv("Leadbbz0", helpers.escapeHtml(contact.leadbbz0) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("SGF", helpers.multiChoiceHtml(contact.sgf))}
+                ${ui.kv("Event", helpers.multiChoiceHtml(contact.event))}
+                ${ui.kv("Eventhistory", helpers.escapeHtml(contact.eventhistory) || '<span class="bbz-muted">—</span>')}
+                ${ui.kv("Kommentar", helpers.escapeHtml(contact.kommentar) || '<span class="bbz-muted">—</span>')}
+              </div></div>
+            </section>
+            <section class="bbz-section">
+              <div class="bbz-section-header"><div class="bbz-section-title">Uebersicht</div></div>
+              <div class="bbz-section-body"><div class="bbz-meta-grid">
+                ${ui.kv("Tasks", String(contactTasks.length))}
+                ${ui.kv("Offene Tasks", String(contactTasks.filter(t => t.isOpen).length))}
+                ${ui.kv("History", String(contactHistory.length))}
+                ${ui.kv("Letzte Aktivitaet", helpers.formatDateTime(contactHistory[0]?.datum) || '<span class="bbz-muted">—</span>')}
+              </div></div>
+            </section>
+          </div>
+          <div class="bbz-grid bbz-grid-2 mt-4">
+            <section class="bbz-section">
+              <div class="bbz-section-header"><div><div class="bbz-section-title">Historie</div><div class="bbz-section-subtitle">Timeline aus CRMHistory</div></div></div>
+              <div class="bbz-section-body">
+                ${contactHistory.length ? `<div class="bbz-timeline">${contactHistory.map(h => `
+                  <div class="bbz-timeline-item">
+                    <div class="bbz-timeline-date">${helpers.formatDateTime(h.datum) || "—"}</div>
+                    <div><div class="bbz-timeline-title">${helpers.escapeHtml(h.typ || h.title || "Eintrag")} ${h.projektbezugBool ? '<span class="bbz-chip">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}</div><div class="bbz-timeline-text">${helpers.escapeHtml(h.notizen || "—")}</div></div>
+                  </div>`).join("")}</div>` : ui.emptyBlock("Keine Historie vorhanden.")}
+              </div>
+            </section>
+            <section class="bbz-section">
+              <div class="bbz-section-header"><div><div class="bbz-section-title">Tasks</div><div class="bbz-section-subtitle">Aufgaben dieser Person</div></div></div>
+              <div class="bbz-section-body">
+                <div class="bbz-table-wrap">
+                  <table class="bbz-table">
+                    <thead><tr><th>Titel</th><th>Deadline</th><th>Status</th><th>Firma</th></tr></thead>
+                    <tbody>
+                      ${contactTasks.length ? contactTasks.map(t => `
+                        <tr>
+                          <td>${helpers.escapeHtml(t.title) || '<span class="bbz-muted">—</span>'}</td>
+                          <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
+                          <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.escapeHtml(t.status) || '<span class="bbz-muted">—</span>'}</td>
+                          <td>${t.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${t.firmId}">${helpers.escapeHtml(t.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
+                        </tr>`).join("") : `<tr><td colspan="4">${ui.emptyBlock("Keine Tasks vorhanden.")}</td></tr>`}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      `;
+    },
+
+    planning() {
+      const filters = state.filters.planning;
+      const rows = state.enriched.tasks.filter(t => {
+        const search = filters.search.trim().toLowerCase();
+        const searchMatch = !search || [t.title, t.status, t.contactName, t.firmTitle, t.leadbbz].some(v => helpers.textIncludes(v, search));
+        return searchMatch && (!filters.onlyOpen || t.isOpen) && (!filters.onlyOverdue || t.isOverdue);
+      });
+
+      const openTasks = state.enriched.tasks.filter(t => t.isOpen).length;
+      const overdueTasks = state.enriched.tasks.filter(t => t.isOpen && t.isOverdue).length;
+      const nextWeekTasks = state.enriched.tasks.filter(t => {
+        if (!t.isOpen) return false;
+        const d = helpers.toDate(t.deadline);
+        if (!d) return false;
+        const today = helpers.todayStart();
+        const in7 = new Date(today);
+        in7.setDate(in7.getDate() + 7);
+        return d >= today && d <= in7;
+      }).length;
+
+      return `
+        <div>
+          <div class="bbz-kpis">
+            ${this.kpiBlock("Tasks gesamt", state.enriched.tasks.length)}
+            ${this.kpiBlock("Offen", openTasks)}
+            ${this.kpiBlock("Ueberfaellig", overdueTasks)}
+            ${this.kpiBlock("Naechste 7 Tage", nextWeekTasks)}
+          </div>
+          <section class="bbz-section">
+            <div class="bbz-section-header"><div><div class="bbz-section-title">Planung</div><div class="bbz-section-subtitle">Aufgabenuebersicht mit Fokus auf offen und ueberfaellig</div></div></div>
+            <div class="bbz-section-body">
+              <div class="bbz-filters-3">
+                <input class="bbz-input" data-filter="planning-search" type="text" placeholder="Suche nach Titel, Firma, Kontakt, Status ..." value="${helpers.escapeHtml(filters.search)}" />
+                <label class="bbz-checkbox"><input type="checkbox" data-filter="planning-open" ${filters.onlyOpen ? "checked" : ""} /> Nur offene Tasks</label>
+                <label class="bbz-checkbox"><input type="checkbox" data-filter="planning-overdue" ${filters.onlyOverdue ? "checked" : ""} /> Nur ueberfaellige Tasks</label>
+              </div>
+              <div class="bbz-table-wrap">
+                <table class="bbz-table">
+                  <thead><tr><th>Titel</th><th>Deadline</th><th>Status</th><th>Kontaktperson</th><th>Firma</th></tr></thead>
+                  <tbody>
+                    ${rows.length ? rows.map(t => `
+                      <tr>
+                        <td>${helpers.escapeHtml(t.title) || '<span class="bbz-muted">—</span>'}</td>
+                        <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
+                        <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.escapeHtml(t.status) || '<span class="bbz-muted">—</span>'}</td>
+                        <td>${t.contactId ? `<a class="bbz-link" data-action="open-contact" data-id="${t.contactId}">${helpers.escapeHtml(t.contactName || "Kontakt")}</a>` : helpers.escapeHtml(t.contactName || "—")}</td>
+                        <td>${t.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${t.firmId}">${helpers.escapeHtml(t.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
+                      </tr>`).join("") : `<tr><td colspan="5">${ui.emptyBlock("Keine Tasks fuer die aktuelle Filterung gefunden.")}</td></tr>`}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </div>
+      `;
+    },
+
+    events() {
+      const filters = state.filters.events;
+      const groups = state.enriched.events.map(group => ({
+        ...group,
+        contacts: group.contacts.filter(item => {
+          const search = filters.search.trim().toLowerCase();
+          const searchMatch = !search || [group.name, item.contactName, item.firmTitle, item.rolle, item.funktion, item.eventhistory, item.latestHistoryText].some(v => helpers.textIncludes(v, search));
+          return searchMatch && (!filters.onlyWithOpenTasks || item.openTasksCount > 0);
+        })
+      })).filter(g => g.contacts.length > 0);
+
+      const totalGroups = state.enriched.events.length;
+      const totalContacts = state.enriched.events.reduce((sum, e) => sum + e.contactCount, 0);
+      const totalOpenTasks = state.enriched.events.reduce((sum, e) => sum + e.openTasksCount, 0);
+
+      return `
+        <div>
+          <div class="bbz-kpis">
+            ${this.kpiBlock("Event-Kategorien", totalGroups)}
+            ${this.kpiBlock("Kontakt-Zuordnungen", totalContacts)}
+            ${this.kpiBlock("Offene Tasks", totalOpenTasks)}
+            ${this.kpiBlock("Sichtbare Kategorien", groups.length)}
+          </div>
+          <section class="bbz-section">
+            <div class="bbz-section-header"><div><div class="bbz-section-title">Events</div><div class="bbz-section-subtitle">Separate Event-Sicht nach Kategorie</div></div></div>
+            <div class="bbz-section-body">
+              <div class="bbz-filters-3">
+                <input class="bbz-input" data-filter="events-search" type="text" placeholder="Suche nach Kategorie, Kontakt, Firma, Rolle ..." value="${helpers.escapeHtml(filters.search)}" />
+                <label class="bbz-checkbox"><input type="checkbox" data-filter="events-open" ${filters.onlyWithOpenTasks ? "checked" : ""} /> Nur mit offenen Tasks</label>
+                <div></div>
+              </div>
+              ${groups.length ? `<div class="bbz-cockpit-stack">${groups.map(group => `
+                <section class="bbz-section" style="box-shadow:none;">
+                  <div class="bbz-section-header"><div><div class="bbz-section-title">${helpers.escapeHtml(group.name)}</div><div class="bbz-section-subtitle">${group.contacts.length} Kontakte · ${group.contacts.reduce((sum, c) => sum + c.openTasksCount, 0)} offene Tasks</div></div></div>
+                  <div class="bbz-section-body">
+                    <div class="bbz-table-wrap">
+                      <table class="bbz-table">
+                        <thead><tr><th>Kontakt</th><th>Firma</th><th>Funktion / Rolle</th><th>Eventhistory</th><th>Letzte Aktivitaet</th><th>Offene Tasks</th></tr></thead>
+                        <tbody>
+                          ${group.contacts.map(item => `
+                            <tr>
+                              <td><a class="bbz-link" data-action="open-contact" data-id="${item.contactId}">${helpers.escapeHtml(item.contactName)}</a><div class="bbz-subtext">${item.email1 ? helpers.escapeHtml(item.email1) : "—"}</div></td>
+                              <td>${item.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${item.firmId}">${helpers.escapeHtml(item.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
+                              <td>${helpers.escapeHtml(helpers.joinNonEmpty([item.funktion, item.rolle], " · ")) || '<span class="bbz-muted">—</span>'}</td>
+                              <td>${helpers.escapeHtml(item.eventhistory) || '<span class="bbz-muted">—</span>'}</td>
+                              <td>${helpers.formatDateTime(item.latestHistoryDate) || '<span class="bbz-muted">—</span>'}${item.latestHistoryType ? `<div class="bbz-subtext">${helpers.escapeHtml(item.latestHistoryType)}</div>` : ""}</td>
+                              <td class="${item.openTasksCount > 0 ? "bbz-warning" : "bbz-muted"}">${item.openTasksCount}</td>
+                            </tr>`).join("")}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </section>`).join("")}</div>` : ui.emptyBlock("Keine Event-Daten fuer die aktuelle Filterung gefunden.")}
+            </div>
+          </section>
+        </div>
+      `;
+    }
+  };
+
+  const controller = {
+    async init() {
+      ui.init();
+      ui.renderShell();
+      ui.setMessage("");
+      ui.renderView(ui.loadingBlock("Authentifizierung wird vorbereitet ..."));
+
+      try {
+        ui.setLoading(true);
+        await api.initAuth();
+
+        if (state.auth.isAuthenticated) {
+          await api.acquireToken();
+          await api.loadAll();
+          ui.setMessage("Anmeldung erkannt. Daten wurden geladen.", "success");
+        } else {
+          ui.setMessage("Bitte anmelden, um die SharePoint-Listen ueber Microsoft Graph zu laden.", "warning");
+        }
+      } catch (error) {
+        console.error(error);
+        state.meta.lastError = error;
+        ui.setMessage(`Fehler beim Initialisieren: ${error.message}`, "error");
+      } finally {
+        ui.setLoading(false);
+        this.render();
+      }
+    },
+
+    async handleLogin() {
+      try {
+        if (!state.auth.isReady) { ui.setMessage("Authentifizierung ist noch nicht bereit. Bitte Seite neu laden.", "warning"); return; }
+        ui.setLoading(true);
+        ui.setMessage("");
+        await api.login();
+        await api.loadAll();
+        ui.setMessage("Anmeldung erfolgreich. Daten wurden geladen.", "success");
+      } catch (error) {
+        console.error(error);
+        ui.setMessage(`Anmeldung fehlgeschlagen: ${error.message}`, "error");
+      } finally {
+        ui.setLoading(false);
+        this.render();
+      }
+    },
+
+    async handleRefresh() {
+      if (!state.auth.isReady) { ui.setMessage("Authentifizierung ist noch nicht bereit.", "warning"); return; }
+      if (!state.auth.isAuthenticated) { ui.setMessage("Bitte zuerst anmelden.", "warning"); return; }
+      try {
+        ui.setLoading(true);
+        ui.setMessage("");
+        await api.acquireToken();
+        await api.loadAll();
+        ui.setMessage("Daten erfolgreich neu geladen.", "success");
+      } catch (error) {
+        console.error(error);
+        ui.setMessage(`Fehler beim Laden: ${error.message}`, "error");
+      } finally {
+        ui.setLoading(false);
+        this.render();
+      }
+    },
+
+    // FIX 2d: Modal oeffnen
+    openContactForm(itemId = null, prefillFirmId = null) {
+      state.modal = {
+        mode: itemId ? "edit" : "create",
+        payload: { itemId, prefillFirmId }
+      };
+      this.render();
+    },
+
+    // FIX 2e: Modal schliessen
+    closeModal() {
+      state.modal = null;
+      this.render();
+    },
+
+    // FIX 2f: Form Submit — Platzhalter, Write-Layer folgt in naechster Etappe
+    async handleModalSubmit(form, mode, itemId) {
+      const data = Object.fromEntries(new FormData(form).entries());
+      // Checkbox ist nicht in FormData wenn unchecked — explizit setzen
+      data.archiviert = form.querySelector("[name='archiviert']")?.checked ?? false;
+
+      console.log("Modal Submit:", { mode, itemId, data });
+      ui.setMessage(`[Write-Layer folgt] Modus: ${mode} · Felder: ${Object.keys(data).join(", ")}`, "warning");
+      this.closeModal();
+    },
+
+    navigate(route) {
+      state.filters.route = route;
+      if (route !== "firms") state.selection.firmId = null;
+      if (route !== "contacts") state.selection.contactId = null;
+      state.modal = null;
+      this.render();
+    },
+
+    openFirm(id) {
+      state.selection.firmId = id;
+      state.selection.contactId = null;
+      state.filters.route = "firms";
+      state.modal = null;
+      this.render();
+    },
+
+    openContact(id) {
+      state.selection.contactId = id;
+      state.filters.route = "contacts";
+      state.modal = null;
+      this.render();
+    },
+
+    render() {
+      ui.renderShell();
+      ui.renderView(views.renderRoute());
+    }
+  };
+
+  function startApp() { controller.init(); }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startApp, { once: true });
+  } else {
+    startApp();
+  }
 })();
