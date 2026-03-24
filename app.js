@@ -1570,15 +1570,37 @@
         return;
       }
 
-      // DIAGNOSE-MODUS: Minimaler Payload — nur Title + FirmaLookupId
-      // Wenn das durchgeht → eines der anderen Felder ist der Täter
-      // Wenn auch das 400 gibt → FirmaLookupId oder SP-Konfiguration ist das Problem
+      // Pflichtfelder — immer senden
       const fields = {
         Title:         raw.nachname.trim(),
-        FirmaLookupId: Number(raw.firmaLookupId)
+        FirmaLookupId: Number(raw.firmaLookupId),
+        Archiviert:    raw.archiviert
       };
 
-      // Debug-Log
+      // Einzelwahl — nur wenn Wert vorhanden
+      if (raw.anrede)   fields.Anrede   = raw.anrede;
+      if (raw.rolle)    fields.Rolle    = raw.rolle;
+      if (raw.leadbbz0) fields.Leadbbz0 = raw.leadbbz0;
+
+      // Optionaler Text — nur wenn befüllt
+      if (raw.vorname.trim())    fields.Vorname    = raw.vorname.trim();
+      if (raw.funktion.trim())   fields.Funktion   = raw.funktion.trim();
+      if (raw.kommentar.trim())  fields.Kommentar  = raw.kommentar.trim();
+      if (raw.email1.trim())     fields.Email1     = raw.email1.trim();
+      if (raw.email2.trim())     fields.Email2     = raw.email2.trim();
+      if (raw.direktwahl.trim()) fields.Direktwahl = raw.direktwahl.trim();
+      if (raw.mobile.trim())     fields.Mobile     = raw.mobile.trim();
+
+      // Datum — nur wenn befüllt
+      if (raw.geburtstag.trim()) fields.Geburtstag = raw.geburtstag.trim();
+
+      // Multi-Choice — Array wenn Werte, weglassen wenn leer
+      // BESTÄTIGT: [] → 400, null → 400, weglassen → SP behält bestehenden Wert
+      if (raw.sgf.length)          fields.SGF          = raw.sgf;
+      if (raw.event.length)        fields.Event        = raw.event;
+      if (raw.eventhistory.length) fields.Eventhistory = raw.eventhistory;
+
+      // Debug-Log (kann nach stabilem Betrieb entfernt werden)
       console.log("handleModalSubmit fields →", JSON.stringify(fields, null, 2));
 
       ui.setLoading(true);
@@ -1586,7 +1608,25 @@
 
       try {
         if (mode === "create") {
-          await api.postItem(SCHEMA.contacts.listTitle, fields);
+          // SharePoint Graph: POST akzeptiert nur Title + Lookup-Felder zuverlässig.
+          // Alle weiteren Felder müssen per separatem PATCH auf die neue Item-ID geschrieben werden.
+          // BESTÄTIGT: POST mit vollem fields-Objekt speichert nur Title.
+          const createFields = {
+            Title:         fields.Title,
+            FirmaLookupId: fields.FirmaLookupId
+          };
+          const created = await api.postItem(SCHEMA.contacts.listTitle, createFields);
+          const newItemId = created?.id || created?.fields?.id;
+          if (!newItemId) throw new Error("Neue Item-ID fehlt im POST-Response.");
+
+          // Restliche Felder per PATCH nachschreiben
+          const patchFields = { ...fields };
+          delete patchFields.Title;
+          delete patchFields.FirmaLookupId;
+          if (Object.keys(patchFields).length > 0) {
+            await api.patchItem(SCHEMA.contacts.listTitle, Number(newItemId), patchFields);
+          }
+
           ui.setMessage("Kontakt wurde erfolgreich angelegt.", "success");
         } else {
           if (!itemId) throw new Error("itemId fehlt für PATCH.");
