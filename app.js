@@ -63,6 +63,7 @@
         mobile: "Mobile",
         rolle: "Rolle",
         leadbbz0: "Leadbbz0",
+        leadbbz0LookupId: "Leadbbz0LookupId",
         sgf: "SGF",
         geburtstag: "Geburtstag",
         kommentar: "Kommentar",
@@ -96,7 +97,8 @@
         kontaktLookupId: "NameLookupId",
         deadline: "Deadline",
         status: "Status",
-        leadbbz: "Leadbbz"
+        leadbbz: "Leadbbz",
+        leadbbzLookupId: "LeadbbzLookupId"
       }
     }
   };
@@ -215,6 +217,24 @@
         .filter(Boolean);
     },
 
+    uniqSorted(values) {
+      return [...new Set(values.filter(Boolean).map(v => String(v).trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, "de"));
+    },
+
+    distinctLookupOptions(items) {
+      const map = new Map();
+      items.forEach(item => {
+        const id = Number(item.lookupId || 0);
+        const label = String(item.label || "").trim();
+        if (!id || !label) return;
+        if (!map.has(id)) {
+          map.set(id, { id, label });
+        }
+      });
+      return [...map.values()].sort((a, b) => a.label.localeCompare(b.label, "de"));
+    },
+
     toDate(value) {
       if (!value) return null;
       const d = new Date(value);
@@ -319,9 +339,9 @@
 
     firmBadgeClass(value) {
       const v = String(value || "").toUpperCase();
-      if (v === "A" || v === "A-KUNDE") return "bbz-pill bbz-pill-a";
-      if (v === "B" || v === "B-KUNDE") return "bbz-pill bbz-pill-b";
-      if (v === "C" || v === "C-KUNDE") return "bbz-pill bbz-pill-c";
+      if (v.includes("A")) return "bbz-pill bbz-pill-a";
+      if (v.includes("B")) return "bbz-pill bbz-pill-b";
+      if (v.includes("C")) return "bbz-pill bbz-pill-c";
       return "bbz-pill";
     },
 
@@ -352,6 +372,30 @@
       if (!CONFIG.sharePoint.siteHostname) missing.push("sharePoint.siteHostname");
       if (!CONFIG.sharePoint.sitePath) missing.push("sharePoint.sitePath");
       if (missing.length) throw new Error(`Konfiguration unvollständig: ${missing.join(", ")}`);
+    }
+  };
+
+  const optionsModel = {
+    firmClassifications() {
+      return helpers.uniqSorted(state.data.firms.map(f => f.klassifizierung));
+    },
+
+    contactLeadLookupOptions() {
+      return helpers.distinctLookupOptions(
+        state.data.contacts.map(c => ({
+          lookupId: c.leadbbz0LookupId,
+          label: c.leadbbz0
+        }))
+      );
+    },
+
+    taskLeadLookupOptions() {
+      return helpers.distinctLookupOptions(
+        state.data.tasks.map(t => ({
+          lookupId: t.leadbbzLookupId,
+          label: t.leadbbz
+        }))
+      );
     }
   };
 
@@ -404,28 +448,34 @@
         }
 
         const modalClose = target.closest("[data-close-modal]");
-        if (modalClose) {
-          modal.close();
-        }
+        if (modalClose) return modal.close();
       });
 
       document.addEventListener("input", (event) => {
         const el = event.target;
+
+        if (!el.matches("[data-filter]")) return;
+
         if (el.matches("[data-filter='firms-search']")) state.filters.firms.search = el.value;
         if (el.matches("[data-filter='contacts-search']")) state.filters.contacts.search = el.value;
         if (el.matches("[data-filter='planning-search']")) state.filters.planning.search = el.value;
         if (el.matches("[data-filter='events-search']")) state.filters.events.search = el.value;
+
         controller.render();
       });
 
       document.addEventListener("change", (event) => {
         const el = event.target;
+
+        if (!el.matches("[data-filter]")) return;
+
         if (el.matches("[data-filter='firms-klassifizierung']")) state.filters.firms.klassifizierung = el.value;
         if (el.matches("[data-filter='firms-vip']")) state.filters.firms.vip = el.value;
         if (el.matches("[data-filter='contacts-archiviert']")) state.filters.contacts.archiviertAusblenden = el.checked;
         if (el.matches("[data-filter='planning-open']")) state.filters.planning.onlyOpen = el.checked;
         if (el.matches("[data-filter='planning-overdue']")) state.filters.planning.onlyOverdue = el.checked;
         if (el.matches("[data-filter='events-open']")) state.filters.events.onlyWithOpenTasks = el.checked;
+
         controller.render();
       });
 
@@ -610,7 +660,6 @@
 
       state.auth.account = loginResponse.account;
       state.auth.isAuthenticated = true;
-
       await this.acquireToken();
     },
 
@@ -747,6 +796,7 @@
         mobile: this.getField(item, f.mobile) || "",
         rolle: this.getField(item, f.rolle) || "",
         leadbbz0: this.getField(item, f.leadbbz0) || "",
+        leadbbz0LookupId: Number(this.getField(item, f.leadbbz0LookupId)) || null,
         sgf: helpers.normalizeChoiceList(this.getField(item, f.sgf)),
         geburtstag: this.getField(item, f.geburtstag) || "",
         kommentar: this.getField(item, f.kommentar) || "",
@@ -780,7 +830,8 @@
         kontaktLookupId: Number(this.getField(item, f.kontaktLookupId)) || null,
         deadline: this.getField(item, f.deadline) || "",
         status: this.getField(item, f.status) || "",
-        leadbbz: this.getField(item, f.leadbbz) || ""
+        leadbbz: this.getField(item, f.leadbbz) || "",
+        leadbbzLookupId: Number(this.getField(item, f.leadbbzLookupId)) || null
       };
     }
   };
@@ -974,6 +1025,7 @@
     renderFirmForm(mode, itemId = null) {
       const firm = mode === "edit" ? dataModel.getFirmById(itemId) : null;
       const title = mode === "edit" ? "Firma bearbeiten" : "Neue Firma";
+      const classifications = optionsModel.firmClassifications();
 
       return `
         <div class="bbz-modal-backdrop show">
@@ -994,7 +1046,7 @@
                     <label>Klassifizierung</label>
                     <select class="bbz-select" name="klassifizierung">
                       <option value="">Bitte wählen</option>
-                      ${["A-Kunde", "B-Kunde", "C-Kunde", "A", "B", "C"].map(v => `<option value="${helpers.escapeHtml(v)}" ${(firm?.klassifizierung || "") === v ? "selected" : ""}>${helpers.escapeHtml(v)}</option>`).join("")}
+                      ${classifications.map(v => `<option value="${helpers.escapeHtml(v)}" ${(firm?.klassifizierung || "") === v ? "selected" : ""}>${helpers.escapeHtml(v)}</option>`).join("")}
                     </select>
                   </div>
 
@@ -1030,7 +1082,7 @@
 
               <div class="bbz-modal-footer">
                 <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Abbrechen</button>
-                <button type="submit" class="bbz-button bbz-button-primary" data-modal-submit data-default-label="Speichern">Speichern</button>
+                <button type="submit" class="bbz-button bbz-button-primary" data-modal-submit data-defaultLabel="Speichern">Speichern</button>
               </div>
             </form>
           </div>
@@ -1043,6 +1095,7 @@
       const contact = mode === "edit" ? dataModel.getContactById(itemId) : null;
       const title = mode === "edit" ? "Kontakt bearbeiten" : "Neuer Kontakt";
       const preselectedFirmId = Number(payload.prefillFirmId || contact?.firmId || 0) || "";
+      const leadOptions = optionsModel.contactLeadLookupOptions();
 
       return `
         <div class="bbz-modal-backdrop show">
@@ -1105,7 +1158,10 @@
 
                   <div class="bbz-field">
                     <label>Leadbbz0</label>
-                    <input class="bbz-input" name="leadbbz0" value="${helpers.escapeHtml(contact?.leadbbz0 || "")}" />
+                    <select class="bbz-select" name="leadbbz0LookupId">
+                      <option value="">Bitte wählen</option>
+                      ${leadOptions.map(o => `<option value="${o.id}" ${String(contact?.leadbbz0LookupId || "") === String(o.id) ? "selected" : ""}>${helpers.escapeHtml(o.label)}</option>`).join("")}
+                    </select>
                   </div>
                   <div class="bbz-field">
                     <label>Geburtstag</label>
@@ -1140,7 +1196,7 @@
 
               <div class="bbz-modal-footer">
                 <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Abbrechen</button>
-                <button type="submit" class="bbz-button bbz-button-primary" data-modal-submit data-default-label="Speichern">Speichern</button>
+                <button type="submit" class="bbz-button bbz-button-primary" data-modal-submit data-defaultLabel="Speichern">Speichern</button>
               </div>
             </form>
           </div>
@@ -1150,6 +1206,8 @@
 
     renderTaskForm(payload = {}) {
       const prefillContactId = Number(payload.prefillContactId || 0) || "";
+      const leadOptions = optionsModel.taskLeadLookupOptions();
+
       return `
         <div class="bbz-modal-backdrop show">
           <div class="bbz-modal">
@@ -1181,21 +1239,22 @@
 
                   <div class="bbz-field">
                     <label>Status</label>
-                    <select class="bbz-select" name="status">
-                      ${["Offen", "In Arbeit", "Wartend", "Erledigt"].map(v => `<option value="${helpers.escapeHtml(v)}">${helpers.escapeHtml(v)}</option>`).join("")}
-                    </select>
+                    <input class="bbz-input" name="status" />
                   </div>
 
                   <div class="bbz-field">
                     <label>Leadbbz</label>
-                    <input class="bbz-input" name="leadbbz" />
+                    <select class="bbz-select" name="leadbbzLookupId">
+                      <option value="">Bitte wählen</option>
+                      ${leadOptions.map(o => `<option value="${o.id}">${helpers.escapeHtml(o.label)}</option>`).join("")}
+                    </select>
                   </div>
                 </div>
               </div>
 
               <div class="bbz-modal-footer">
                 <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Abbrechen</button>
-                <button type="submit" class="bbz-button bbz-button-primary" data-modal-submit data-default-label="Speichern">Speichern</button>
+                <button type="submit" class="bbz-button bbz-button-primary" data-modal-submit data-defaultLabel="Speichern">Speichern</button>
               </div>
             </form>
           </div>
@@ -1205,6 +1264,7 @@
 
     renderHistoryForm(payload = {}) {
       const prefillContactId = Number(payload.prefillContactId || 0) || "";
+
       return `
         <div class="bbz-modal-backdrop show">
           <div class="bbz-modal">
@@ -1236,9 +1296,7 @@
 
                   <div class="bbz-field">
                     <label>Typ</label>
-                    <select class="bbz-select" name="typ">
-                      ${["Meeting", "Call", "Mail", "Notiz"].map(v => `<option value="${helpers.escapeHtml(v)}">${helpers.escapeHtml(v)}</option>`).join("")}
-                    </select>
+                    <input class="bbz-input" name="typ" />
                   </div>
 
                   <div class="bbz-field">
@@ -1260,7 +1318,7 @@
 
               <div class="bbz-modal-footer">
                 <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Abbrechen</button>
-                <button type="submit" class="bbz-button bbz-button-primary" data-modal-submit data-default-label="Speichern">Speichern</button>
+                <button type="submit" class="bbz-button bbz-button-primary" data-modal-submit data-defaultLabel="Speichern">Speichern</button>
               </div>
             </form>
           </div>
@@ -1282,9 +1340,7 @@
         [SCHEMA.firms.fields.vip]: formData.get("vip") === "on"
       };
 
-      if (!fields[SCHEMA.firms.fields.title]) {
-        throw new Error("Firmenname fehlt.");
-      }
+      if (!fields[SCHEMA.firms.fields.title]) throw new Error("Firmenname fehlt.");
 
       if (mode === "edit" && itemId) {
         await api.updateListItemFields(SCHEMA.firms.listTitle, itemId, fields);
@@ -1299,6 +1355,8 @@
       const firmaLookupId = Number(formData.get("firmaLookupId") || 0);
       if (!firmaLookupId) throw new Error("Bitte eine Firma auswählen.");
 
+      const leadbbz0LookupId = Number(formData.get("leadbbz0LookupId") || 0) || null;
+
       const fields = {
         [SCHEMA.contacts.fields.nachname]: String(formData.get("nachname") || "").trim(),
         [SCHEMA.contacts.fields.vorname]: String(formData.get("vorname") || "").trim(),
@@ -1310,7 +1368,7 @@
         [SCHEMA.contacts.fields.direktwahl]: String(formData.get("direktwahl") || "").trim(),
         [SCHEMA.contacts.fields.mobile]: String(formData.get("mobile") || "").trim(),
         [SCHEMA.contacts.fields.rolle]: String(formData.get("rolle") || "").trim(),
-        [SCHEMA.contacts.fields.leadbbz0]: String(formData.get("leadbbz0") || "").trim(),
+        [SCHEMA.contacts.fields.leadbbz0LookupId]: leadbbz0LookupId,
         [SCHEMA.contacts.fields.sgf]: helpers.splitCsv(formData.get("sgf")),
         [SCHEMA.contacts.fields.geburtstag]: formData.get("geburtstag") ? new Date(`${formData.get("geburtstag")}T00:00:00`).toISOString() : null,
         [SCHEMA.contacts.fields.kommentar]: String(formData.get("kommentar") || "").trim(),
@@ -1343,10 +1401,11 @@
         [SCHEMA.tasks.fields.kontaktLookupId]: kontaktLookupId,
         [SCHEMA.tasks.fields.deadline]: deadline,
         [SCHEMA.tasks.fields.status]: String(formData.get("status") || "").trim(),
-        [SCHEMA.tasks.fields.leadbbz]: String(formData.get("leadbbz") || "").trim()
+        [SCHEMA.tasks.fields.leadbbzLookupId]: Number(formData.get("leadbbzLookupId") || 0) || null
       };
 
       if (!fields[SCHEMA.tasks.fields.title]) throw new Error("Titel fehlt.");
+
       await api.createListItem(SCHEMA.tasks.listTitle, fields);
       ui.setMessage("Task angelegt.", "success");
     },
@@ -1369,6 +1428,7 @@
       };
 
       if (!fields[SCHEMA.history.fields.title]) throw new Error("Titel fehlt.");
+
       await api.createListItem(SCHEMA.history.listTitle, fields);
       ui.setMessage("History-Eintrag angelegt.", "success");
     }
@@ -1395,7 +1455,7 @@
     },
 
     actionBar(items) {
-      return `<div class="flex items-center gap-2 flex-wrap">${items.join("")}</div>`;
+      return `<div class="flex items-center gap-2 flex-wrap">${items.filter(Boolean).join("")}</div>`;
     },
 
     renderRoute() {
@@ -1429,6 +1489,7 @@
         return searchMatch && klassifizierungMatch && vipMatch;
       });
 
+      const classifications = optionsModel.firmClassifications();
       const aCount = state.enriched.firms.filter(f => String(f.klassifizierung).toUpperCase().includes("A")).length;
       const bCount = state.enriched.firms.filter(f => String(f.klassifizierung).toUpperCase().includes("B")).length;
       const cCount = state.enriched.firms.filter(f => String(f.klassifizierung).toUpperCase().includes("C")).length;
@@ -1463,7 +1524,7 @@
                   <input class="bbz-input" data-filter="firms-search" type="text" placeholder="Suche nach Firma, Ort, Ansprechpartner, Telefon ..." value="${helpers.escapeHtml(filters.search)}" />
                   <select class="bbz-select" data-filter="firms-klassifizierung">
                     <option value="">Alle Klassifizierungen</option>
-                    ${["A-Kunde", "B-Kunde", "C-Kunde", "A", "B", "C"].map(v => `<option value="${helpers.escapeHtml(v)}" ${filters.klassifizierung === v ? "selected" : ""}>${helpers.escapeHtml(v)}</option>`).join("")}
+                    ${classifications.map(v => `<option value="${helpers.escapeHtml(v)}" ${filters.klassifizierung === v ? "selected" : ""}>${helpers.escapeHtml(v)}</option>`).join("")}
                   </select>
                   <select class="bbz-select" data-filter="firms-vip">
                     <option value="">VIP egal</option>
@@ -1733,7 +1794,6 @@
           !search ||
           [contact.fullName, contact.firmTitle, contact.funktion, contact.rolle, contact.email1, contact.email2, contact.direktwahl, contact.mobile, contact.kommentar, ...contact.sgf, ...contact.event]
             .some(v => helpers.textIncludes(v, search));
-
         const archiveMatch = !filters.archiviertAusblenden || !contact.archiviert;
         return searchMatch && archiveMatch;
       });
