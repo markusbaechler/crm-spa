@@ -2,6 +2,10 @@
   'use strict';
 
   const CONFIG = {
+    sharePoint: {
+      hostname: 'bbzsg.sharepoint.com',
+      sitePath: '/sites/CRM'
+    },
     lists: {
       firms: 'CRMFirms',
       contacts: 'CRMContacts',
@@ -10,7 +14,7 @@
     },
     fields: {
       firms: {
-        id: 'Id',
+        id: 'id',
         title: 'Title',
         abc: 'ABCSegment',
         email: 'Email',
@@ -19,7 +23,7 @@
         notes: 'Notes'
       },
       contacts: {
-        id: 'Id',
+        id: 'id',
         title: 'Title',
         firstName: 'FirstName',
         lastName: 'LastName',
@@ -32,7 +36,7 @@
         leadDisplay: 'Leadbbz0'
       },
       history: {
-        id: 'Id',
+        id: 'id',
         contactLookupId: 'ContactLookupId',
         date: 'Date',
         type: 'Type',
@@ -40,7 +44,7 @@
         projectRelated: 'ProjectRelated'
       },
       tasks: {
-        id: 'Id',
+        id: 'id',
         title: 'Title',
         contactLookupId: 'ContactLookupId',
         dueDate: 'DueDate',
@@ -48,14 +52,16 @@
         notes: 'Notes'
       }
     },
+    pageSize: 500,
     debug: true,
-    pageSize: 500
+    autoLoadAfterAuth: true
   };
 
   const state = {
     initialized: false,
-    requestDigest: null,
-    listEntityTypes: {},
+    authToken: null,
+    siteId: null,
+    listIds: {},
     firms: [],
     contacts: [],
     history: [],
@@ -65,15 +71,17 @@
     filters: {
       firmSearch: '',
       contactSearch: ''
-    }
+    },
+    loading: false
   };
 
   const dom = {};
 
   function log() {
-    if (CONFIG.debug) {
-      console.log.apply(console, ['[CRM]'].concat(Array.from(arguments)));
-    }
+    if (!CONFIG.debug) return;
+    const args = Array.prototype.slice.call(arguments);
+    args.unshift('[CRM]');
+    console.log.apply(console, args);
   }
 
   function $(selector) {
@@ -95,8 +103,8 @@
 
   function collectDom() {
     dom.appStatus = qsAny(['#appStatus', '#statusMessage']);
-
     dom.reloadButton = qsAny(['#btnReloadAll', '#reloadApp']);
+    dom.loginButton = qsAny(['#btnLogin', '#loginButton', '#signinButton']);
 
     dom.firmList = qsAny(['#firmList', '#firmsList', '#companyList']);
     dom.firmSearch = qsAny(['#firmSearch', '#searchFirms', '#companySearch']);
@@ -147,12 +155,12 @@
         dom.appStatus.classList.toggle('text-slate-600', !isError);
       }
     }
-    if (message) {
-      if (isError) {
-        console.error('[CRM STATUS]', message);
-      } else {
-        console.log('[CRM STATUS]', message);
-      }
+
+    if (!message) return;
+    if (isError) {
+      console.error('[CRM STATUS]', message);
+    } else {
+      console.log('[CRM STATUS]', message);
     }
   }
 
@@ -214,132 +222,197 @@
     );
   }
 
-  function sharePointBaseUrl() {
-    if (window._spPageContextInfo && window._spPageContextInfo.webAbsoluteUrl) {
-      return window._spPageContextInfo.webAbsoluteUrl;
-    }
-    return window.location.origin;
+  function maybeJwt(value) {
+    return typeof value === 'string' && value.split('.').length === 3 && value.length > 100;
   }
 
-  async function spFetch(url, options) {
-    const response = await fetch(url, Object.assign({ credentials: 'same-origin' }, options || {}));
-    const text = await response.text();
-    let data = null;
+  function scanStorageForToken(storage) {
+    if (!storage) return null;
+    try {
+      for (let i = 0; i < storage.length; i += 1) {
+        const key = storage.key(i);
+        const value = storage.getItem(key);
+        if (!value) continue;
 
-    if (text) {
-      try {
-        data = JSON.parse(text);
-      } catch (e) {
-        data = text;
+        if (maybeJwt(value)) {
+          return value;
+        }
+
+        if (value.charAt(0) === '{') {
+          try {
+            const parsed = JSON.parse(value);
+            if (parsed && maybeJwt(parsed.accessToken)) return parsed.accessToken;
+            if (parsed && maybeJwt(parsed.access_token)) return parsed.access_token;
+            if (parsed && parsed.secret && maybeJwt(parsed.secret)) return parsed.secret;
+          } catch (e) {
+            /* ignore */
+          }
+        }
+      }
+    } catch (e) {
+      log('Storage scan skipped', e);
+    }
+    return null;
+  }
+
+  async function resolveAccessToken() {
+    if (state.authToken) return state.authToken;
+
+    if (window.CRM_APP_AUTH_TOKEN && maybeJwt(window.CRM_APP_AUTH_TOKEN)) {
+      state.authToken = window.CRM_APP_AUTH_TOKEN;
+      return state.authToken;
+    }
+
+    if (window.crmAccessToken && maybeJwt(window.crmAccessToken)) {
+      state.authToken = window.crmAccessToken;
+      return state.authToken;
+    }
+
+    if (window.__crmAccessToken && maybeJwt(window.__crmAccessToken)) {
+      state.authToken = window.__crmAccessToken;
+      return state.authToken;
+    }
+
+    if (window.CRM_AUTH && typeof window.CRM_AUTH.getAccessToken === 'function') {
+      const token = await window.CRM_AUTH.getAccessToken();
+      if (maybeJwt(token)) {
+        state.authToken = token;
+        return state.authToken;
       }
     }
+
+    if (window.authManager && typeof window.authManager.getAccessToken === 'function') {
+      const token = await window.authManager.getAccessToken();
+      if (maybeJwt(token)) {
+        state.authToken = token;
+        return state.authToken;
+      }
+    }
+
+    if (typeof window.getAccessToken === 'function') {
+      const token = await window.getAccessToken();
+      if (maybeJwt(token)) {
+        state.authToken = token;
+        return state.authToken;
+      }
+    }
+
+    const sessionToken = scanStorageForToken(window.sessionStorage);
+    if (maybeJwt(sessionToken)) {
+      state.authToken = sessionToken;
+      return state.authToken;
+    }
+
+    const localToken = scanStorageForToken(window.localStorage);
+    if (maybeJwt(localToken)) {
+      state.authToken = localToken;
+      return state.authToken;
+    }
+
+    throw new Error('Kein vorhandener Recovery-Token gefunden. Login bleibt extern, app.js startet ohne eigenen Auth-Flow.');
+  }
+
+  function setAccessToken(token) {
+    if (!maybeJwt(token)) {
+      throw new Error('Ungültiger Access Token übergeben.');
+    }
+    state.authToken = token;
+    window.CRM_APP_AUTH_TOKEN = token;
+    log('Access token übernommen');
+    if (CONFIG.autoLoadAfterAuth) {
+      loadAllData().catch(handleError);
+    }
+  }
+
+  async function graphFetch(path, options) {
+    const token = await resolveAccessToken();
+
+    const headers = Object.assign(
+      {
+        Authorization: 'Bearer ' + token,
+        Accept: 'application/json'
+      },
+      options && options.body ? { 'Content-Type': 'application/json' } : {},
+      (options && options.headers) || {}
+    );
+
+    const response = await fetch('https://graph.microsoft.com/v1.0' + path, Object.assign({}, options, { headers }));
+    const text = await response.text();
+    const payload = text ? JSON.parse(text) : {};
 
     if (!response.ok) {
-      throw new Error('REST ' + response.status + ': ' + (typeof data === 'string' ? data : JSON.stringify(data)));
+      if (response.status === 401 || response.status === 403) {
+        state.authToken = null;
+      }
+      throw new Error('Graph ' + response.status + ': ' + JSON.stringify(payload));
     }
 
-    return data;
+    return payload;
   }
 
-  async function ensureDigest() {
-    if (state.requestDigest) return state.requestDigest;
-
-    const url = sharePointBaseUrl() + '/_api/contextinfo';
-    const data = await spFetch(url, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json;odata=nometadata'
-      }
-    });
-
-    if (!data || !data.FormDigestValue) {
-      throw new Error('FormDigest konnte nicht geladen werden.');
+  async function ensureSite() {
+    if (state.siteId) return state.siteId;
+    const site = await graphFetch('/sites/' + CONFIG.sharePoint.hostname + ':' + CONFIG.sharePoint.sitePath);
+    if (!site || !site.id) {
+      throw new Error('Site-ID konnte nicht geladen werden.');
     }
-
-    state.requestDigest = data.FormDigestValue;
-    return state.requestDigest;
+    state.siteId = site.id;
+    return state.siteId;
   }
 
-  async function ensureListEntityType(listTitle) {
-    if (state.listEntityTypes[listTitle]) return state.listEntityTypes[listTitle];
-
-    const url =
-      sharePointBaseUrl() +
-      "/_api/web/lists/getbytitle('" +
-      encodeURIComponent(listTitle).replace(/'/g, '%27') +
-      "')?$select=ListItemEntityTypeFullName";
-
-    const data = await spFetch(url, {
-      headers: {
-        Accept: 'application/json;odata=nometadata'
-      }
-    });
-
-    if (!data || !data.ListItemEntityTypeFullName) {
-      throw new Error('ListItemEntityTypeFullName für Liste ' + listTitle + ' konnte nicht geladen werden.');
+  async function ensureListId(listTitle) {
+    await ensureSite();
+    if (state.listIds[listTitle]) return state.listIds[listTitle];
+    const list = await graphFetch('/sites/' + state.siteId + '/lists/' + encodeURIComponent(listTitle));
+    if (!list || !list.id) {
+      throw new Error('List-ID konnte nicht geladen werden: ' + listTitle);
     }
-
-    state.listEntityTypes[listTitle] = data.ListItemEntityTypeFullName;
-    return state.listEntityTypes[listTitle];
+    state.listIds[listTitle] = list.id;
+    return state.listIds[listTitle];
   }
 
   async function getAllItems(listTitle) {
-    let url =
-      sharePointBaseUrl() +
-      "/_api/web/lists/getbytitle('" +
-      encodeURIComponent(listTitle).replace(/'/g, '%27') +
-      "')/items?$top=" +
-      CONFIG.pageSize;
+    await ensureSite();
+    const listId = await ensureListId(listTitle);
+    const items = [];
+    let path = '/sites/' + state.siteId + '/lists/' + listId + '/items?expand=fields&top=' + CONFIG.pageSize;
 
-    const all = [];
-
-    while (url) {
-      const data = await spFetch(url, {
-        headers: {
-          Accept: 'application/json;odata=nometadata'
-        }
-      });
-
-      const values = data && data.value ? data.value : [];
-      all.push.apply(all, values);
-
-      url = data && data['@odata.nextLink'] ? data['@odata.nextLink'] : null;
+    while (path) {
+      const data = await graphFetch(path);
+      items.push.apply(items, data.value || []);
+      const next = data['@odata.nextLink'];
+      path = next ? next.replace('https://graph.microsoft.com/v1.0', '') : null;
     }
 
-    return all;
+    return items;
   }
 
-  async function createItem(listTitle, payload) {
-    const digest = await ensureDigest();
-    const entityType = await ensureListEntityType(listTitle);
+  async function createItem(listTitle, fields) {
+    await ensureSite();
+    const listId = await ensureListId(listTitle);
 
-    const body = Object.assign(
-      {
-        __metadata: { type: entityType }
-      },
-      payload
-    );
-
-    const url =
-      sharePointBaseUrl() +
-      "/_api/web/lists/getbytitle('" +
-      encodeURIComponent(listTitle).replace(/'/g, '%27') +
-      "')/items";
-
-    return spFetch(url, {
+    return graphFetch('/sites/' + state.siteId + '/lists/' + listId + '/items', {
       method: 'POST',
-      headers: {
-        Accept: 'application/json;odata=nometadata',
-        'Content-Type': 'application/json;odata=verbose',
-        'X-RequestDigest': digest
-      },
-      body: JSON.stringify(body)
+      body: JSON.stringify({ fields: fields })
     });
+  }
+
+  function getField(item, fieldName, fallback) {
+    if (!item || !item.fields) return fallback;
+    const value = item.fields[fieldName];
+    return value == null ? fallback : value;
+  }
+
+  function getItemId(item) {
+    if (!item) return null;
+    return item.id != null ? item.id : null;
   }
 
   function sortByField(items, fieldName) {
     return items.slice().sort(function (a, b) {
-      return normalizeText(a[fieldName]).localeCompare(normalizeText(b[fieldName]), 'de');
+      const left = normalizeText(getField(a, fieldName, ''));
+      const right = normalizeText(getField(b, fieldName, ''));
+      return left.localeCompare(right, 'de');
     });
   }
 
@@ -347,78 +420,80 @@
     if (!search) return true;
     const q = normalizeText(search);
     for (let i = 0; i < fieldNames.length; i += 1) {
-      const value = normalizeText(item[fieldNames[i]]);
+      const value = normalizeText(getField(item, fieldNames[i], ''));
       if (value.indexOf(q) !== -1) return true;
     }
     return false;
   }
 
   function getFirmName(firm) {
-    return valueOrEmpty(firm && firm[CONFIG.fields.firms.title]).trim() || 'Ohne Firmenname';
+    return valueOrEmpty(getField(firm, CONFIG.fields.firms.title, '')).trim() || 'Ohne Firmenname';
   }
 
   function getContactName(contact) {
     if (!contact) return 'Ohne Name';
     const f = CONFIG.fields.contacts;
-    const firstName = valueOrEmpty(contact[f.firstName]).trim();
-    const lastName = valueOrEmpty(contact[f.lastName]).trim();
-    const title = valueOrEmpty(contact[f.title]).trim();
+    const firstName = valueOrEmpty(getField(contact, f.firstName, '')).trim();
+    const lastName = valueOrEmpty(getField(contact, f.lastName, '')).trim();
+    const title = valueOrEmpty(getField(contact, f.title, '')).trim();
     const combined = [firstName, lastName].filter(Boolean).join(' ').trim();
     return combined || title || 'Ohne Name';
   }
 
   function getFirmById(firmId) {
     return state.firms.find(function (firm) {
-      return String(firm.Id) === String(firmId);
+      return String(getItemId(firm)) === String(firmId);
     }) || null;
   }
 
   function getContactById(contactId) {
     return state.contacts.find(function (contact) {
-      return String(contact.Id) === String(contactId);
+      return String(getItemId(contact)) === String(contactId);
     }) || null;
   }
 
   function getContactsForFirm(firmId) {
     const field = CONFIG.fields.contacts.firmLookupId;
     return state.contacts.filter(function (contact) {
-      return String(contact[field]) === String(firmId);
+      return String(getField(contact, field, '')) === String(firmId);
     });
   }
 
   function getTasksForContact(contactId) {
     const field = CONFIG.fields.tasks.contactLookupId;
     return state.tasks.filter(function (task) {
-      return String(task[field]) === String(contactId);
+      return String(getField(task, field, '')) === String(contactId);
     });
   }
 
   function getHistoryForContact(contactId) {
     const field = CONFIG.fields.history.contactLookupId;
     return state.history.filter(function (entry) {
-      return String(entry[field]) === String(contactId);
+      return String(getField(entry, field, '')) === String(contactId);
     });
   }
 
   function getTasksForFirm(firmId) {
     const contactIds = new Set(
       getContactsForFirm(firmId).map(function (contact) {
-        return String(contact.Id);
+        return String(getItemId(contact));
       })
     );
+
     return state.tasks.filter(function (task) {
-      return contactIds.has(String(task[CONFIG.fields.tasks.contactLookupId]));
+      return contactIds.has(String(getField(task, CONFIG.fields.tasks.contactLookupId, '')));
     });
   }
 
   function getHistoryForFirm(firmId) {
     const contactIds = new Set(
       getContactsForFirm(firmId).map(function (contact) {
-        return String(contact.Id);
+        return String(getItemId(contact));
       })
     );
+
     return state.history.filter(function (entry) {
-      return contactIds.has(String(entry[CONFIG.fields.history.contactLookupId]));
+      return contactIds.has(String(getField(entry, CONFIG.fields.history.contactLookupId, '')));
     });
   }
 
@@ -447,7 +522,7 @@
         );
         if (!match) return false;
         if (!state.selectedFirmId) return true;
-        return String(contact[f.firmLookupId]) === String(state.selectedFirmId);
+        return String(getField(contact, f.firmLookupId, '')) === String(state.selectedFirmId);
       })
       .sort(function (a, b) {
         return getContactName(a).localeCompare(getContactName(b), 'de');
@@ -458,6 +533,7 @@
     if (!dom.firmList) return;
 
     const firms = filteredFirms();
+
     if (dom.firmCount) {
       dom.firmCount.textContent = String(firms.length);
     }
@@ -469,15 +545,16 @@
 
     dom.firmList.innerHTML = firms
       .map(function (firm) {
-        const selected = String(state.selectedFirmId) === String(firm.Id);
-        const abc = valueOrEmpty(firm[CONFIG.fields.firms.abc]) || '—';
-        const contactCount = getContactsForFirm(firm.Id).length;
+        const id = String(getItemId(firm));
+        const selected = String(state.selectedFirmId) === id;
+        const abc = valueOrEmpty(getField(firm, CONFIG.fields.firms.abc, '—'));
+        const contactCount = getContactsForFirm(id).length;
 
         return (
           '<button type="button" class="crm-firm-row w-full text-left border rounded-lg px-3 py-2 mb-2 ' +
           (selected ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white') +
           '" data-firm-id="' +
-          escapeHtml(String(firm.Id)) +
+          escapeHtml(id) +
           '">' +
           '<div class="font-semibold">' +
           escapeHtml(getFirmName(firm)) +
@@ -497,6 +574,7 @@
     if (!dom.contactList) return;
 
     const contacts = filteredContacts();
+
     if (dom.contactCount) {
       dom.contactCount.textContent = String(contacts.length);
     }
@@ -508,20 +586,21 @@
 
     dom.contactList.innerHTML = contacts
       .map(function (contact) {
-        const selected = String(state.selectedContactId) === String(contact.Id);
-        const firm = getFirmById(contact[CONFIG.fields.contacts.firmLookupId]);
+        const id = String(getItemId(contact));
+        const selected = String(state.selectedContactId) === id;
+        const firm = getFirmById(getField(contact, CONFIG.fields.contacts.firmLookupId, ''));
 
         return (
           '<button type="button" class="crm-contact-row w-full text-left border rounded-lg px-3 py-2 mb-2 ' +
           (selected ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white') +
           '" data-contact-id="' +
-          escapeHtml(String(contact.Id)) +
+          escapeHtml(id) +
           '">' +
           '<div class="font-semibold">' +
           escapeHtml(getContactName(contact)) +
           '</div>' +
           '<div class="text-sm text-slate-600">' +
-          escapeHtml(valueOrEmpty(contact[CONFIG.fields.contacts.email])) +
+          escapeHtml(valueOrEmpty(getField(contact, CONFIG.fields.contacts.email, ''))) +
           '</div>' +
           '<div class="text-xs text-slate-500">' +
           escapeHtml(firm ? getFirmName(firm) : 'Ohne Firma') +
@@ -551,22 +630,22 @@
     }
 
     if (dom.firmDetailMeta) {
-      dom.firmDetailMeta.textContent = 'ABC: ' + (valueOrEmpty(firm[CONFIG.fields.firms.abc]) || '—');
+      dom.firmDetailMeta.textContent = 'ABC: ' + (valueOrEmpty(getField(firm, CONFIG.fields.firms.abc, '')) || '—');
     }
 
-    const contacts = getContactsForFirm(firm.Id).sort(function (a, b) {
+    const contacts = getContactsForFirm(getItemId(firm)).sort(function (a, b) {
       return getContactName(a).localeCompare(getContactName(b), 'de');
     });
 
-    const tasks = getTasksForFirm(firm.Id).sort(function (a, b) {
-      const left = new Date(a[CONFIG.fields.tasks.dueDate] || '2999-12-31').getTime();
-      const right = new Date(b[CONFIG.fields.tasks.dueDate] || '2999-12-31').getTime();
+    const tasks = getTasksForFirm(getItemId(firm)).sort(function (a, b) {
+      const left = new Date(getField(a, CONFIG.fields.tasks.dueDate, '2999-12-31')).getTime();
+      const right = new Date(getField(b, CONFIG.fields.tasks.dueDate, '2999-12-31')).getTime();
       return left - right;
     });
 
-    const history = getHistoryForFirm(firm.Id).sort(function (a, b) {
-      const left = new Date(a[CONFIG.fields.history.date] || '1900-01-01').getTime();
-      const right = new Date(b[CONFIG.fields.history.date] || '1900-01-01').getTime();
+    const history = getHistoryForFirm(getItemId(firm)).sort(function (a, b) {
+      const left = new Date(getField(a, CONFIG.fields.history.date, '1900-01-01')).getTime();
+      const right = new Date(getField(b, CONFIG.fields.history.date, '1900-01-01')).getTime();
       return right - left;
     });
 
@@ -575,13 +654,13 @@
           .map(function (contact) {
             return (
               '<button type="button" class="crm-open-contact block w-full text-left border rounded-md px-3 py-2 mb-2 border-slate-200" data-contact-id="' +
-              escapeHtml(String(contact.Id)) +
+              escapeHtml(String(getItemId(contact))) +
               '">' +
               '<div class="font-medium">' +
               escapeHtml(getContactName(contact)) +
               '</div>' +
               '<div class="text-sm text-slate-600">' +
-              escapeHtml(valueOrEmpty(contact[CONFIG.fields.contacts.email])) +
+              escapeHtml(valueOrEmpty(getField(contact, CONFIG.fields.contacts.email, ''))) +
               '</div>' +
               '</button>'
             );
@@ -592,22 +671,22 @@
     const tasksHtml = tasks.length
       ? tasks
           .map(function (task) {
-            const contact = getContactById(task[CONFIG.fields.tasks.contactLookupId]);
+            const contact = getContactById(getField(task, CONFIG.fields.tasks.contactLookupId, ''));
             return (
               '<div class="border rounded-md px-3 py-2 mb-2 border-slate-200">' +
               '<div class="font-medium">' +
-              escapeHtml(valueOrEmpty(task[CONFIG.fields.tasks.title]) || 'Ohne Titel') +
+              escapeHtml(valueOrEmpty(getField(task, CONFIG.fields.tasks.title, 'Ohne Titel'))) +
               '</div>' +
               '<div class="text-sm text-slate-600">Fällig: ' +
-              escapeHtml(formatDate(task[CONFIG.fields.tasks.dueDate])) +
+              escapeHtml(formatDate(getField(task, CONFIG.fields.tasks.dueDate, ''))) +
               ' · Status: ' +
-              escapeHtml(valueOrEmpty(task[CONFIG.fields.tasks.status]) || '—') +
+              escapeHtml(valueOrEmpty(getField(task, CONFIG.fields.tasks.status, '—'))) +
               '</div>' +
               '<div class="text-xs text-slate-500">Kontakt: ' +
               escapeHtml(contact ? getContactName(contact) : '—') +
               '</div>' +
               '<div class="text-sm whitespace-pre-wrap">' +
-              escapeHtml(valueOrEmpty(task[CONFIG.fields.tasks.notes])) +
+              escapeHtml(valueOrEmpty(getField(task, CONFIG.fields.tasks.notes, ''))) +
               '</div>' +
               '</div>'
             );
@@ -618,21 +697,21 @@
     const historyHtml = history.length
       ? history
           .map(function (entry) {
-            const contact = getContactById(entry[CONFIG.fields.history.contactLookupId]);
+            const contact = getContactById(getField(entry, CONFIG.fields.history.contactLookupId, ''));
             return (
               '<div class="border rounded-md px-3 py-2 mb-2 border-slate-200">' +
               '<div class="font-medium">' +
-              escapeHtml(formatDate(entry[CONFIG.fields.history.date])) +
+              escapeHtml(formatDate(getField(entry, CONFIG.fields.history.date, ''))) +
               ' · ' +
-              escapeHtml(valueOrEmpty(entry[CONFIG.fields.history.type])) +
+              escapeHtml(valueOrEmpty(getField(entry, CONFIG.fields.history.type, ''))) +
               '</div>' +
-              '<div class="text-sm text-slate-700 whitespace-pre-wrap">' +
-              escapeHtml(valueOrEmpty(entry[CONFIG.fields.history.notes])) +
+              '<div class="text-sm whitespace-pre-wrap">' +
+              escapeHtml(valueOrEmpty(getField(entry, CONFIG.fields.history.notes, ''))) +
               '</div>' +
               '<div class="text-xs text-slate-500">Kontakt: ' +
               escapeHtml(contact ? getContactName(contact) : '—') +
               ' · Projektbezug: ' +
-              (boolFromField(entry[CONFIG.fields.history.projectRelated]) ? 'Ja' : 'Nein') +
+              (boolFromField(getField(entry, CONFIG.fields.history.projectRelated, false)) ? 'Ja' : 'Nein') +
               '</div>' +
               '</div>'
             );
@@ -675,16 +754,17 @@
       return;
     }
 
-    const firm = getFirmById(contact[CONFIG.fields.contacts.firmLookupId]);
-    const tasks = getTasksForContact(contact.Id).sort(function (a, b) {
-      const left = new Date(a[CONFIG.fields.tasks.dueDate] || '2999-12-31').getTime();
-      const right = new Date(b[CONFIG.fields.tasks.dueDate] || '2999-12-31').getTime();
+    const firm = getFirmById(getField(contact, CONFIG.fields.contacts.firmLookupId, ''));
+
+    const tasks = getTasksForContact(getItemId(contact)).sort(function (a, b) {
+      const left = new Date(getField(a, CONFIG.fields.tasks.dueDate, '2999-12-31')).getTime();
+      const right = new Date(getField(b, CONFIG.fields.tasks.dueDate, '2999-12-31')).getTime();
       return left - right;
     });
 
-    const history = getHistoryForContact(contact.Id).sort(function (a, b) {
-      const left = new Date(a[CONFIG.fields.history.date] || '1900-01-01').getTime();
-      const right = new Date(b[CONFIG.fields.history.date] || '1900-01-01').getTime();
+    const history = getHistoryForContact(getItemId(contact)).sort(function (a, b) {
+      const left = new Date(getField(a, CONFIG.fields.history.date, '1900-01-01')).getTime();
+      const right = new Date(getField(b, CONFIG.fields.history.date, '1900-01-01')).getTime();
       return right - left;
     });
 
@@ -695,15 +775,15 @@
     if (dom.contactDetailMeta) {
       dom.contactDetailMeta.textContent = [
         firm ? getFirmName(firm) : 'Ohne Firma',
-        valueOrEmpty(contact[CONFIG.fields.contacts.email]),
-        valueOrEmpty(contact[CONFIG.fields.contacts.phone])
+        valueOrEmpty(getField(contact, CONFIG.fields.contacts.email, '')),
+        valueOrEmpty(getField(contact, CONFIG.fields.contacts.phone, ''))
       ]
         .filter(Boolean)
         .join(' · ');
     }
 
     if (dom.contactLeadDisplay) {
-      const leadValue = valueOrEmpty(contact[CONFIG.fields.contacts.leadDisplay]);
+      const leadValue = valueOrEmpty(getField(contact, CONFIG.fields.contacts.leadDisplay, ''));
       if ('value' in dom.contactLeadDisplay) {
         dom.contactLeadDisplay.value = leadValue;
       } else {
@@ -717,15 +797,15 @@
             return (
               '<div class="border rounded-md px-3 py-2 mb-2 border-slate-200">' +
               '<div class="font-medium">' +
-              escapeHtml(valueOrEmpty(task[CONFIG.fields.tasks.title]) || 'Ohne Titel') +
+              escapeHtml(valueOrEmpty(getField(task, CONFIG.fields.tasks.title, 'Ohne Titel'))) +
               '</div>' +
               '<div class="text-sm text-slate-600">Fällig: ' +
-              escapeHtml(formatDate(task[CONFIG.fields.tasks.dueDate])) +
+              escapeHtml(formatDate(getField(task, CONFIG.fields.tasks.dueDate, ''))) +
               ' · Status: ' +
-              escapeHtml(valueOrEmpty(task[CONFIG.fields.tasks.status]) || '—') +
+              escapeHtml(valueOrEmpty(getField(task, CONFIG.fields.tasks.status, '—'))) +
               '</div>' +
               '<div class="text-sm whitespace-pre-wrap">' +
-              escapeHtml(valueOrEmpty(task[CONFIG.fields.tasks.notes])) +
+              escapeHtml(valueOrEmpty(getField(task, CONFIG.fields.tasks.notes, ''))) +
               '</div>' +
               '</div>'
             );
@@ -739,15 +819,15 @@
             return (
               '<div class="border rounded-md px-3 py-2 mb-2 border-slate-200">' +
               '<div class="font-medium">' +
-              escapeHtml(formatDate(entry[CONFIG.fields.history.date])) +
+              escapeHtml(formatDate(getField(entry, CONFIG.fields.history.date, ''))) +
               ' · ' +
-              escapeHtml(valueOrEmpty(entry[CONFIG.fields.history.type])) +
+              escapeHtml(valueOrEmpty(getField(entry, CONFIG.fields.history.type, ''))) +
               '</div>' +
               '<div class="text-sm whitespace-pre-wrap">' +
-              escapeHtml(valueOrEmpty(entry[CONFIG.fields.history.notes])) +
+              escapeHtml(valueOrEmpty(getField(entry, CONFIG.fields.history.notes, ''))) +
               '</div>' +
               '<div class="text-xs text-slate-500">Projektbezug: ' +
-              (boolFromField(entry[CONFIG.fields.history.projectRelated]) ? 'Ja' : 'Nein') +
+              (boolFromField(getField(entry, CONFIG.fields.history.projectRelated, false)) ? 'Ja' : 'Nein') +
               '</div>' +
               '</div>'
             );
@@ -766,19 +846,19 @@
       escapeHtml(firm ? getFirmName(firm) : '—') +
       '</div>' +
       '<div><strong>Rolle:</strong> ' +
-      escapeHtml(valueOrEmpty(contact[CONFIG.fields.contacts.role]) || '—') +
+      escapeHtml(valueOrEmpty(getField(contact, CONFIG.fields.contacts.role, '—'))) +
       '</div>' +
       '<div><strong>E-Mail:</strong> ' +
-      escapeHtml(valueOrEmpty(contact[CONFIG.fields.contacts.email]) || '—') +
+      escapeHtml(valueOrEmpty(getField(contact, CONFIG.fields.contacts.email, '—'))) +
       '</div>' +
       '<div><strong>Telefon:</strong> ' +
-      escapeHtml(valueOrEmpty(contact[CONFIG.fields.contacts.phone]) || '—') +
+      escapeHtml(valueOrEmpty(getField(contact, CONFIG.fields.contacts.phone, '—'))) +
       '</div>' +
       '<div><strong>Mobile:</strong> ' +
-      escapeHtml(valueOrEmpty(contact[CONFIG.fields.contacts.mobile]) || '—') +
+      escapeHtml(valueOrEmpty(getField(contact, CONFIG.fields.contacts.mobile, '—'))) +
       '</div>' +
       '<div><strong>Leadbbz0:</strong> ' +
-      escapeHtml(valueOrEmpty(contact[CONFIG.fields.contacts.leadDisplay]) || '—') +
+      escapeHtml(valueOrEmpty(getField(contact, CONFIG.fields.contacts.leadDisplay, '—'))) +
       '</div>' +
       '</div></section>' +
       '<section><h3 class="font-semibold mb-2">Tasks</h3>' +
@@ -797,7 +877,13 @@
     const options = ['<option value="">Firma wählen</option>']
       .concat(
         sortByField(state.firms, CONFIG.fields.firms.title).map(function (firm) {
-          return '<option value="' + escapeHtml(String(firm.Id)) + '">' + escapeHtml(getFirmName(firm)) + '</option>';
+          return (
+            '<option value="' +
+            escapeHtml(String(getItemId(firm))) +
+            '">' +
+            escapeHtml(getFirmName(firm)) +
+            '</option>'
+          );
         })
       )
       .join('');
@@ -820,9 +906,15 @@
             return getContactName(a).localeCompare(getContactName(b), 'de');
           })
           .map(function (contact) {
-            const firm = getFirmById(contact[CONFIG.fields.contacts.firmLookupId]);
+            const firm = getFirmById(getField(contact, CONFIG.fields.contacts.firmLookupId, ''));
             const label = getContactName(contact) + (firm ? ' (' + getFirmName(firm) + ')' : '');
-            return '<option value="' + escapeHtml(String(contact.Id)) + '">' + escapeHtml(label) + '</option>';
+            return (
+              '<option value="' +
+              escapeHtml(String(getItemId(contact))) +
+              '">' +
+              escapeHtml(label) +
+              '</option>'
+            );
           })
       )
       .join('');
@@ -898,57 +990,63 @@
   }
 
   async function loadAllData() {
+    if (state.loading) return;
+    state.loading = true;
     setStatus('Lade CRM-Daten ...', false);
 
-    const results = await Promise.all([
-      getAllItems(CONFIG.lists.firms),
-      getAllItems(CONFIG.lists.contacts),
-      getAllItems(CONFIG.lists.history),
-      getAllItems(CONFIG.lists.tasks)
-    ]);
+    try {
+      const results = await Promise.all([
+        getAllItems(CONFIG.lists.firms),
+        getAllItems(CONFIG.lists.contacts),
+        getAllItems(CONFIG.lists.history),
+        getAllItems(CONFIG.lists.tasks)
+      ]);
 
-    state.firms = results[0] || [];
-    state.contacts = results[1] || [];
-    state.history = results[2] || [];
-    state.tasks = results[3] || [];
+      state.firms = results[0] || [];
+      state.contacts = results[1] || [];
+      state.history = results[2] || [];
+      state.tasks = results[3] || [];
 
-    if (!state.selectedFirmId && state.firms.length) {
-      state.selectedFirmId = state.firms[0].Id;
-    }
-
-    if (state.selectedFirmId) {
-      const firmExists = !!getFirmById(state.selectedFirmId);
-      if (!firmExists) {
-        state.selectedFirmId = state.firms.length ? state.firms[0].Id : null;
+      if (!state.selectedFirmId && state.firms.length) {
+        state.selectedFirmId = String(getItemId(state.firms[0]));
       }
-    }
 
-    if (state.selectedFirmId) {
-      const contactsForFirm = getContactsForFirm(state.selectedFirmId);
-      const currentContactStillValid = contactsForFirm.some(function (c) {
-        return String(c.Id) === String(state.selectedContactId);
-      });
-      if (!currentContactStillValid) {
-        state.selectedContactId = contactsForFirm.length ? contactsForFirm[0].Id : null;
+      if (state.selectedFirmId) {
+        const firmExists = !!getFirmById(state.selectedFirmId);
+        if (!firmExists) {
+          state.selectedFirmId = state.firms.length ? String(getItemId(state.firms[0])) : null;
+        }
       }
-    } else {
-      state.selectedContactId = null;
-    }
 
-    renderAll();
-    setStatus('CRM-Daten geladen.', false);
+      if (state.selectedFirmId) {
+        const contactsForFirm = getContactsForFirm(state.selectedFirmId);
+        const currentStillValid = contactsForFirm.some(function (contact) {
+          return String(getItemId(contact)) === String(state.selectedContactId);
+        });
+        if (!currentStillValid) {
+          state.selectedContactId = contactsForFirm.length ? String(getItemId(contactsForFirm[0])) : null;
+        }
+      } else {
+        state.selectedContactId = null;
+      }
+
+      renderAll();
+      setStatus('CRM-Daten geladen.', false);
+    } finally {
+      state.loading = false;
+    }
   }
 
   function selectFirm(firmId) {
     state.selectedFirmId = String(firmId);
 
     const contacts = getContactsForFirm(state.selectedFirmId);
-    const stillValid = contacts.some(function (c) {
-      return String(c.Id) === String(state.selectedContactId);
+    const stillValid = contacts.some(function (contact) {
+      return String(getItemId(contact)) === String(state.selectedContactId);
     });
 
     if (!stillValid) {
-      state.selectedContactId = contacts.length ? String(contacts[0].Id) : null;
+      state.selectedContactId = contacts.length ? String(getItemId(contacts[0])) : null;
     }
 
     renderAll();
@@ -957,9 +1055,11 @@
   function selectContact(contactId) {
     const contact = getContactById(contactId);
     state.selectedContactId = String(contactId);
+
     if (contact) {
-      state.selectedFirmId = String(contact[CONFIG.fields.contacts.firmLookupId] || state.selectedFirmId || '');
+      state.selectedFirmId = String(getField(contact, CONFIG.fields.contacts.firmLookupId, state.selectedFirmId || ''));
     }
+
     renderAll();
   }
 
@@ -1122,6 +1222,12 @@
         onCreateHistory(event).catch(handleError);
       });
     }
+
+    window.addEventListener('crm-auth-ready', function () {
+      if (CONFIG.autoLoadAfterAuth) {
+        loadAllData().catch(handleError);
+      }
+    });
   }
 
   function validateConfig() {
@@ -1149,7 +1255,17 @@
     bindEvents();
     resetHistoryForm();
 
-    await loadAllData();
+    try {
+      await resolveAccessToken();
+      if (CONFIG.autoLoadAfterAuth) {
+        await loadAllData();
+      } else {
+        setStatus('Login erkannt. Daten können geladen werden.', false);
+      }
+    } catch (error) {
+      setStatus('Login vorhanden? Dann erst anmelden und danach Neu laden.', false);
+      log('Initialer Token nicht gefunden:', error.message);
+    }
   }
 
   document.addEventListener('DOMContentLoaded', function () {
@@ -1159,6 +1275,7 @@
   window.CRM_APP = {
     init: init,
     reload: loadAllData,
+    setAccessToken: setAccessToken,
     selectFirm: selectFirm,
     selectContact: selectContact,
     state: state,
