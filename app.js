@@ -14,7 +14,6 @@
     },
     fields: {
       firms: {
-        id: 'id',
         title: 'Title',
         abc: 'ABCSegment',
         email: 'Email',
@@ -23,7 +22,6 @@
         notes: 'Notes'
       },
       contacts: {
-        id: 'id',
         title: 'Title',
         firstName: 'FirstName',
         lastName: 'LastName',
@@ -36,7 +34,6 @@
         leadDisplay: 'Leadbbz0'
       },
       history: {
-        id: 'id',
         contactLookupId: 'ContactLookupId',
         date: 'Date',
         type: 'Type',
@@ -44,7 +41,6 @@
         projectRelated: 'ProjectRelated'
       },
       tasks: {
-        id: 'id',
         title: 'Title',
         contactLookupId: 'ContactLookupId',
         dueDate: 'DueDate',
@@ -53,12 +49,12 @@
       }
     },
     pageSize: 500,
-    debug: true,
-    autoLoadAfterAuth: true
+    debug: true
   };
 
   const state = {
     initialized: false,
+    loading: false,
     authToken: null,
     siteId: null,
     listIds: {},
@@ -71,8 +67,7 @@
     filters: {
       firmSearch: '',
       contactSearch: ''
-    },
-    loading: false
+    }
   };
 
   const dom = {};
@@ -104,7 +99,6 @@
   function collectDom() {
     dom.appStatus = qsAny(['#appStatus', '#statusMessage']);
     dom.reloadButton = qsAny(['#btnReloadAll', '#reloadApp']);
-    dom.loginButton = qsAny(['#btnLogin', '#loginButton', '#signinButton']);
 
     dom.firmList = qsAny(['#firmList', '#firmsList', '#companyList']);
     dom.firmSearch = qsAny(['#firmSearch', '#searchFirms', '#companySearch']);
@@ -150,13 +144,10 @@
   function setStatus(message, isError) {
     if (dom.appStatus) {
       dom.appStatus.textContent = message || '';
-      if (dom.appStatus.classList) {
-        dom.appStatus.classList.toggle('text-red-600', !!isError);
-        dom.appStatus.classList.toggle('text-slate-600', !isError);
-      }
     }
 
     if (!message) return;
+
     if (isError) {
       console.error('[CRM STATUS]', message);
     } else {
@@ -226,50 +217,23 @@
     return typeof value === 'string' && value.split('.').length === 3 && value.length > 100;
   }
 
-  function scanStorageForToken(storage) {
-    if (!storage) return null;
-    try {
-      for (let i = 0; i < storage.length; i += 1) {
-        const key = storage.key(i);
-        const value = storage.getItem(key);
-        if (!value) continue;
-
-        if (maybeJwt(value)) {
-          return value;
-        }
-
-        if (value.charAt(0) === '{') {
-          try {
-            const parsed = JSON.parse(value);
-            if (parsed && maybeJwt(parsed.accessToken)) return parsed.accessToken;
-            if (parsed && maybeJwt(parsed.access_token)) return parsed.access_token;
-            if (parsed && parsed.secret && maybeJwt(parsed.secret)) return parsed.secret;
-          } catch (e) {
-            /* ignore */
-          }
-        }
-      }
-    } catch (e) {
-      log('Storage scan skipped', e);
+  function setAccessToken(token) {
+    if (!maybeJwt(token)) {
+      throw new Error('Ungültiger Access Token übergeben.');
     }
-    return null;
+    state.authToken = token;
+    window.CRM_APP_AUTH_TOKEN = token;
+    log('Access token übernommen');
+    setStatus('Login erkannt. CRM kann Daten laden.', false);
   }
 
   async function resolveAccessToken() {
-    if (state.authToken) return state.authToken;
+    if (state.authToken && maybeJwt(state.authToken)) {
+      return state.authToken;
+    }
 
     if (window.CRM_APP_AUTH_TOKEN && maybeJwt(window.CRM_APP_AUTH_TOKEN)) {
       state.authToken = window.CRM_APP_AUTH_TOKEN;
-      return state.authToken;
-    }
-
-    if (window.crmAccessToken && maybeJwt(window.crmAccessToken)) {
-      state.authToken = window.crmAccessToken;
-      return state.authToken;
-    }
-
-    if (window.__crmAccessToken && maybeJwt(window.__crmAccessToken)) {
-      state.authToken = window.__crmAccessToken;
       return state.authToken;
     }
 
@@ -281,47 +245,7 @@
       }
     }
 
-    if (window.authManager && typeof window.authManager.getAccessToken === 'function') {
-      const token = await window.authManager.getAccessToken();
-      if (maybeJwt(token)) {
-        state.authToken = token;
-        return state.authToken;
-      }
-    }
-
-    if (typeof window.getAccessToken === 'function') {
-      const token = await window.getAccessToken();
-      if (maybeJwt(token)) {
-        state.authToken = token;
-        return state.authToken;
-      }
-    }
-
-    const sessionToken = scanStorageForToken(window.sessionStorage);
-    if (maybeJwt(sessionToken)) {
-      state.authToken = sessionToken;
-      return state.authToken;
-    }
-
-    const localToken = scanStorageForToken(window.localStorage);
-    if (maybeJwt(localToken)) {
-      state.authToken = localToken;
-      return state.authToken;
-    }
-
-    throw new Error('Kein vorhandener Recovery-Token gefunden. Login bleibt extern, app.js startet ohne eigenen Auth-Flow.');
-  }
-
-  function setAccessToken(token) {
-    if (!maybeJwt(token)) {
-      throw new Error('Ungültiger Access Token übergeben.');
-    }
-    state.authToken = token;
-    window.CRM_APP_AUTH_TOKEN = token;
-    log('Access token übernommen');
-    if (CONFIG.autoLoadAfterAuth) {
-      loadAllData().catch(handleError);
-    }
+    throw new Error('Nicht angemeldet. Bitte zuerst anmelden.');
   }
 
   async function graphFetch(path, options) {
@@ -352,21 +276,39 @@
 
   async function ensureSite() {
     if (state.siteId) return state.siteId;
+
     const site = await graphFetch('/sites/' + CONFIG.sharePoint.hostname + ':' + CONFIG.sharePoint.sitePath);
+
     if (!site || !site.id) {
       throw new Error('Site-ID konnte nicht geladen werden.');
     }
+
     state.siteId = site.id;
     return state.siteId;
   }
 
   async function ensureListId(listTitle) {
     await ensureSite();
-    if (state.listIds[listTitle]) return state.listIds[listTitle];
-    const list = await graphFetch('/sites/' + state.siteId + '/lists/' + encodeURIComponent(listTitle));
-    if (!list || !list.id) {
-      throw new Error('List-ID konnte nicht geladen werden: ' + listTitle);
+
+    if (state.listIds[listTitle]) {
+      return state.listIds[listTitle];
     }
+
+    const data = await graphFetch(
+      '/sites/' +
+        state.siteId +
+        '/lists?$filter=displayName eq ' +
+        "'" +
+        String(listTitle).replace(/'/g, "''") +
+        "'"
+    );
+
+    const list = data && data.value && data.value.length ? data.value[0] : null;
+
+    if (!list || !list.id) {
+      throw new Error('Liste nicht gefunden: ' + listTitle);
+    }
+
     state.listIds[listTitle] = list.id;
     return state.listIds[listTitle];
   }
@@ -374,6 +316,7 @@
   async function getAllItems(listTitle) {
     await ensureSite();
     const listId = await ensureListId(listTitle);
+
     const items = [];
     let path = '/sites/' + state.siteId + '/lists/' + listId + '/items?expand=fields&top=' + CONFIG.pageSize;
 
@@ -419,10 +362,14 @@
   function matchesSearch(item, fieldNames, search) {
     if (!search) return true;
     const q = normalizeText(search);
+
     for (let i = 0; i < fieldNames.length; i += 1) {
       const value = normalizeText(getField(item, fieldNames[i], ''));
-      if (value.indexOf(q) !== -1) return true;
+      if (value.indexOf(q) !== -1) {
+        return true;
+      }
     }
+
     return false;
   }
 
@@ -432,11 +379,13 @@
 
   function getContactName(contact) {
     if (!contact) return 'Ohne Name';
+
     const f = CONFIG.fields.contacts;
     const firstName = valueOrEmpty(getField(contact, f.firstName, '')).trim();
     const lastName = valueOrEmpty(getField(contact, f.lastName, '')).trim();
     const title = valueOrEmpty(getField(contact, f.title, '')).trim();
     const combined = [firstName, lastName].filter(Boolean).join(' ').trim();
+
     return combined || title || 'Ohne Name';
   }
 
@@ -499,6 +448,7 @@
 
   function filteredFirms() {
     const f = CONFIG.fields.firms;
+
     return sortByField(
       state.firms.filter(function (firm) {
         return matchesSearch(
@@ -513,6 +463,7 @@
 
   function filteredContacts() {
     const f = CONFIG.fields.contacts;
+
     return state.contacts
       .filter(function (contact) {
         const match = matchesSearch(
@@ -520,8 +471,10 @@
           [f.title, f.firstName, f.lastName, f.email, f.phone, f.mobile, f.role, f.notes, f.leadDisplay],
           state.filters.contactSearch
         );
+
         if (!match) return false;
         if (!state.selectedFirmId) return true;
+
         return String(getField(contact, f.firmLookupId, '')) === String(state.selectedFirmId);
       })
       .sort(function (a, b) {
@@ -551,7 +504,7 @@
         const contactCount = getContactsForFirm(id).length;
 
         return (
-          '<button type="button" class="crm-firm-row w-full text-left border rounded-lg px-3 py-2 mb-2 ' +
+          '<button type="button" class="w-full text-left border rounded-2xl px-3 py-3 mb-2 ' +
           (selected ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white') +
           '" data-firm-id="' +
           escapeHtml(id) +
@@ -591,7 +544,7 @@
         const firm = getFirmById(getField(contact, CONFIG.fields.contacts.firmLookupId, ''));
 
         return (
-          '<button type="button" class="crm-contact-row w-full text-left border rounded-lg px-3 py-2 mb-2 ' +
+          '<button type="button" class="w-full text-left border rounded-2xl px-3 py-3 mb-2 ' +
           (selected ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white') +
           '" data-contact-id="' +
           escapeHtml(id) +
@@ -620,6 +573,7 @@
     }
 
     const firm = getFirmById(state.selectedFirmId);
+
     if (!firm) {
       dom.firmDetail.innerHTML = '<div class="text-red-600">Ausgewählte Firma nicht gefunden.</div>';
       return;
@@ -653,7 +607,7 @@
       ? contacts
           .map(function (contact) {
             return (
-              '<button type="button" class="crm-open-contact block w-full text-left border rounded-md px-3 py-2 mb-2 border-slate-200" data-contact-id="' +
+              '<button type="button" class="block w-full text-left border rounded-xl px-3 py-2 mb-2 border-slate-200" data-contact-id="' +
               escapeHtml(String(getItemId(contact))) +
               '">' +
               '<div class="font-medium">' +
@@ -672,8 +626,9 @@
       ? tasks
           .map(function (task) {
             const contact = getContactById(getField(task, CONFIG.fields.tasks.contactLookupId, ''));
+
             return (
-              '<div class="border rounded-md px-3 py-2 mb-2 border-slate-200">' +
+              '<div class="border rounded-xl px-3 py-3 mb-2 border-slate-200">' +
               '<div class="font-medium">' +
               escapeHtml(valueOrEmpty(getField(task, CONFIG.fields.tasks.title, 'Ohne Titel'))) +
               '</div>' +
@@ -685,7 +640,7 @@
               '<div class="text-xs text-slate-500">Kontakt: ' +
               escapeHtml(contact ? getContactName(contact) : '—') +
               '</div>' +
-              '<div class="text-sm whitespace-pre-wrap">' +
+              '<div class="text-sm whitespace-pre-wrap mt-1">' +
               escapeHtml(valueOrEmpty(getField(task, CONFIG.fields.tasks.notes, ''))) +
               '</div>' +
               '</div>'
@@ -698,17 +653,18 @@
       ? history
           .map(function (entry) {
             const contact = getContactById(getField(entry, CONFIG.fields.history.contactLookupId, ''));
+
             return (
-              '<div class="border rounded-md px-3 py-2 mb-2 border-slate-200">' +
+              '<div class="border rounded-xl px-3 py-3 mb-2 border-slate-200">' +
               '<div class="font-medium">' +
               escapeHtml(formatDate(getField(entry, CONFIG.fields.history.date, ''))) +
               ' · ' +
               escapeHtml(valueOrEmpty(getField(entry, CONFIG.fields.history.type, ''))) +
               '</div>' +
-              '<div class="text-sm whitespace-pre-wrap">' +
+              '<div class="text-sm whitespace-pre-wrap mt-1">' +
               escapeHtml(valueOrEmpty(getField(entry, CONFIG.fields.history.notes, ''))) +
               '</div>' +
-              '<div class="text-xs text-slate-500">Kontakt: ' +
+              '<div class="text-xs text-slate-500 mt-1">Kontakt: ' +
               escapeHtml(contact ? getContactName(contact) : '—') +
               ' · Projektbezug: ' +
               (boolFromField(getField(entry, CONFIG.fields.history.projectRelated, false)) ? 'Ja' : 'Nein') +
@@ -739,16 +695,13 @@
     if (!state.selectedContactId) {
       dom.contactDetail.innerHTML = '<div class="text-slate-500">Bitte einen Kontakt auswählen.</div>';
       if (dom.contactLeadDisplay) {
-        if ('value' in dom.contactLeadDisplay) {
-          dom.contactLeadDisplay.value = '';
-        } else {
-          dom.contactLeadDisplay.textContent = '';
-        }
+        dom.contactLeadDisplay.value = '';
       }
       return;
     }
 
     const contact = getContactById(state.selectedContactId);
+
     if (!contact) {
       dom.contactDetail.innerHTML = '<div class="text-red-600">Ausgewählter Kontakt nicht gefunden.</div>';
       return;
@@ -783,19 +736,14 @@
     }
 
     if (dom.contactLeadDisplay) {
-      const leadValue = valueOrEmpty(getField(contact, CONFIG.fields.contacts.leadDisplay, ''));
-      if ('value' in dom.contactLeadDisplay) {
-        dom.contactLeadDisplay.value = leadValue;
-      } else {
-        dom.contactLeadDisplay.textContent = leadValue;
-      }
+      dom.contactLeadDisplay.value = valueOrEmpty(getField(contact, CONFIG.fields.contacts.leadDisplay, ''));
     }
 
     const tasksHtml = tasks.length
       ? tasks
           .map(function (task) {
             return (
-              '<div class="border rounded-md px-3 py-2 mb-2 border-slate-200">' +
+              '<div class="border rounded-xl px-3 py-3 mb-2 border-slate-200">' +
               '<div class="font-medium">' +
               escapeHtml(valueOrEmpty(getField(task, CONFIG.fields.tasks.title, 'Ohne Titel'))) +
               '</div>' +
@@ -804,7 +752,7 @@
               ' · Status: ' +
               escapeHtml(valueOrEmpty(getField(task, CONFIG.fields.tasks.status, '—'))) +
               '</div>' +
-              '<div class="text-sm whitespace-pre-wrap">' +
+              '<div class="text-sm whitespace-pre-wrap mt-1">' +
               escapeHtml(valueOrEmpty(getField(task, CONFIG.fields.tasks.notes, ''))) +
               '</div>' +
               '</div>'
@@ -817,16 +765,16 @@
       ? history
           .map(function (entry) {
             return (
-              '<div class="border rounded-md px-3 py-2 mb-2 border-slate-200">' +
+              '<div class="border rounded-xl px-3 py-3 mb-2 border-slate-200">' +
               '<div class="font-medium">' +
               escapeHtml(formatDate(getField(entry, CONFIG.fields.history.date, ''))) +
               ' · ' +
               escapeHtml(valueOrEmpty(getField(entry, CONFIG.fields.history.type, ''))) +
               '</div>' +
-              '<div class="text-sm whitespace-pre-wrap">' +
+              '<div class="text-sm whitespace-pre-wrap mt-1">' +
               escapeHtml(valueOrEmpty(getField(entry, CONFIG.fields.history.notes, ''))) +
               '</div>' +
-              '<div class="text-xs text-slate-500">Projektbezug: ' +
+              '<div class="text-xs text-slate-500 mt-1">Projektbezug: ' +
               (boolFromField(getField(entry, CONFIG.fields.history.projectRelated, false)) ? 'Ja' : 'Nein') +
               '</div>' +
               '</div>'
@@ -838,7 +786,7 @@
     dom.contactDetail.innerHTML =
       '<div class="space-y-6">' +
       '<section><h3 class="font-semibold mb-2">Kontakt</h3>' +
-      '<div class="border rounded-md px-3 py-2 border-slate-200">' +
+      '<div class="border rounded-xl px-3 py-3 border-slate-200">' +
       '<div><strong>Name:</strong> ' +
       escapeHtml(getContactName(contact)) +
       '</div>' +
@@ -908,6 +856,7 @@
           .map(function (contact) {
             const firm = getFirmById(getField(contact, CONFIG.fields.contacts.firmLookupId, ''));
             const label = getContactName(contact) + (firm ? ' (' + getFirmName(firm) + ')' : '');
+
             return (
               '<option value="' +
               escapeHtml(String(getItemId(contact))) +
@@ -965,6 +914,7 @@
   function resetContactForm() {
     if (!dom.contactForm) return;
     dom.contactForm.reset();
+
     if (dom.contactFirmId && state.selectedFirmId) {
       dom.contactFirmId.value = String(state.selectedFirmId);
     }
@@ -973,6 +923,7 @@
   function resetTaskForm() {
     if (!dom.taskForm) return;
     dom.taskForm.reset();
+
     if (dom.taskContactId && state.selectedContactId) {
       dom.taskContactId.value = String(state.selectedContactId);
     }
@@ -981,9 +932,11 @@
   function resetHistoryForm() {
     if (!dom.historyForm) return;
     dom.historyForm.reset();
+
     if (dom.historyContactId && state.selectedContactId) {
       dom.historyContactId.value = String(state.selectedContactId);
     }
+
     if (dom.historyDate) {
       dom.historyDate.value = formatDateTimeLocalValue(new Date().toISOString());
     }
@@ -991,10 +944,13 @@
 
   async function loadAllData() {
     if (state.loading) return;
+
     state.loading = true;
     setStatus('Lade CRM-Daten ...', false);
 
     try {
+      await resolveAccessToken();
+
       const results = await Promise.all([
         getAllItems(CONFIG.lists.firms),
         getAllItems(CONFIG.lists.contacts),
@@ -1023,6 +979,7 @@
         const currentStillValid = contactsForFirm.some(function (contact) {
           return String(getItemId(contact)) === String(state.selectedContactId);
         });
+
         if (!currentStillValid) {
           state.selectedContactId = contactsForFirm.length ? String(getItemId(contactsForFirm[0])) : null;
         }
@@ -1076,6 +1033,7 @@
     if (!firmId) {
       throw new Error('Kontakt kann nicht gespeichert werden: Firma fehlt.');
     }
+
     if (!title) {
       throw new Error('Kontakt kann nicht gespeichert werden: Name fehlt.');
     }
@@ -1107,6 +1065,7 @@
     if (!contactId) {
       throw new Error('Task kann nicht gespeichert werden: Kontakt fehlt.');
     }
+
     if (!title) {
       throw new Error('Task kann nicht gespeichert werden: Titel fehlt.');
     }
@@ -1138,12 +1097,15 @@
     if (!contactId) {
       throw new Error('History kann nicht gespeichert werden: Kontakt fehlt.');
     }
+
     if (!dateValue) {
       throw new Error('History kann nicht gespeichert werden: Datum fehlt.');
     }
+
     if (!type) {
       throw new Error('History kann nicht gespeichert werden: Typ fehlt.');
     }
+
     if (!notes) {
       throw new Error('History kann nicht gespeichert werden: Notizen fehlen.');
     }
@@ -1222,12 +1184,6 @@
         onCreateHistory(event).catch(handleError);
       });
     }
-
-    window.addEventListener('crm-auth-ready', function () {
-      if (CONFIG.autoLoadAfterAuth) {
-        loadAllData().catch(handleError);
-      }
-    });
   }
 
   function validateConfig() {
@@ -1257,13 +1213,9 @@
 
     try {
       await resolveAccessToken();
-      if (CONFIG.autoLoadAfterAuth) {
-        await loadAllData();
-      } else {
-        setStatus('Login erkannt. Daten können geladen werden.', false);
-      }
+      setStatus('Login erkannt. Neu laden lädt CRM-Daten.', false);
     } catch (error) {
-      setStatus('Login vorhanden? Dann erst anmelden und danach Neu laden.', false);
+      setStatus('Bitte zuerst anmelden und danach Neu laden.', false);
       log('Initialer Token nicht gefunden:', error.message);
     }
   }
