@@ -972,18 +972,18 @@
                   </div>
 
                   <div class="bbz-field bbz-span-2">
-                    <label>SGF <span class="bbz-field-hint">(Mehrfachauswahl — Pflege direkt in SharePoint)</span></label>
-                    <div class="bbz-readonly-chips">${helpers.multiChoiceHtml(contact?.sgf || [])}</div>
+                    <label>SGF <span class="bbz-field-hint">(Mehrfachauswahl)</span></label>
+                    ${helpers.choiceMultiHtml("sgf", L, "SGF", contact?.sgf || [])}
                   </div>
 
                   <div class="bbz-field bbz-span-2">
-                    <label>Event <span class="bbz-field-hint">(Mehrfachauswahl — Pflege direkt in SharePoint)</span></label>
-                    <div class="bbz-readonly-chips">${helpers.multiChoiceHtml(contact?.event || [])}</div>
+                    <label>Event <span class="bbz-field-hint">(Mehrfachauswahl)</span></label>
+                    ${helpers.choiceMultiHtml("event", L, "Event", contact?.event || [])}
                   </div>
 
                   <div class="bbz-field bbz-span-2">
-                    <label>Eventhistory <span class="bbz-field-hint">(Mehrfachauswahl — Pflege direkt in SharePoint)</span></label>
-                    <div class="bbz-readonly-chips">${helpers.multiChoiceHtml(helpers.toArray(contact?.eventhistory))}</div>
+                    <label>Eventhistory <span class="bbz-field-hint">(Mehrfachauswahl)</span></label>
+                    ${helpers.choiceMultiHtml("eventhistory", L, "Eventhistory", helpers.toArray(contact?.eventhistory))}
                   </div>
 
                   <div class="bbz-field bbz-span-2">
@@ -1575,9 +1575,11 @@
       // Pflichtfelder — immer senden
       const fields = {
         Title:         raw.nachname.trim(),
-        FirmaLookupId: Number(raw.firmaLookupId),
-        Archiviert:    raw.archiviert
+        FirmaLookupId: Number(raw.firmaLookupId)
       };
+
+      // Ja/Nein — nur true senden, false weglassen (SP-Default)
+      if (raw.archiviert) fields.Archiviert = true;
 
       // Einzelwahl — nur wenn Wert vorhanden
       if (raw.anrede)   fields.Anrede   = raw.anrede;
@@ -1596,11 +1598,14 @@
       // Datum — nur wenn befüllt, SP erwartet volles ISO-8601 Datetime (nicht nur YYYY-MM-DD)
       if (raw.geburtstag.trim()) fields.Geburtstag = raw.geburtstag.trim() + "T00:00:00Z";
 
-      // Multi-Choice-Felder (SGF, Event, Eventhistory) werden NICHT via Graph geschrieben.
-      // Grund: SP-Tenant behandelt diese Felder als Single-Choice intern (multiSelect=false in API),
-      // keines der getesteten Formate funktioniert: Array, ;#-String, results-Wrapper, @odata.type.
-      // Diese Felder müssen direkt in SharePoint gepflegt werden.
-      // TODO: Separate Lösung evaluieren (z.B. SP REST API statt Graph, oder SP-Felder neu anlegen)
+      // Multi-Choice — Array-Format
+      // BESTÄTIGT: ging durch wenn Archiviert:false nicht im Payload
+      if (raw.sgf.length)          fields.SGF          = raw.sgf;
+      else                         fields.SGF          = "";
+      if (raw.event.length)        fields.Event        = raw.event;
+      else                         fields.Event        = "";
+      if (raw.eventhistory.length) fields.Eventhistory = raw.eventhistory;
+      else                         fields.Eventhistory = "";
 
       // Debug-Log (kann nach stabilem Betrieb entfernt werden)
       console.log("handleModalSubmit fields →", JSON.stringify(fields, null, 2));
