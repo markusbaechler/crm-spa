@@ -1604,21 +1604,15 @@
       // Datum — nur wenn befüllt, SP erwartet volles ISO-8601 Datetime (nicht nur YYYY-MM-DD)
       if (raw.geburtstag.trim()) fields.Geburtstag = raw.geburtstag.trim() + "T00:00:00Z";
 
-      // Multi-Choice — @odata.type + Array (Gemini Punkt 1+2)
-      // Leer = Feld weglassen (nicht "" und nicht [])
-      // Befüllt = expliziter Collection-Typ + Array
-      if (raw.sgf.length) {
-        fields["SGF@odata.type"] = "Collection(Edm.String)";
-        fields["SGF"]            = raw.sgf;
-      }
-      if (raw.event.length) {
-        fields["Event@odata.type"] = "Collection(Edm.String)";
-        fields["Event"]            = raw.event;
-      }
-      if (raw.eventhistory.length) {
-        fields["Eventhistory@odata.type"] = "Collection(Edm.String)";
-        fields["Eventhistory"]            = raw.eventhistory;
-      }
+      // Multi-Choice — @odata.type + Array (befüllen) oder @odata.type + [] (leeren)
+      // BESTÄTIGT: @odata.type + Array mit Werten → ✅
+      // OFFEN: @odata.type + [] zum Leeren → zu testen
+      fields["SGF@odata.type"]          = "Collection(Edm.String)";
+      fields["SGF"]                     = raw.sgf;
+      fields["Event@odata.type"]        = "Collection(Edm.String)";
+      fields["Event"]                   = raw.event;
+      fields["Eventhistory@odata.type"] = "Collection(Edm.String)";
+      fields["Eventhistory"]            = raw.eventhistory;
 
       // Debug-Log (kann nach stabilem Betrieb entfernt werden)
       console.log("handleModalSubmit fields →", JSON.stringify(fields, null, 2));
