@@ -1591,10 +1591,12 @@
       // Datum — nur wenn befüllt
       if (raw.geburtstag.trim()) fields.Geburtstag = raw.geburtstag.trim();
 
-      // Multi-Choice — Array wenn Werte, null zum expliziten Leeren
-      fields.SGF          = raw.sgf.length          ? raw.sgf          : null;
-      fields.Event        = raw.event.length        ? raw.event        : null;
-      fields.Eventhistory = raw.eventhistory.length ? raw.eventhistory : null;
+      // Multi-Choice — nur senden wenn Werte vorhanden
+      // [] → SP 400, null → SP 400, weglassen → SP behält bestehenden Wert
+      // TRADE-OFF: Abwählen aller Werte ist damit nicht möglich — separater Fix folgt nach Bestätigung
+      if (raw.sgf.length)          fields.SGF          = raw.sgf;
+      if (raw.event.length)        fields.Event        = raw.event;
+      if (raw.eventhistory.length) fields.Eventhistory = raw.eventhistory;
 
       // Debug-Log: exakte Felder die an Graph gesendet werden
       console.log("handleModalSubmit fields →", JSON.stringify(fields, null, 2));
