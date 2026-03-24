@@ -398,6 +398,31 @@
         const backdrop = event.target.closest(".bbz-modal-backdrop");
         if (backdrop && !event.target.closest(".bbz-modal")) { controller.closeModal(); return; }
 
+        // Kontakt löschen
+        const deleteContact = event.target.closest("[data-action='delete-contact']");
+        if (deleteContact) {
+          controller.handleDeleteContact(deleteContact.dataset.id, deleteContact.dataset.name);
+          return;
+        }
+
+        // Firma bearbeiten
+        const openFirmForm = event.target.closest("[data-action='open-firm-form']");
+        if (openFirmForm) {
+          controller.openFirmForm(openFirmForm.dataset.id);
+          return;
+        }
+
+        // Firma löschen
+        const deleteFirm = event.target.closest("[data-action='delete-firm']");
+        if (deleteFirm) {
+          if (Number(deleteFirm.dataset.contacts) > 0) {
+            ui.setMessage("Diese Firma hat noch Kontakte und kann nicht gelöscht werden.", "error");
+            return;
+          }
+          controller.handleDeleteFirm(deleteFirm.dataset.id, deleteFirm.dataset.name);
+          return;
+        }
+
         // KEIN separater Handler für [data-modal-submit] nötig:
         // Der Button hat type="submit" und löst den nativen Form-Submit aus,
         // der vom submit-Listener unten abgefangen wird.
@@ -409,9 +434,13 @@
         const form = event.target.closest("[data-modal-form]");
         if (form) {
           event.preventDefault();
-          // Guard: kein zweiter Submit wenn bereits ein Request läuft
           if (state.meta.loading) return;
-          controller.handleModalSubmit(form, form.dataset.mode, form.dataset.itemId || null);
+          const formType = form.dataset.modalForm;
+          if (formType === "firm") {
+            controller.handleFirmModalSubmit(form, form.dataset.mode, form.dataset.itemId || null);
+          } else {
+            controller.handleModalSubmit(form, form.dataset.mode, form.dataset.itemId || null);
+          }
         }
       });
 
@@ -893,7 +922,9 @@
       }
 
       // Modal wird ueber dem View gerendert
-      const modalHtml = state.modal ? this.renderContactForm(state.modal.mode, state.modal.payload) : "";
+      let modalHtml = "";
+      if (state.modal?.type === "contact") modalHtml = views.renderContactForm(state.modal.mode, state.modal.payload);
+      if (state.modal?.type === "firm")    modalHtml = views.renderFirmForm(state.modal.mode, state.modal.payload?.firmId);
       return viewHtml + modalHtml;
     },
 
@@ -1014,6 +1045,67 @@
       `;
     },
 
+    renderFirmForm(mode, firmId = null) {
+      const firm = mode === "edit" ? dataModel.getFirmById(firmId) : null;
+      const title = mode === "edit" ? "Firma bearbeiten" : "Neue Firma";
+      const LF = CONFIG.lists.firms;
+
+      return `
+        <div class="bbz-modal-backdrop show">
+          <div class="bbz-modal">
+            <div class="bbz-modal-header">
+              <div class="bbz-modal-title">${title}</div>
+              <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
+            </div>
+            <form data-modal-form="firm" data-mode="${mode}" data-item-id="${firmId || ""}">
+              <div class="bbz-modal-body">
+                <div class="bbz-form-grid">
+                  <div class="bbz-field bbz-span-2">
+                    <label>Firmenname *</label>
+                    <input class="bbz-input" name="title" required value="${helpers.escapeHtml(firm?.title || "")}" />
+                  </div>
+                  <div class="bbz-field bbz-span-2">
+                    <label>Adresse</label>
+                    <input class="bbz-input" name="adresse" value="${helpers.escapeHtml(firm?.adresse || "")}" />
+                  </div>
+                  <div class="bbz-field">
+                    <label>PLZ</label>
+                    <input class="bbz-input" name="plz" value="${helpers.escapeHtml(firm?.plz || "")}" />
+                  </div>
+                  <div class="bbz-field">
+                    <label>Ort</label>
+                    <input class="bbz-input" name="ort" value="${helpers.escapeHtml(firm?.ort || "")}" />
+                  </div>
+                  <div class="bbz-field">
+                    <label>Land</label>
+                    <input class="bbz-input" name="land" value="${helpers.escapeHtml(firm?.land || "Schweiz")}" />
+                  </div>
+                  <div class="bbz-field">
+                    <label>Hauptnummer</label>
+                    <input class="bbz-input" name="hauptnummer" value="${helpers.escapeHtml(firm?.hauptnummer || "")}" />
+                  </div>
+                  <div class="bbz-field">
+                    <label>Klassifizierung</label>
+                    ${helpers.choiceSelectHtml("klassifizierung", LF, "Klassifizierung", firm?.klassifizierung || "")}
+                  </div>
+                  <div class="bbz-field">
+                    <label class="bbz-checkbox" style="border:none;padding:0;margin-top:24px;">
+                      <input type="checkbox" name="vip" ${firm?.vip ? "checked" : ""} />
+                      VIP
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div class="bbz-modal-footer">
+                <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Abbrechen</button>
+                <button type="submit" class="bbz-button bbz-button-primary" ${state.meta.loading ? "disabled" : ""}>Speichern</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+    },
+
     firms() {
       const filters = state.filters.firms;
       const rows = state.enriched.firms.filter(firm => {
@@ -1111,7 +1203,11 @@
                 ${firm.vip ? `<span class="bbz-pill bbz-pill-vip">VIP</span>` : ""}
               </div>
             </div>
-            <button class="bbz-button bbz-button-primary" data-action="open-contact-form" data-firm-id="${firm.id}">+ Kontakt</button>
+            <div class="flex items-center gap-2 flex-wrap">
+              <button class="bbz-button bbz-button-secondary" style="${firm.contactsCount > 0 ? "opacity:0.4;cursor:not-allowed;" : "color:var(--red);border-color:var(--red);"}" data-action="delete-firm" data-id="${firm.id}" data-name="${helpers.escapeHtml(firm.title)}" data-contacts="${firm.contactsCount}">Löschen</button>
+              <button class="bbz-button bbz-button-secondary" data-action="open-firm-form" data-id="${firm.id}">Bearbeiten</button>
+              <button class="bbz-button bbz-button-primary" data-action="open-contact-form" data-firm-id="${firm.id}">+ Kontakt</button>
+            </div>
           </div>
           <div class="bbz-kpis">
             ${this.kpiBlock("Kontakte", firm.contactsCount)}
@@ -1257,6 +1353,7 @@
             </div>
             <div class="flex items-center gap-2 flex-wrap">
               ${contact.email1 ? `<a class="bbz-button bbz-button-secondary" href="mailto:${helpers.escapeHtml(contact.email1)}">Mail senden</a>` : ""}
+              <button class="bbz-button bbz-button-secondary" style="color:var(--red);border-color:var(--red);" data-action="delete-contact" data-id="${contact.id}" data-name="${helpers.escapeHtml(contact.fullName || contact.nachname)}">Löschen</button>
               <button class="bbz-button bbz-button-primary" data-action="open-contact-form" data-item-id="${contact.id}">Bearbeiten</button>
             </div>
           </div>
@@ -1528,10 +1625,103 @@
     // FIX 2d: Modal oeffnen
     openContactForm(itemId = null, prefillFirmId = null) {
       state.modal = {
+        type: "contact",
         mode: itemId ? "edit" : "create",
         payload: { itemId, prefillFirmId }
       };
       this.render();
+    },
+
+    openFirmForm(firmId = null) {
+      state.modal = {
+        type: "firm",
+        mode: firmId ? "edit" : "create",
+        payload: { firmId: firmId ? Number(firmId) : null }
+      };
+      this.render();
+    },
+
+    async handleFirmModalSubmit(form, mode, itemId) {
+      const fd = new FormData(form);
+
+      if (!fd.get("title")?.trim()) {
+        ui.setMessage("Firmenname ist ein Pflichtfeld.", "error");
+        return;
+      }
+
+      const fields = {
+        Title: fd.get("title").trim(),
+        VIP:   form.querySelector("[name='vip']")?.checked ?? false
+      };
+
+      if (fd.get("adresse")?.trim())      fields.Adresse      = fd.get("adresse").trim();
+      if (fd.get("plz")?.trim())          fields.PLZ          = fd.get("plz").trim();
+      if (fd.get("ort")?.trim())          fields.Ort          = fd.get("ort").trim();
+      if (fd.get("land")?.trim())         fields.Land         = fd.get("land").trim();
+      if (fd.get("hauptnummer")?.trim())  fields.Hauptnummer  = fd.get("hauptnummer").trim();
+      if (fd.get("klassifizierung"))      fields.Klassifizierung = fd.get("klassifizierung");
+
+      console.log("handleFirmModalSubmit fields →", JSON.stringify(fields, null, 2));
+      ui.setLoading(true);
+      ui.setMessage("");
+
+      try {
+        if (mode === "create") {
+          await api.postItem(SCHEMA.firms.listTitle, fields);
+          ui.setMessage("Firma wurde erfolgreich angelegt.", "success");
+        } else {
+          if (!itemId) throw new Error("itemId fehlt für PATCH.");
+          await api.patchItem(SCHEMA.firms.listTitle, Number(itemId), fields);
+          ui.setMessage("Firma wurde erfolgreich gespeichert.", "success");
+        }
+        await api.loadAll();
+        this.closeModal();
+      } catch (error) {
+        console.error("handleFirmModalSubmit Fehler:", error);
+        let msg = error.message || "Unbekannter Fehler";
+        if (msg.includes("400")) msg = "Fehler 400: Ungültige Felddaten.";
+        if (msg.includes("403")) msg = "Fehler 403: Keine Schreibberechtigung.";
+        ui.setMessage(msg, "error");
+      } finally {
+        ui.setLoading(false);
+        this.render();
+      }
+    },
+
+    async handleDeleteContact(id, name) {
+      if (!confirm(`Kontakt "${name}" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`)) return;
+      try {
+        ui.setLoading(true);
+        await api.deleteItem(SCHEMA.contacts.listTitle, Number(id));
+        ui.setMessage(`Kontakt "${name}" wurde gelöscht.`, "success");
+        state.selection.contactId = null;
+        state.filters.route = "contacts";
+        await api.loadAll();
+      } catch (error) {
+        console.error("handleDeleteContact:", error);
+        ui.setMessage(`Fehler beim Löschen: ${error.message}`, "error");
+      } finally {
+        ui.setLoading(false);
+        this.render();
+      }
+    },
+
+    async handleDeleteFirm(id, name) {
+      if (!confirm(`Firma "${name}" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`)) return;
+      try {
+        ui.setLoading(true);
+        await api.deleteItem(SCHEMA.firms.listTitle, Number(id));
+        ui.setMessage(`Firma "${name}" wurde gelöscht.`, "success");
+        state.selection.firmId = null;
+        state.filters.route = "firms";
+        await api.loadAll();
+      } catch (error) {
+        console.error("handleDeleteFirm:", error);
+        ui.setMessage(`Fehler beim Löschen: ${error.message}`, "error");
+      } finally {
+        ui.setLoading(false);
+        this.render();
+      }
     },
 
     // FIX 2e: Modal schliessen
@@ -1581,11 +1771,10 @@
       // Pflichtfelder — immer senden
       const fields = {
         Title:         raw.nachname.trim(),
-        FirmaLookupId: Number(raw.firmaLookupId)
+        FirmaLookupId: Number(raw.firmaLookupId),
+        // Archiviert immer senden — auch false, sonst kann ein archivierter Kontakt nicht reaktiviert werden
+        Archiviert:    raw.archiviert
       };
-
-      // Ja/Nein — nur true senden, false weglassen (SP-Default)
-      if (raw.archiviert) fields.Archiviert = true;
 
       // Einzelwahl — nur wenn Wert vorhanden
       if (raw.anrede)   fields.Anrede   = raw.anrede;
