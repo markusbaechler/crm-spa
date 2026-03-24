@@ -4,381 +4,195 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>bbz CRM</title>
+
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://alcdn.msauth.net/browser/2.39.0/js/msal-browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #eef2f7;
+      --panel: #ffffff;
+      --panel-2: #f8fafc;
+      --line: #dbe3ee;
+      --line-2: #e9eef5;
+      --text: #0f172a;
+      --muted: #64748b;
+      --blue: #2563eb;
+      --green: #15803d;
+      --amber: #b45309;
+      --red: #b91c1c;
+      --shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+    }
+
+    * { box-sizing: border-box; font-style: normal !important; }
+
+    html, body { margin: 0; padding: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: "Segoe UI", Inter, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+    body { padding: 10px; }
+    #app-shell { max-width: 1800px; margin: 0 auto; }
+
+    .bbz-header { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); padding: 14px 16px 12px; }
+    .bbz-brand { font-size: 30px; font-weight: 700; line-height: 1; letter-spacing: -0.03em; }
+    .bbz-subtitle { margin-top: 5px; font-size: 13px; color: var(--muted); }
+    .bbz-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .bbz-auth { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel-2); color: var(--muted); font-size: 13px; white-space: nowrap; }
+    .bbz-auth-dot { width: 8px; height: 8px; border-radius: 999px; background: #22c55e; flex: 0 0 auto; }
+    .bbz-nav { margin-top: 12px; display: inline-flex; align-items: center; gap: 6px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 5px; }
+    .bbz-nav-btn { appearance: none; border: none; background: transparent; color: var(--muted); font-size: 14px; font-weight: 600; padding: 10px 14px; border-radius: 9px; cursor: pointer; }
+    .bbz-nav-btn.active { background: var(--panel); color: var(--text); border: 1px solid var(--line); }
+    .bbz-main { margin-top: 12px; }
+
+    .bbz-banner { display: none; margin-bottom: 12px; border-radius: 14px; border: 1px solid var(--line); padding: 12px 14px; font-size: 14px; line-height: 1.4; background: var(--panel); }
+    .bbz-banner.show { display: block; }
+    .bbz-banner-success { background: #eefaf2; border-color: #c9ead5; color: var(--green); }
+    .bbz-banner-warning { background: #fff9eb; border-color: #f4dfab; color: var(--amber); }
+    .bbz-banner-error { background: #fff1f1; border-color: #f1caca; color: var(--red); }
+    .bbz-banner-info { background: #f8fafc; border-color: var(--line); color: var(--text); }
+
+    .bbz-section { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); overflow: hidden; }
+    .bbz-section-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--line-2); background: #fbfcfe; }
+    .bbz-section-title { font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
+    .bbz-section-subtitle { margin-top: 2px; font-size: 12px; color: var(--muted); }
+    .bbz-section-body { padding: 12px 14px 14px; }
+
+    .bbz-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+    .bbz-kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px 13px; box-shadow: var(--shadow); min-height: 90px; }
+    .bbz-kpi-label { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+    .bbz-kpi-value { margin-top: 9px; font-size: 30px; line-height: 1; font-weight: 800; letter-spacing: -0.04em; }
+    .bbz-kpi-meta { margin-top: 8px; font-size: 12px; color: var(--muted); }
+
+    .bbz-grid { display: grid; gap: 12px; }
+    .bbz-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .bbz-grid-3 { grid-template-columns: 1.05fr 1.25fr 1.25fr; }
+    .bbz-grid-70-30 { grid-template-columns: minmax(0, 1.75fr) minmax(340px, 0.85fr); gap: 12px; }
+
+    .bbz-button, .bbz-input, .bbz-select { appearance: none; height: 40px; border-radius: 10px; border: 1px solid var(--line); background: #fff; color: var(--text); font-size: 14px; padding: 0 13px; }
+    .bbz-input::placeholder { color: #94a3b8; }
+    .bbz-input:focus, .bbz-select:focus { outline: none; border-color: #8fb4ff; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.10); }
+    .bbz-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; font-weight: 600; white-space: nowrap; }
+    .bbz-button:disabled { opacity: 0.55; cursor: not-allowed; }
+    .bbz-button-primary { background: var(--blue); color: white; border-color: var(--blue); }
+    .bbz-button-secondary { background: white; color: var(--text); }
+
+    .bbz-filters-3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+    .bbz-filters-4 { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+    .bbz-checkbox { display: inline-flex; align-items: center; gap: 9px; min-height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-size: 14px; }
+    .bbz-checkbox input { width: 15px; height: 15px; accent-color: var(--blue); }
+
+    .bbz-table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+    .bbz-table { width: 100%; min-width: 940px; border-collapse: separate; border-spacing: 0; }
+    .bbz-table th { position: sticky; top: 0; z-index: 2; background: #f8fafc; color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; text-align: left; padding: 11px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    .bbz-table td { padding: 10px 12px; font-size: 14px; border-bottom: 1px solid var(--line-2); vertical-align: middle; background: #fff; }
+    .bbz-table tbody tr:hover td { background: #f8fbff; }
+    .bbz-table tbody tr:last-child td { border-bottom: none; }
+
+    .bbz-link { color: var(--text); text-decoration: none; font-weight: 600; cursor: pointer; }
+    .bbz-link:hover { color: var(--blue); }
+    .bbz-subtext { margin-top: 2px; font-size: 12px; color: var(--muted); }
+    .bbz-muted { color: var(--muted); }
+    .bbz-danger { color: var(--red); font-weight: 700; }
+    .bbz-warning { color: var(--amber); font-weight: 700; }
+    .bbz-success { color: var(--green); font-weight: 700; }
+
+    .bbz-pill { display: inline-flex; align-items: center; min-height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .bbz-pill-a { background: #eaf2ff; color: #1d4ed8; border-color: #cfe0ff; }
+    .bbz-pill-b { background: #fff5e7; color: var(--amber); border-color: #f3dec0; }
+    .bbz-pill-c { background: #f3f6fa; color: #475569; border-color: #d8e0ea; }
+    .bbz-pill-vip { background: #ecfdf3; color: #047857; border-color: #c8eed8; }
+    .bbz-chip { display: inline-flex; align-items: center; min-height: 22px; padding: 0 8px; border-radius: 999px; background: #f8fafc; border: 1px solid var(--line); color: var(--muted); font-size: 12px; font-weight: 600; margin: 2px 6px 2px 0; }
+
+    .bbz-cockpit-stack { display: grid; gap: 10px; }
+    .bbz-mini-list { display: grid; gap: 8px; }
+    .bbz-mini-item { border: 1px solid var(--line); border-radius: 12px; padding: 10px 11px; background: var(--panel); }
+    .bbz-mini-title { font-size: 13px; font-weight: 700; line-height: 1.25; color: var(--text); }
+    .bbz-mini-meta { margin-top: 4px; font-size: 12px; color: var(--muted); line-height: 1.35; }
+
+    .bbz-detail-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+    .bbz-detail-title { font-size: 30px; font-weight: 800; line-height: 1.02; letter-spacing: -0.04em; }
+    .bbz-detail-subtitle { margin-top: 5px; font-size: 14px; color: var(--muted); line-height: 1.4; }
+
+    .bbz-meta-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .bbz-kv { min-height: 68px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+    .bbz-kv-label { font-size: 11px; color: var(--muted); font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 6px; }
+    .bbz-kv-value { font-size: 14px; color: var(--text); line-height: 1.4; word-break: break-word; }
+
+    .bbz-timeline { display: grid; gap: 8px; }
+    .bbz-timeline-item { display: grid; grid-template-columns: 150px 1fr; gap: 12px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+    .bbz-timeline-date { font-size: 12px; color: var(--muted); line-height: 1.35; }
+    .bbz-timeline-title { font-size: 14px; font-weight: 700; margin-bottom: 5px; line-height: 1.3; }
+    .bbz-timeline-text { font-size: 14px; color: #334155; line-height: 1.45; white-space: pre-wrap; }
+
+    .bbz-empty { border: 1px dashed #cfd8e3; border-radius: 12px; padding: 22px 16px; text-align: center; color: var(--muted); background: #fbfdff; font-size: 14px; }
+    .bbz-loader { width: 18px; height: 18px; border: 2px solid rgba(37, 99, 235, 0.14); border-top-color: var(--blue); border-radius: 999px; animation: bbzspin 0.75s linear infinite; flex: 0 0 auto; }
+    @keyframes bbzspin { to { transform: rotate(360deg); } }
+
+    /* ===================== MODAL ===================== */
+    .bbz-modal-backdrop {
+      display: none; position: fixed; inset: 0; z-index: 100;
+      background: rgba(15, 23, 42, 0.55); backdrop-filter: blur(3px);
+      align-items: center; justify-content: center; padding: 16px;
+    }
+    .bbz-modal-backdrop.show { display: flex; }
+    .bbz-modal {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 20px;
+      box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+      width: 100%; max-width: 780px; max-height: 90vh;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .bbz-modal-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line-2); background: #fbfcfe; flex-shrink: 0; }
+    .bbz-modal-title { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+    .bbz-modal-body { padding: 20px; overflow-y: auto; flex: 1 1 auto; }
+    .bbz-modal-footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--line-2); background: #fbfcfe; flex-shrink: 0; }
+    .bbz-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .bbz-field { display: flex; flex-direction: column; gap: 5px; }
+    .bbz-field label { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 0.05em; text-transform: uppercase; }
+    .bbz-textarea { appearance: none; border-radius: 10px; border: 1px solid var(--line); background: #fff; color: var(--text); font-size: 14px; padding: 9px 13px; resize: vertical; min-height: 80px; font-family: inherit; }
+    .bbz-textarea:focus { outline: none; border-color: #8fb4ff; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.10); }
+    .bbz-span-2 { grid-column: span 2; }
+
+    /* ===================== RESPONSIVE ===================== */
+    @media (max-width: 1280px) {
+      .bbz-kpis, .bbz-grid-3, .bbz-grid-70-30 { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 920px) {
+      body { padding: 6px; }
+      .bbz-kpis, .bbz-grid-2, .bbz-grid-3, .bbz-grid-70-30,
+      .bbz-filters-3, .bbz-filters-4, .bbz-meta-grid,
+      .bbz-form-grid { grid-template-columns: 1fr; }
+      .bbz-timeline-item { grid-template-columns: 1fr; }
+      .bbz-detail-title { font-size: 26px; }
+      .bbz-span-2 { grid-column: span 1; }
+    }
+  </style>
 </head>
-<body class="bg-slate-100 text-slate-900 min-h-screen">
-  <div class="max-w-7xl mx-auto p-4 md:p-6">
-    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 mb-6">
-      <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+<body>
+  <div id="app-shell">
+    <header class="bbz-header">
+      <div class="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 class="text-4xl md:text-5xl font-bold tracking-tight text-slate-900">bbz CRM</h1>
-          <p class="mt-3 text-lg text-slate-600">Firmenzentriertes operatives CRM auf SharePoint / Microsoft Graph</p>
+          <div class="bbz-brand">bbz CRM</div>
+          <div class="bbz-subtitle">Firmenzentriertes operatives CRM auf SharePoint / Microsoft Graph</div>
         </div>
-
-        <div class="flex flex-wrap gap-3">
-          <button id="btnLogin" class="px-6 py-3 rounded-2xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition">
-            Anmelden
-          </button>
-          <button id="btnReloadAll" class="px-6 py-3 rounded-2xl border border-slate-300 bg-white text-slate-900 font-semibold hover:bg-slate-50 transition">
-            Neu laden
-          </button>
-          <button id="btnLogout" class="px-6 py-3 rounded-2xl border border-slate-300 bg-white text-slate-900 font-semibold hover:bg-slate-50 transition">
-            Abmelden
-          </button>
-        </div>
-      </div>
-
-      <div class="mt-5">
-        <div id="authState" class="inline-flex items-center gap-3 rounded-full border border-slate-200 bg-slate-50 px-4 py-3 text-slate-700">
-          <span id="authDot" class="w-3 h-3 rounded-full bg-slate-400 inline-block"></span>
-          <span id="appStatus">Authentifizierung wird initialisiert ...</span>
-        </div>
-      </div>
-
-      <div class="mt-5 text-sm text-slate-500">
-        Angemeldeter Benutzer: <span id="currentUser">—</span>
-      </div>
-    </div>
-
-    <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
-      <aside class="xl:col-span-3 space-y-6">
-        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-4">
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="text-xl font-semibold">Firmen</h2>
-            <span id="firmCount" class="text-sm text-slate-500">0</span>
+        <div class="bbz-toolbar">
+          <button id="btn-login" class="bbz-button bbz-button-primary">Anmelden</button>
+          <button id="btn-refresh" class="bbz-button bbz-button-secondary">Neu laden</button>
+          <div id="auth-status" class="bbz-auth">
+            <span class="bbz-auth-dot"></span>
+            <span>Authentifizierung wird initialisiert ...</span>
           </div>
-          <input id="firmSearch" type="text" placeholder="Firmen suchen ..." class="w-full rounded-xl border border-slate-300 px-3 py-2 mb-4 outline-none focus:ring-2 focus:ring-blue-500" />
-          <div id="firmList" class="max-h-[420px] overflow-auto pr-1"></div>
         </div>
-
-        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-4">
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="text-xl font-semibold">Kontakte</h2>
-            <span id="contactCount" class="text-sm text-slate-500">0</span>
-          </div>
-          <input id="contactSearch" type="text" placeholder="Kontakte suchen ..." class="w-full rounded-xl border border-slate-300 px-3 py-2 mb-4 outline-none focus:ring-2 focus:ring-blue-500" />
-          <div id="contactList" class="max-h-[420px] overflow-auto pr-1"></div>
-        </div>
-      </aside>
-
-      <main class="xl:col-span-9 space-y-6">
-        <div class="grid grid-cols-1 2xl:grid-cols-2 gap-6">
-          <section class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5">
-            <div class="mb-4">
-              <h2 id="firmDetailTitle" class="text-2xl font-bold">Firmendetail</h2>
-              <div id="firmDetailMeta" class="text-slate-500 mt-1">—</div>
-            </div>
-            <div id="firmDetail" class="text-slate-600">Bitte anmelden und Daten laden.</div>
-          </section>
-
-          <section class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5">
-            <div class="mb-4">
-              <h2 id="contactDetailTitle" class="text-2xl font-bold">Kontaktdetail</h2>
-              <div id="contactDetailMeta" class="text-slate-500 mt-1">—</div>
-            </div>
-            <div class="mb-4">
-              <label class="block text-sm font-medium mb-1">Leadbbz0 (nur Anzeige)</label>
-              <input id="contactLeadDisplay" type="text" readonly class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2" />
-            </div>
-            <div id="contactDetail" class="text-slate-600">Bitte Kontakt auswählen.</div>
-          </section>
-        </div>
-
-        <div class="grid grid-cols-1 2xl:grid-cols-3 gap-6">
-          <section class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5">
-            <h3 class="text-xl font-bold mb-4">Kontakt anlegen</h3>
-            <form id="contactForm" class="space-y-3">
-              <div>
-                <label class="block text-sm font-medium mb-1">Firma</label>
-                <select id="contactFirmId" class="w-full rounded-xl border border-slate-300 px-3 py-2"></select>
-              </div>
-              <div>
-                <label class="block text-sm font-medium mb-1">Titel / Anzeigename</label>
-                <input id="contactTitle" type="text" class="w-full rounded-xl border border-slate-300 px-3 py-2" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium mb-1">Vorname</label>
-                <input id="contactFirstName" type="text" class="w-full rounded-xl border border-slate-300 px-3 py-2" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium mb-1">Nachname</label>
-                <input id="contactLastName" type="text" class="w-full rounded-xl border border-slate-300 px-3 py-2" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium mb-1">E-Mail</label>
-                <input id="contactEmail" type="email" class="w-full rounded-xl border border-slate-300 px-3 py-2" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium mb-1">Telefon</label>
-                <input id="contactPhone" type="text" class="w-full rounded-xl border border-slate-300 px-3 py-2" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium mb-1">Mobile</label>
-                <input id="contactMobile" type="text" class="w-full rounded-xl border border-slate-300 px-3 py-2" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium mb-1">Rolle</label>
-                <input id="contactRole" type="text" class="w-full rounded-xl border border-slate-300 px-3 py-2" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium mb-1">Notizen</label>
-                <textarea id="contactNotes" rows="4" class="w-full rounded-xl border border-slate-300 px-3 py-2"></textarea>
-              </div>
-              <button type="submit" class="w-full rounded-2xl bg-slate-900 text-white font-semibold py-3 hover:bg-slate-800 transition">
-                Kontakt speichern
-              </button>
-            </form>
-          </section>
-
-          <section class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5">
-            <h3 class="text-xl font-bold mb-4">Task anlegen</h3>
-            <form id="taskForm" class="space-y-3">
-              <div>
-                <label class="block text-sm font-medium mb-1">Kontakt</label>
-                <select id="taskContactId" class="w-full rounded-xl border border-slate-300 px-3 py-2"></select>
-              </div>
-              <div>
-                <label class="block text-sm font-medium mb-1">Titel</label>
-                <input id="taskTitle" type="text" class="w-full rounded-xl border border-slate-300 px-3 py-2" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium mb-1">Fälligkeit</label>
-                <input id="taskDueDate" type="datetime-local" class="w-full rounded-xl border border-slate-300 px-3 py-2" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium mb-1">Status</label>
-                <select id="taskStatus" class="w-full rounded-xl border border-slate-300 px-3 py-2">
-                  <option value="">Bitte wählen</option>
-                  <option value="Offen">Offen</option>
-                  <option value="In Bearbeitung">In Bearbeitung</option>
-                  <option value="Erledigt">Erledigt</option>
-                  <option value="Wartend">Wartend</option>
-                </select>
-              </div>
-              <div>
-                <label class="block text-sm font-medium mb-1">Notizen</label>
-                <textarea id="taskNotes" rows="6" class="w-full rounded-xl border border-slate-300 px-3 py-2"></textarea>
-              </div>
-              <button type="submit" class="w-full rounded-2xl bg-slate-900 text-white font-semibold py-3 hover:bg-slate-800 transition">
-                Task speichern
-              </button>
-            </form>
-          </section>
-
-          <section class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5">
-            <h3 class="text-xl font-bold mb-4">History anlegen</h3>
-            <form id="historyForm" class="space-y-3">
-              <div>
-                <label class="block text-sm font-medium mb-1">Kontakt</label>
-                <select id="historyContactId" class="w-full rounded-xl border border-slate-300 px-3 py-2"></select>
-              </div>
-              <div>
-                <label class="block text-sm font-medium mb-1">Datum</label>
-                <input id="historyDate" type="datetime-local" class="w-full rounded-xl border border-slate-300 px-3 py-2" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium mb-1">Typ</label>
-                <select id="historyType" class="w-full rounded-xl border border-slate-300 px-3 py-2">
-                  <option value="">Bitte wählen</option>
-                  <option value="Meeting">Meeting</option>
-                  <option value="Call">Call</option>
-                  <option value="Mail">Mail</option>
-                </select>
-              </div>
-              <div class="flex items-center gap-2">
-                <input id="historyProjectRelated" type="checkbox" class="w-4 h-4 rounded border-slate-300" />
-                <label for="historyProjectRelated" class="text-sm font-medium">Projektbezug</label>
-              </div>
-              <div>
-                <label class="block text-sm font-medium mb-1">Notizen</label>
-                <textarea id="historyNotes" rows="6" class="w-full rounded-xl border border-slate-300 px-3 py-2"></textarea>
-              </div>
-              <button type="submit" class="w-full rounded-2xl bg-slate-900 text-white font-semibold py-3 hover:bg-slate-800 transition">
-                History speichern
-              </button>
-            </form>
-          </section>
-        </div>
-      </main>
-    </div>
+      </div>
+      <div class="bbz-nav">
+        <button class="bbz-nav-btn active" data-route="firms">Firmen</button>
+        <button class="bbz-nav-btn" data-route="contacts">Kontakte</button>
+        <button class="bbz-nav-btn" data-route="planning">Planung</button>
+        <button class="bbz-nav-btn" data-route="events">Events</button>
+      </div>
+    </header>
+    <main class="bbz-main">
+      <div id="global-message" class="bbz-banner"></div>
+      <div id="view-root"></div>
+    </main>
   </div>
-
-  <script>
-    const AUTH_CONFIG = {
-      clientId: 'REPLACE_WITH_YOUR_CLIENT_ID',
-      tenantId: 'REPLACE_WITH_YOUR_TENANT_ID',
-      scopes: ['User.Read', 'Sites.ReadWrite.All']
-    };
-
-    (function () {
-      'use strict';
-
-      const statusEl = document.getElementById('appStatus');
-      const dotEl = document.getElementById('authDot');
-      const currentUserEl = document.getElementById('currentUser');
-      const btnLogin = document.getElementById('btnLogin');
-      const btnLogout = document.getElementById('btnLogout');
-      const btnReload = document.getElementById('btnReloadAll');
-
-      function setAuthUi(message, mode) {
-        statusEl.textContent = message;
-
-        dotEl.classList.remove('bg-slate-400', 'bg-green-500', 'bg-red-500', 'bg-yellow-500');
-
-        if (mode === 'ok') {
-          dotEl.classList.add('bg-green-500');
-        } else if (mode === 'error') {
-          dotEl.classList.add('bg-red-500');
-        } else if (mode === 'loading') {
-          dotEl.classList.add('bg-yellow-500');
-        } else {
-          dotEl.classList.add('bg-slate-400');
-        }
-      }
-
-      const redirectUri = window.location.origin + window.location.pathname;
-
-      const msalConfig = {
-        auth: {
-          clientId: AUTH_CONFIG.clientId,
-          authority: 'https://login.microsoftonline.com/' + AUTH_CONFIG.tenantId,
-          redirectUri: redirectUri
-        },
-        cache: {
-          cacheLocation: 'localStorage',
-          storeAuthStateInCookie: false
-        }
-      };
-
-      const msalInstance = new msal.PublicClientApplication(msalConfig);
-
-      async function getAccount() {
-        const accounts = msalInstance.getAllAccounts();
-        return accounts && accounts.length ? accounts[0] : null;
-      }
-
-      async function acquireToken() {
-        const account = await getAccount();
-        if (!account) {
-          throw new Error('Kein Konto angemeldet.');
-        }
-
-        try {
-          const silent = await msalInstance.acquireTokenSilent({
-            account: account,
-            scopes: AUTH_CONFIG.scopes
-          });
-          return silent.accessToken;
-        } catch (err) {
-          const popup = await msalInstance.acquireTokenPopup({
-            account: account,
-            scopes: AUTH_CONFIG.scopes
-          });
-          return popup.accessToken;
-        }
-      }
-
-      async function login() {
-        setAuthUi('Anmeldung läuft ...', 'loading');
-
-        const loginResponse = await msalInstance.loginPopup({
-          scopes: AUTH_CONFIG.scopes,
-          prompt: 'select_account'
-        });
-
-        const account = loginResponse.account || (await getAccount());
-        if (!account) {
-          throw new Error('Login erfolgreich, aber kein Konto gefunden.');
-        }
-
-        currentUserEl.textContent = account.username || '—';
-
-        const token = await acquireToken();
-
-        if (!window.CRM_APP || typeof window.CRM_APP.setAccessToken !== 'function') {
-          throw new Error('CRM_APP ist noch nicht verfügbar.');
-        }
-
-        window.CRM_APP.setAccessToken(token);
-        setAuthUi('Angemeldet. CRM lädt Daten ...', 'ok');
-        await window.CRM_APP.reload();
-      }
-
-      async function logout() {
-        const account = await getAccount();
-        if (account) {
-          await msalInstance.logoutPopup({
-            account: account,
-            postLogoutRedirectUri: redirectUri
-          });
-        }
-        currentUserEl.textContent = '—';
-        setAuthUi('Abgemeldet.', 'default');
-      }
-
-      async function bootAuth() {
-        try {
-          setAuthUi('Authentifizierung wird initialisiert ...', 'loading');
-          await msalInstance.handleRedirectPromise();
-
-          const account = await getAccount();
-          if (!account) {
-            currentUserEl.textContent = '—';
-            setAuthUi('Nicht angemeldet. Bitte anmelden.', 'default');
-            return;
-          }
-
-          currentUserEl.textContent = account.username || '—';
-
-          const token = await acquireToken();
-
-          if (window.CRM_APP && typeof window.CRM_APP.setAccessToken === 'function') {
-            window.CRM_APP.setAccessToken(token);
-          }
-
-          setAuthUi('Angemeldet. CRM ist bereit.', 'ok');
-        } catch (error) {
-          console.error(error);
-          setAuthUi(error.message || String(error), 'error');
-        }
-      }
-
-      window.CRM_AUTH = {
-        login,
-        logout,
-        getAccessToken: acquireToken
-      };
-
-      btnLogin.addEventListener('click', function () {
-        login().catch(function (error) {
-          console.error(error);
-          setAuthUi(error.message || String(error), 'error');
-        });
-      });
-
-      btnLogout.addEventListener('click', function () {
-        logout().catch(function (error) {
-          console.error(error);
-          setAuthUi(error.message || String(error), 'error');
-        });
-      });
-
-      btnReload.addEventListener('click', function () {
-        if (!window.CRM_APP || typeof window.CRM_APP.reload !== 'function') {
-          setAuthUi('CRM_APP ist noch nicht geladen.', 'error');
-          return;
-        }
-        window.CRM_APP.reload().catch(function (error) {
-          console.error(error);
-          setAuthUi(error.message || String(error), 'error');
-        });
-      });
-
-      bootAuth();
-    })();
-  </script>
-
   <script src="./app.js"></script>
 </body>
 </html>
