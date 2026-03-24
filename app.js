@@ -1133,7 +1133,9 @@
           </div>
           <div class="bbz-grid bbz-grid-70-30">
             <section class="bbz-section">
-              <div class="bbz-section-header"><div><div class="bbz-section-title">Firmen-Cockpit</div><div class="bbz-section-subtitle">Hauptarbeitsliste mit Fokus auf Segment, Tasks und Fristen</div></div></div>
+              <div class="bbz-section-header"><div><div class="bbz-section-title">Firmen-Cockpit</div><div class="bbz-section-subtitle">Hauptarbeitsliste mit Fokus auf Segment, Tasks und Fristen</div></div>
+                <button class="bbz-button bbz-button-primary" data-action="open-firm-form">+ Firma</button>
+              </div>
               <div class="bbz-section-body">
                 <div class="bbz-filters-3">
                   <input class="bbz-input" data-filter="firms-search" type="text" placeholder="Suche nach Firma, Ort, Ansprechpartner ..." value="${helpers.escapeHtml(filters.search)}" />
@@ -1867,8 +1869,9 @@
 
     navigate(route) {
       state.filters.route = route;
-      if (route !== "firms") state.selection.firmId = null;
-      if (route !== "contacts") state.selection.contactId = null;
+      // Beide Selektionen immer zurücksetzen — sauberer Zustand bei jedem Tab-Wechsel
+      state.selection.firmId = null;
+      state.selection.contactId = null;
       state.modal = null;
       window.scrollTo(0, 0);
       this.render();
