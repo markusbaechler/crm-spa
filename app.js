@@ -1568,32 +1568,35 @@
       }
 
       // SharePoint Graph v1.0: Multi-Choice-Felder als JSON-Array (nicht ;# wie bei REST)
-      // Einzelwahl-Felder bleiben normaler String
+      // Leere Arrays und leere optionale Strings werden weggelassen (SP lehnt [] und "" ab)
       const fields = {
         Title:          raw.nachname.trim(),
         Vorname:        raw.vorname.trim(),
-        Anrede:         raw.anrede,
-        // BESTÄTIGT: SharePoint Graph erwartet "FirmaLookupId" (nicht "FirmaId")
         FirmaLookupId:  Number(raw.firmaLookupId),
         Funktion:       raw.funktion.trim(),
-        Rolle:          raw.rolle,
-        Email1:         raw.email1.trim(),
-        Email2:         raw.email2.trim(),
-        Direktwahl:     raw.direktwahl.trim(),
-        Mobile:         raw.mobile.trim(),
-        Leadbbz0:       raw.leadbbz0,
-        // Multi-Choice: Graph erwartet Array, nicht ";#"-String (REST-Format)
-        SGF:            raw.sgf,
-        Event:          raw.event,
-        Eventhistory:   raw.eventhistory,
         Kommentar:      raw.kommentar.trim(),
         Archiviert:     raw.archiviert
       };
 
-      // Geburtstag nur setzen wenn befüllt (leerer String → Graph 400)
-      if (raw.geburtstag.trim()) {
-        fields.Geburtstag = raw.geburtstag.trim();
-      }
+      // Einzelwahl-Felder: nur setzen wenn Wert vorhanden
+      if (raw.anrede)    fields.Anrede    = raw.anrede;
+      if (raw.rolle)     fields.Rolle     = raw.rolle;
+      if (raw.leadbbz0)  fields.Leadbbz0  = raw.leadbbz0;
+
+      // Optionale Textfelder: nur setzen wenn befüllt
+      if (raw.email1.trim())     fields.Email1     = raw.email1.trim();
+      if (raw.email2.trim())     fields.Email2     = raw.email2.trim();
+      if (raw.direktwahl.trim()) fields.Direktwahl = raw.direktwahl.trim();
+      if (raw.mobile.trim())     fields.Mobile     = raw.mobile.trim();
+
+      // Datum: nur setzen wenn befüllt (leerer String → Graph 400)
+      if (raw.geburtstag.trim()) fields.Geburtstag = raw.geburtstag.trim();
+
+      // Multi-Choice: Array wenn Werte gewählt, null zum expliziten Leeren
+      // Leeres Array [] → SP 400; null → SP leert das Feld korrekt
+      fields.SGF          = raw.sgf.length          ? raw.sgf          : null;
+      fields.Event        = raw.event.length        ? raw.event        : null;
+      fields.Eventhistory = raw.eventhistory.length ? raw.eventhistory : null;
 
       // Debug-Log: exakte Felder die an Graph gesendet werden
       console.log("handleModalSubmit fields →", JSON.stringify(fields, null, 2));
