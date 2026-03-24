@@ -660,7 +660,7 @@
             if (col.choice && Array.isArray(col.choice.choices) && col.choice.choices.length > 0) {
               choicesForList[col.name] = col.choice.choices;
               // Debug: zeigt internen SP-Feldnamen — wichtig für Write-Layer
-              console.log(`[${listTitle}] Choice-Feld: name="${col.name}" displayName="${col.displayName}" multiSelect=${col.choice.allowTextEntry ?? col.choice.displayAs}`);
+              console.log(`[${listTitle}] Choice-Feld: name="${col.name}" displayName="${col.displayName}" multiSelect=${col.choice.allowMultipleSelection ?? false}`);
             }
           }
           state.meta.choices[listTitle] = choicesForList;
@@ -1596,13 +1596,12 @@
       // Datum — nur wenn befüllt, SP erwartet volles ISO-8601 Datetime (nicht nur YYYY-MM-DD)
       if (raw.geburtstag.trim()) fields.Geburtstag = raw.geburtstag.trim() + "T00:00:00Z";
 
-      // Multi-Choice — SP erwartet möglicherweise results-Wrapper
-      // Format A (Graph standard): ["Wert1", "Wert2"] → bisher 400
-      // Format B (SP REST legacy): { results: ["Wert1"] } → zu testen
-      const multiVal = (arr) => arr.length ? { results: arr } : { results: [] };
-      fields.SGF          = multiVal(raw.sgf);
-      fields.Event        = multiVal(raw.event);
-      fields.Eventhistory = multiVal(raw.eventhistory);
+      // Multi-Choice — SP Graph meldet multiselect=false aber Felder sind Mehrfachauswahl in SP-UI
+      // Array → 400, {results:[]} → 400, "" → leert Feld
+      // Lösung: Werte als ;#-getrennten String senden (SP-internes Format)
+      fields.SGF          = raw.sgf.length          ? raw.sgf.join(";#")          : "";
+      fields.Event        = raw.event.length        ? raw.event.join(";#")        : "";
+      fields.Eventhistory = raw.eventhistory.length ? raw.eventhistory.join(";#") : "";
 
       // Debug-Log (kann nach stabilem Betrieb entfernt werden)
       console.log("handleModalSubmit fields →", JSON.stringify(fields, null, 2));
