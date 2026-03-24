@@ -1,1748 +1,1014 @@
-(() => {
-  "use strict";
+(function () {
+  'use strict';
 
   const CONFIG = {
-    appName: "bbz CRM",
-    graph: {
-      tenantId: "3643e7ab-d166-4e27-bd5f-c5bbfcd282d7",
-      clientId: "c4143c1e-33ea-4c4d-a410-58110f966d0a",
-      authority: "https://login.microsoftonline.com/3643e7ab-d166-4e27-bd5f-c5bbfcd282d7",
-      redirectUri: "https://markusbaechler.github.io/crm-spa/",
-      scopes: ["User.Read", "Sites.Read.All", "Sites.ReadWrite.All"]
-    },
-    sharePoint: {
-      siteHostname: "bbzsg.sharepoint.com",
-      sitePath: "/sites/CRM"
+    site: {
+      hostname: window.location.hostname,
+      sitePath: '/sites/CRM'
     },
     lists: {
-      firms: "CRMFirms",
-      contacts: "CRMContacts",
-      history: "CRMHistory",
-      tasks: "CRMTasks"
+      firms: 'CRMFirms',
+      contacts: 'CRMContacts',
+      history: 'CRMHistory',
+      tasks: 'CRMTasks'
     },
-    defaults: {
-      route: "firms",
-      contactArchiveDefaultHidden: true,
-      planningShowOnlyOpen: true
-    }
-  };
-
-  const SCHEMA = {
-    firms: {
-      listTitle: CONFIG.lists.firms,
-      fields: {
-        title: "Title",
-        adresse: "Adresse",
-        plz: "PLZ",
-        ort: "Ort",
-        land: "Land",
-        hauptnummer: "Hauptnummer",
-        klassifizierung: "Klassifizierung",
-        vip: "VIP"
+    fields: {
+      firms: {
+        id: 'id',
+        title: 'Title',
+        abc: 'ABCSegment',
+        email: 'Email',
+        phone: 'Phone',
+        website: 'Website',
+        notes: 'Notes'
+      },
+      contacts: {
+        id: 'id',
+        title: 'Title',
+        firstName: 'FirstName',
+        lastName: 'LastName',
+        email: 'Email',
+        phone: 'Phone',
+        mobile: 'Mobile',
+        role: 'Role',
+        firmLookupId: 'FirmLookupId',
+        notes: 'Notes',
+        leadDisplay: 'Leadbbz0'
+      },
+      history: {
+        id: 'id',
+        contactLookupId: 'ContactLookupId',
+        date: 'Date',
+        type: 'Type',
+        notes: 'Notes',
+        projectRelated: 'ProjectRelated'
+      },
+      tasks: {
+        id: 'id',
+        title: 'Title',
+        contactLookupId: 'ContactLookupId',
+        dueDate: 'DueDate',
+        status: 'Status',
+        notes: 'Notes'
       }
     },
-    contacts: {
-      listTitle: CONFIG.lists.contacts,
-      fields: {
-        nachname: "Title",
-        vorname: "Vorname",
-        anrede: "Anrede",
-        firma: "Firma",
-        firmaLookupId: "FirmaLookupId",
-        funktion: "Funktion",
-        email1: "Email1",
-        email2: "Email2",
-        direktwahl: "Direktwahl",
-        mobile: "Mobile",
-        rolle: "Rolle",
-        leadbbz0: "Leadbbz0",
-        sgf: "SGF",
-        geburtstag: "Geburtstag",
-        kommentar: "Kommentar",
-        event: "Event",
-        eventhistory: "Eventhistory",
-        archiviert: "Archiviert"
-      }
-    },
-    history: {
-      listTitle: CONFIG.lists.history,
-      fields: {
-        title: "Title",
-        kontakt: "Nachname",
-        kontaktLookupId: "NachnameLookupId",
-        datum: "Datum",
-        typ: "Typ",
-        notizen: "Notizen",
-        projektbezug: "Projektbezug",
-        leadbbz: "Leadbbz"
-      }
-    },
-    tasks: {
-      listTitle: CONFIG.lists.tasks,
-      fields: {
-        title: "Title",
-        kontakt: "Name",
-        kontaktLookupId: "NameLookupId",
-        deadline: "Deadline",
-        status: "Status",
-        leadbbz: "Leadbbz"
-      }
-    }
+    pageSize: 500,
+    debug: true
   };
 
   const state = {
-    auth: {
-      msal: null,
-      account: null,
-      token: null,
-      isAuthenticated: false,
-      isReady: false
-    },
-    meta: {
-      siteId: null,
-      loading: false,
-      saving: false,
-      lastError: null
-    },
-    data: {
-      firms: [],
-      contacts: [],
-      history: [],
-      tasks: []
-    },
-    enriched: {
-      firms: [],
-      contacts: [],
-      history: [],
-      tasks: [],
-      events: []
-    },
+    token: null,
+    siteId: null,
+    listIds: {},
+    firms: [],
+    contacts: [],
+    history: [],
+    tasks: [],
+    selectedFirmId: null,
+    selectedContactId: null,
     filters: {
-      route: CONFIG.defaults.route,
-      firms: { search: "", klassifizierung: "", vip: "" },
-      contacts: { search: "", archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden },
-      planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, onlyOverdue: false },
-      events: { search: "", onlyWithOpenTasks: false }
+      firmSearch: '',
+      contactSearch: ''
     },
-    selection: {
-      firmId: null,
-      contactId: null
-    },
-    modal: {
-      type: null,
-      payload: null
-    }
+    initialized: false
   };
 
-  const helpers = {
-    escapeHtml(value) {
-      return String(value ?? "")
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
-    },
+  const dom = {};
 
-    bool(value) {
-      if (typeof value === "boolean") return value;
-      if (typeof value === "number") return value === 1;
-      if (typeof value === "string") {
-        const v = value.trim().toLowerCase();
-        return ["true", "1", "ja", "yes"].includes(v);
-      }
-      return false;
-    },
-
-    toArray(value) {
-      if (Array.isArray(value)) return value;
-      if (value === null || value === undefined || value === "") return [];
-      if (typeof value === "string") {
-        if (value.includes(";#")) return value.split(";#").map((v) => v.trim()).filter(Boolean);
-        if (value.includes(",")) return value.split(",").map((v) => v.trim()).filter(Boolean);
-        return [value.trim()].filter(Boolean);
-      }
-      return [value];
-    },
-
-    normalizeChoiceList(value) {
-      return helpers.toArray(value).filter(Boolean);
-    },
-
-    splitCsv(value) {
-      return String(value || "")
-        .split(",")
-        .map((v) => v.trim())
-        .filter(Boolean);
-    },
-
-    uniqSorted(values) {
-      return [...new Set(values.filter(Boolean).map((v) => String(v).trim()).filter(Boolean))]
-        .sort((a, b) => a.localeCompare(b, "de"));
-    },
-
-    toDate(value) {
-      if (!value) return null;
-      const d = new Date(value);
-      return Number.isNaN(d.getTime()) ? null : d;
-    },
-
-    formatDate(value) {
-      const d = helpers.toDate(value);
-      if (!d) return "";
-      return d.toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" });
-    },
-
-    formatDateTime(value) {
-      const d = helpers.toDate(value);
-      if (!d) return "";
-      return d.toLocaleString("de-CH", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit"
-      });
-    },
-
-    toDateInput(value) {
-      const d = helpers.toDate(value);
-      if (!d) return "";
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, "0");
-      const dd = String(d.getDate()).padStart(2, "0");
-      return `${yyyy}-${mm}-${dd}`;
-    },
-
-    toDateTimeLocalInput(value) {
-      const d = helpers.toDate(value);
-      if (!d) return "";
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, "0");
-      const dd = String(d.getDate()).padStart(2, "0");
-      const hh = String(d.getHours()).padStart(2, "0");
-      const mi = String(d.getMinutes()).padStart(2, "0");
-      return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
-    },
-
-    fromDateTimeLocalInput(value) {
-      if (!value) return null;
-      const d = new Date(value);
-      if (Number.isNaN(d.getTime())) return null;
-      return d.toISOString();
-    },
-
-    todayStart() {
-      const d = new Date();
-      d.setHours(0, 0, 0, 0);
-      return d;
-    },
-
-    isOpenTask(status) {
-      const v = String(status || "").trim().toLowerCase();
-      return !["erledigt", "geschlossen", "completed", "done", "closed"].includes(v);
-    },
-
-    isOverdue(deadline) {
-      const d = helpers.toDate(deadline);
-      if (!d) return false;
-      return d < helpers.todayStart();
-    },
-
-    compareDateAsc(a, b) {
-      const ad = helpers.toDate(a);
-      const bd = helpers.toDate(b);
-      if (!ad && !bd) return 0;
-      if (!ad) return 1;
-      if (!bd) return -1;
-      return ad - bd;
-    },
-
-    compareDateDesc(a, b) {
-      const ad = helpers.toDate(a);
-      const bd = helpers.toDate(b);
-      if (!ad && !bd) return 0;
-      if (!ad) return 1;
-      if (!bd) return -1;
-      return bd - ad;
-    },
-
-    textIncludes(haystack, needle) {
-      return String(haystack || "").toLowerCase().includes(String(needle || "").toLowerCase());
-    },
-
-    joinNonEmpty(values, sep = " · ") {
-      return values.filter((v) => v !== null && v !== undefined && v !== "").join(sep);
-    },
-
-    fullName(contact) {
-      return helpers.joinNonEmpty([contact.vorname, contact.nachname], " ").trim();
-    },
-
-    firmBadgeClass(value) {
-      const v = String(value || "").toUpperCase();
-      if (v.includes("A")) return "bbz-pill bbz-pill-a";
-      if (v.includes("B")) return "bbz-pill bbz-pill-b";
-      if (v.includes("C")) return "bbz-pill bbz-pill-c";
-      return "bbz-pill";
-    },
-
-    statusClass(status, deadline) {
-      if (!helpers.isOpenTask(status)) return "bbz-success";
-      if (helpers.isOverdue(deadline)) return "bbz-danger";
-      return "bbz-warning";
-    },
-
-    multiChoiceHtml(values) {
-      const list = helpers.normalizeChoiceList(values);
-      if (!list.length) return '<span class="bbz-muted">—</span>';
-      return list.map((v) => `<span class="bbz-chip">${helpers.escapeHtml(v)}</span>`).join("");
-    },
-
-    ensureMsalAvailable() {
-      if (!window.msal || !window.msal.PublicClientApplication) {
-        throw new Error("MSAL-Bibliothek wurde nicht geladen.");
-      }
-    },
-
-    validateConfig() {
-      const missing = [];
-      if (!CONFIG.graph.clientId) missing.push("clientId");
-      if (!CONFIG.graph.tenantId) missing.push("tenantId");
-      if (!CONFIG.graph.authority) missing.push("authority");
-      if (!CONFIG.graph.redirectUri) missing.push("redirectUri");
-      if (!CONFIG.sharePoint.siteHostname) missing.push("sharePoint.siteHostname");
-      if (!CONFIG.sharePoint.sitePath) missing.push("sharePoint.sitePath");
-      if (missing.length) throw new Error(`Konfiguration unvollständig: ${missing.join(", ")}`);
+  function log(...args) {
+    if (CONFIG.debug) {
+      console.log('[CRM]', ...args);
     }
-  };
-
-  const optionsModel = {
-    firmClassifications() {
-      return helpers.uniqSorted(state.data.firms.map((f) => f.klassifizierung));
-    }
-  };
-
-  const ui = {
-    els: {
-      viewRoot: null,
-      authStatus: null,
-      globalMessage: null,
-      btnLogin: null,
-      btnRefresh: null,
-      navButtons: [],
-      modalRoot: null
-    },
-
-    init() {
-      this.els.viewRoot = document.getElementById("view-root");
-      this.els.authStatus = document.getElementById("auth-status");
-      this.els.globalMessage = document.getElementById("global-message");
-      this.els.btnLogin = document.getElementById("btn-login");
-      this.els.btnRefresh = document.getElementById("btn-refresh");
-      this.els.navButtons = [...document.querySelectorAll(".bbz-nav-btn")];
-      this.els.modalRoot = document.getElementById("modal-root");
-
-      if (this.els.btnLogin) this.els.btnLogin.addEventListener("click", () => controller.handleLogin());
-      if (this.els.btnRefresh) this.els.btnRefresh.addEventListener("click", () => controller.handleRefresh());
-
-      this.els.navButtons.forEach((btn) => {
-        btn.addEventListener("click", () => controller.navigate(btn.dataset.route));
-      });
-
-      document.addEventListener("click", (event) => {
-        const target = event.target;
-
-        const openFirm = target.closest("[data-action='open-firm']");
-        if (openFirm) return controller.openFirm(openFirm.dataset.id);
-
-        const openContact = target.closest("[data-action='open-contact']");
-        if (openContact) return controller.openContact(openContact.dataset.id);
-
-        const backToFirms = target.closest("[data-action='back-to-firms']");
-        if (backToFirms) return controller.navigate("firms");
-
-        const backToContacts = target.closest("[data-action='back-to-contacts']");
-        if (backToContacts) return controller.navigate("contacts");
-
-        const modalOpen = target.closest("[data-open-modal]");
-        if (modalOpen) {
-          modal.open(modalOpen.dataset.openModal, modalOpen.dataset);
-          return;
-        }
-
-        const modalClose = target.closest("[data-close-modal]");
-        if (modalClose) return modal.close();
-      });
-
-      document.addEventListener("input", (event) => {
-        const el = event.target;
-        if (!el.matches("[data-filter]")) return;
-
-        if (el.matches("[data-filter='firms-search']")) state.filters.firms.search = el.value;
-        if (el.matches("[data-filter='contacts-search']")) state.filters.contacts.search = el.value;
-        if (el.matches("[data-filter='planning-search']")) state.filters.planning.search = el.value;
-        if (el.matches("[data-filter='events-search']")) state.filters.events.search = el.value;
-
-        controller.render();
-      });
-
-      document.addEventListener("change", (event) => {
-        const el = event.target;
-        if (!el.matches("[data-filter]")) return;
-
-        if (el.matches("[data-filter='firms-klassifizierung']")) state.filters.firms.klassifizierung = el.value;
-        if (el.matches("[data-filter='firms-vip']")) state.filters.firms.vip = el.value;
-        if (el.matches("[data-filter='contacts-archiviert']")) state.filters.contacts.archiviertAusblenden = el.checked;
-        if (el.matches("[data-filter='planning-open']")) state.filters.planning.onlyOpen = el.checked;
-        if (el.matches("[data-filter='planning-overdue']")) state.filters.planning.onlyOverdue = el.checked;
-        if (el.matches("[data-filter='events-open']")) state.filters.events.onlyWithOpenTasks = el.checked;
-
-        controller.render();
-      });
-
-      document.addEventListener("submit", async (event) => {
-        const form = event.target;
-        if (!form.matches("[data-modal-form]")) return;
-
-        event.preventDefault();
-
-        try {
-          state.meta.saving = true;
-          modal.setSavingState(true);
-
-          switch (form.dataset.modalForm) {
-            case "firm":
-              await actions.saveFirm(new FormData(form), form.dataset.mode, form.dataset.itemId);
-              break;
-            case "contact":
-              await actions.saveContact(new FormData(form), form.dataset.mode, form.dataset.itemId);
-              break;
-            case "task":
-              await actions.saveTask(new FormData(form));
-              break;
-            case "history":
-              await actions.saveHistory(new FormData(form));
-              break;
-            default:
-              throw new Error("Unbekannter Formular-Typ.");
-          }
-
-          modal.close();
-          await controller.reloadData();
-        } catch (error) {
-          console.error(error);
-          ui.setMessage(`Speichern fehlgeschlagen: ${error.message}`, "error");
-        } finally {
-          state.meta.saving = false;
-          modal.setSavingState(false);
-        }
-      });
-
-      document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape" && state.modal.type) modal.close();
-      });
-    },
-
-    setLoading(isLoading) {
-      state.meta.loading = isLoading;
-      this.renderShell();
-    },
-
-    setMessage(message, type = "info") {
-      const el = this.els.globalMessage;
-      if (!el) return;
-
-      if (!message) {
-        el.className = "bbz-banner";
-        el.textContent = "";
-        return;
-      }
-
-      let cls = "bbz-banner bbz-banner-info show";
-      if (type === "success") cls = "bbz-banner bbz-banner-success show";
-      if (type === "warning") cls = "bbz-banner bbz-banner-warning show";
-      if (type === "error") cls = "bbz-banner bbz-banner-error show";
-
-      el.className = cls;
-      el.textContent = message;
-    },
-
-    renderShell() {
-      this.els.navButtons.forEach((btn) => {
-        btn.classList.toggle("active", btn.dataset.route === state.filters.route);
-      });
-
-      if (state.auth.isAuthenticated && state.auth.account) {
-        this.els.authStatus.innerHTML = `
-          <span class="bbz-auth-dot"></span>
-          <span>Angemeldet: ${helpers.escapeHtml(state.auth.account.username || state.auth.account.name || "")}</span>
-        `;
-      } else if (state.auth.isReady) {
-        this.els.authStatus.innerHTML = `
-          <span class="bbz-auth-dot" style="background:#94a3b8;"></span>
-          <span>Nicht angemeldet</span>
-        `;
-      } else {
-        this.els.authStatus.innerHTML = `
-          <span class="bbz-auth-dot" style="background:#f59e0b;"></span>
-          <span>Authentifizierung wird initialisiert ...</span>
-        `;
-      }
-
-      if (this.els.btnLogin) {
-        this.els.btnLogin.textContent = state.auth.isAuthenticated ? "Erneut anmelden" : "Anmelden";
-        this.els.btnLogin.disabled = state.meta.loading || !state.auth.isReady || state.meta.saving;
-      }
-
-      if (this.els.btnRefresh) {
-        this.els.btnRefresh.disabled = state.meta.loading || !state.auth.isReady || state.meta.saving;
-      }
-    },
-
-    renderView(html) {
-      if (this.els.viewRoot) this.els.viewRoot.innerHTML = html;
-    },
-
-    loadingBlock(text = "Daten werden geladen ...") {
-      return `
-        <section class="bbz-section">
-          <div class="bbz-section-body">
-            <div class="flex items-center gap-3">
-              <div class="bbz-loader"></div>
-              <div class="text-sm text-slate-500">${helpers.escapeHtml(text)}</div>
-            </div>
-          </div>
-        </section>
-      `;
-    },
-
-    emptyBlock(text = "Keine Daten vorhanden.") {
-      return `<div class="bbz-empty">${helpers.escapeHtml(text)}</div>`;
-    },
-
-    kv(label, value) {
-      return `
-        <div class="bbz-kv">
-          <div class="bbz-kv-label">${helpers.escapeHtml(label)}</div>
-          <div class="bbz-kv-value">${value || '<span class="bbz-muted">—</span>'}</div>
-        </div>
-      `;
-    }
-  };
-
-  const api = {
-    async initAuth() {
-      helpers.ensureMsalAvailable();
-      helpers.validateConfig();
-
-      state.auth.isReady = false;
-      state.auth.msal = null;
-
-      const msalInstance = new window.msal.PublicClientApplication({
-        auth: {
-          clientId: CONFIG.graph.clientId,
-          authority: CONFIG.graph.authority,
-          redirectUri: CONFIG.graph.redirectUri
-        },
-        cache: { cacheLocation: "localStorage" }
-      });
-
-      await msalInstance.initialize();
-      state.auth.msal = msalInstance;
-
-      try {
-        const redirectResponse = await state.auth.msal.handleRedirectPromise();
-        if (redirectResponse && redirectResponse.account) {
-          state.auth.account = redirectResponse.account;
-          state.auth.isAuthenticated = true;
-        }
-      } catch (error) {
-        console.warn("handleRedirectPromise Fehler", error);
-      }
-
-      const accounts = state.auth.msal.getAllAccounts();
-      if (accounts.length > 0 && !state.auth.account) {
-        state.auth.account = accounts[0];
-        state.auth.isAuthenticated = true;
-      }
-
-      state.auth.isReady = true;
-    },
-
-    async login() {
-      if (!state.auth.msal) throw new Error("MSAL ist nicht initialisiert.");
-
-      const loginResponse = await state.auth.msal.loginPopup({
-        scopes: CONFIG.graph.scopes,
-        prompt: "select_account"
-      });
-
-      if (!loginResponse || !loginResponse.account) {
-        throw new Error("Keine Kontoinformation aus dem Login erhalten.");
-      }
-
-      state.auth.account = loginResponse.account;
-      state.auth.isAuthenticated = true;
-      await this.acquireToken();
-    },
-
-    async acquireToken() {
-      if (!state.auth.msal) throw new Error("MSAL ist nicht initialisiert.");
-      if (!state.auth.account) throw new Error("Kein angemeldetes Konto gefunden.");
-
-      try {
-        const tokenResponse = await state.auth.msal.acquireTokenSilent({
-          account: state.auth.account,
-          scopes: CONFIG.graph.scopes
-        });
-        if (!tokenResponse || !tokenResponse.accessToken) {
-          throw new Error("Kein Access Token aus acquireTokenSilent erhalten.");
-        }
-        state.auth.token = tokenResponse.accessToken;
-        return state.auth.token;
-      } catch {
-        const tokenResponse = await state.auth.msal.acquireTokenPopup({
-          account: state.auth.account,
-          scopes: CONFIG.graph.scopes
-        });
-        if (!tokenResponse || !tokenResponse.accessToken) {
-          throw new Error("Kein Access Token aus acquireTokenPopup erhalten.");
-        }
-        state.auth.token = tokenResponse.accessToken;
-        return state.auth.token;
-      }
-    },
-
-    async graphRequest(path, options = {}) {
-      const token = state.auth.token || await this.acquireToken();
-
-      const response = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
-        method: options.method || "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-          ...(options.headers || {})
-        },
-        body: options.body ? JSON.stringify(options.body) : undefined
-      });
-
-      if (!response.ok) {
-        let detail = "";
-        try { detail = await response.text(); } catch { detail = ""; }
-        throw new Error(`Graph ${response.status}: ${detail || response.statusText}`);
-      }
-
-      if (response.status === 204) return null;
-      return await response.json();
-    },
-
-    async getSiteId() {
-      if (state.meta.siteId) return state.meta.siteId;
-      const siteRef = `${CONFIG.sharePoint.siteHostname}:${CONFIG.sharePoint.sitePath}`;
-      const data = await this.graphRequest(`/sites/${siteRef}`);
-      state.meta.siteId = data.id;
-      return state.meta.siteId;
-    },
-
-    async getListItems(listTitle) {
-      const siteId = await this.getSiteId();
-      const data = await this.graphRequest(`/sites/${siteId}/lists/${encodeURIComponent(listTitle)}/items?expand=fields&top=5000`);
-      return data.value || [];
-    },
-
-    async createListItem(listTitle, fields) {
-      const siteId = await this.getSiteId();
-      return this.graphRequest(`/sites/${siteId}/lists/${encodeURIComponent(listTitle)}/items`, {
-        method: "POST",
-        body: { fields }
-      });
-    },
-
-    async updateListItemFields(listTitle, itemId, fields) {
-      const siteId = await this.getSiteId();
-      return this.graphRequest(`/sites/${siteId}/lists/${encodeURIComponent(listTitle)}/items/${itemId}/fields`, {
-        method: "PATCH",
-        body: fields
-      });
-    },
-
-    async loadAll() {
-      const [firms, contacts, history, tasks] = await Promise.all([
-        this.getListItems(SCHEMA.firms.listTitle),
-        this.getListItems(SCHEMA.contacts.listTitle),
-        this.getListItems(SCHEMA.history.listTitle),
-        this.getListItems(SCHEMA.tasks.listTitle)
-      ]);
-
-      state.data.firms = firms.map((item) => normalizer.firm(item));
-      state.data.contacts = contacts.map((item) => normalizer.contact(item));
-      state.data.history = history.map((item) => normalizer.history(item));
-      state.data.tasks = tasks.map((item) => normalizer.task(item));
-
-      dataModel.enrich();
-    }
-  };
-
-  const normalizer = {
-    getField(item, fieldName) {
-      return item && item.fields ? item.fields[fieldName] : undefined;
-    },
-
-    itemId(item) {
-      return Number(item && item.id) || null;
-    },
-
-    firm(item) {
-      const f = SCHEMA.firms.fields;
-      return {
-        id: this.itemId(item),
-        title: this.getField(item, f.title) || "",
-        adresse: this.getField(item, f.adresse) || "",
-        plz: this.getField(item, f.plz) || "",
-        ort: this.getField(item, f.ort) || "",
-        land: this.getField(item, f.land) || "",
-        hauptnummer: this.getField(item, f.hauptnummer) || "",
-        klassifizierung: this.getField(item, f.klassifizierung) || "",
-        vip: helpers.bool(this.getField(item, f.vip))
-      };
-    },
-
-    contact(item) {
-      const f = SCHEMA.contacts.fields;
-      return {
-        id: this.itemId(item),
-        nachname: this.getField(item, f.nachname) || "",
-        vorname: this.getField(item, f.vorname) || "",
-        anrede: this.getField(item, f.anrede) || "",
-        firmaRaw: this.getField(item, f.firma) || "",
-        firmaLookupId: Number(this.getField(item, f.firmaLookupId)) || null,
-        funktion: this.getField(item, f.funktion) || "",
-        email1: this.getField(item, f.email1) || "",
-        email2: this.getField(item, f.email2) || "",
-        direktwahl: this.getField(item, f.direktwahl) || "",
-        mobile: this.getField(item, f.mobile) || "",
-        rolle: this.getField(item, f.rolle) || "",
-        leadbbz0: this.getField(item, f.leadbbz0) || "",
-        sgf: helpers.normalizeChoiceList(this.getField(item, f.sgf)),
-        geburtstag: this.getField(item, f.geburtstag) || "",
-        kommentar: this.getField(item, f.kommentar) || "",
-        event: helpers.normalizeChoiceList(this.getField(item, f.event)),
-        eventhistory: this.getField(item, f.eventhistory) || "",
-        archiviert: helpers.bool(this.getField(item, f.archiviert))
-      };
-    },
-
-    history(item) {
-      const f = SCHEMA.history.fields;
-      return {
-        id: this.itemId(item),
-        title: this.getField(item, f.title) || "",
-        kontaktRaw: this.getField(item, f.kontakt) || "",
-        kontaktLookupId: Number(this.getField(item, f.kontaktLookupId)) || null,
-        datum: this.getField(item, f.datum) || "",
-        typ: this.getField(item, f.typ) || "",
-        notizen: this.getField(item, f.notizen) || "",
-        projektbezug: this.getField(item, f.projektbezug) || "",
-        leadbbz: this.getField(item, f.leadbbz) || ""
-      };
-    },
-
-    task(item) {
-      const f = SCHEMA.tasks.fields;
-      return {
-        id: this.itemId(item),
-        title: this.getField(item, f.title) || "",
-        kontaktRaw: this.getField(item, f.kontakt) || "",
-        kontaktLookupId: Number(this.getField(item, f.kontaktLookupId)) || null,
-        deadline: this.getField(item, f.deadline) || "",
-        status: this.getField(item, f.status) || "",
-        leadbbz: this.getField(item, f.leadbbz) || ""
-      };
-    }
-  };
-
-  const dataModel = {
-    enrich() {
-      const firmById = new Map(state.data.firms.map((f) => [f.id, f]));
-      const contactById = new Map(state.data.contacts.map((c) => [c.id, c]));
-
-      const contacts = state.data.contacts.map((contact) => {
-        const firm = firmById.get(contact.firmaLookupId) || null;
-        return {
-          ...contact,
-          fullName: helpers.fullName(contact),
-          firmId: (firm && firm.id) || contact.firmaLookupId || null,
-          firmTitle: (firm && firm.title) || contact.firmaRaw || "",
-          firm
-        };
-      });
-
-      const history = state.data.history.map((entry) => {
-        const contact = contactById.get(entry.kontaktLookupId) || null;
-        const firm = contact ? firmById.get(contact.firmaLookupId) || null : null;
-
-        return {
-          ...entry,
-          contactId: (contact && contact.id) || entry.kontaktLookupId || null,
-          contactName: contact ? helpers.fullName(contact) : (entry.kontaktRaw || ""),
-          firmId: (firm && firm.id) || null,
-          firmTitle: (firm && firm.title) || "",
-          projektbezugBool: helpers.bool(entry.projektbezug)
-        };
-      });
-
-      const tasks = state.data.tasks.map((task) => {
-        const contact = contactById.get(task.kontaktLookupId) || null;
-        const firm = contact ? firmById.get(contact.firmaLookupId) || null : null;
-
-        return {
-          ...task,
-          contactId: (contact && contact.id) || task.kontaktLookupId || null,
-          contactName: contact ? helpers.fullName(contact) : (task.kontaktRaw || ""),
-          firmId: (firm && firm.id) || null,
-          firmTitle: (firm && firm.title) || "",
-          isOpen: helpers.isOpenTask(task.status),
-          isOverdue: helpers.isOverdue(task.deadline)
-        };
-      });
-
-      const firms = state.data.firms.map((firm) => {
-        const firmContacts = contacts.filter((c) => c.firmId === firm.id);
-        const firmContactIds = new Set(firmContacts.map((c) => c.id));
-        const firmTasks = tasks.filter((t) => firmContactIds.has(t.contactId));
-        const firmHistory = history.filter((h) => firmContactIds.has(h.contactId));
-        const openTasks = firmTasks.filter((t) => t.isOpen);
-        const nextDeadlineTask = openTasks
-          .filter((t) => helpers.toDate(t.deadline))
-          .sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline))[0] || null;
-        const latestHistory = [...firmHistory].sort((a, b) => helpers.compareDateDesc(a.datum, b.datum))[0] || null;
-
-        return {
-          ...firm,
-          contactsCount: firmContacts.length,
-          contacts: firmContacts.sort((a, b) => a.fullName.localeCompare(b.fullName, "de")),
-          tasks: firmTasks.sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline)),
-          history: firmHistory.sort((a, b) => helpers.compareDateDesc(a.datum, b.datum)),
-          openTasksCount: openTasks.length,
-          nextDeadline: nextDeadlineTask ? nextDeadlineTask.deadline : "",
-          latestActivity: latestHistory ? latestHistory.datum : ""
-        };
-      });
-
-      const eventMap = new Map();
-
-      contacts.forEach((contact) => {
-        const contactTasks = tasks.filter((t) => t.contactId === contact.id);
-        const contactHistory = history.filter((h) => h.contactId === contact.id).sort((a, b) => helpers.compareDateDesc(a.datum, b.datum));
-        const latestHistory = contactHistory[0] || null;
-        const openTasks = contactTasks.filter((t) => t.isOpen);
-
-        contact.event.forEach((eventName) => {
-          const key = String(eventName || "").trim();
-          if (!key) return;
-
-          if (!eventMap.has(key)) {
-            eventMap.set(key, {
-              name: key,
-              contacts: [],
-              contactCount: 0,
-              openTasksCount: 0
-            });
-          }
-
-          eventMap.get(key).contacts.push({
-            contactId: contact.id,
-            contactName: contact.fullName || contact.nachname,
-            firmId: contact.firmId,
-            firmTitle: contact.firmTitle,
-            rolle: contact.rolle,
-            funktion: contact.funktion,
-            eventhistory: contact.eventhistory,
-            latestHistoryDate: latestHistory ? latestHistory.datum : "",
-            latestHistoryType: latestHistory ? latestHistory.typ : "",
-            latestHistoryText: latestHistory ? latestHistory.notizen : "",
-            openTasksCount: openTasks.length,
-            email1: contact.email1
-          });
-        });
-      });
-
-      const events = [...eventMap.values()].map((group) => ({
-        ...group,
-        contactCount: group.contacts.length,
-        openTasksCount: group.contacts.reduce((sum, c) => sum + c.openTasksCount, 0),
-        contacts: group.contacts.sort((a, b) => String(a.contactName).localeCompare(String(b.contactName), "de"))
-      })).sort((a, b) => a.name.localeCompare(b.name, "de"));
-
-      state.enriched.contacts = contacts.sort((a, b) => a.fullName.localeCompare(b.fullName, "de"));
-      state.enriched.history = history.sort((a, b) => helpers.compareDateDesc(a.datum, b.datum));
-      state.enriched.tasks = tasks.sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
-      state.enriched.firms = firms.sort((a, b) => a.title.localeCompare(b.title, "de"));
-      state.enriched.events = events;
-    },
-
-    getFirmById(id) {
-      return state.enriched.firms.find((f) => String(f.id) === String(id)) || null;
-    },
-
-    getContactById(id) {
-      return state.enriched.contacts.find((c) => String(c.id) === String(id)) || null;
-    }
-  };
-
-  const modal = {
-    open(type, payload = {}) {
-      state.modal.type = type;
-      state.modal.payload = payload;
-      this.render();
-    },
-
-    close() {
-      state.modal.type = null;
-      state.modal.payload = null;
-      this.render();
-    },
-
-    setSavingState(isSaving) {
-      const submit = document.querySelector("[data-modal-submit]");
-      const closeButtons = [...document.querySelectorAll("[data-close-modal]")];
-      if (submit) {
-        submit.disabled = isSaving;
-        submit.textContent = isSaving ? "Speichern ..." : (submit.dataset.defaultLabel || submit.dataset.defaultlabel || "Speichern");
-      }
-      closeButtons.forEach((btn) => { btn.disabled = isSaving; });
-    },
-
-    render() {
-      const root = ui.els.modalRoot;
-      if (!root) return;
-
-      if (!state.modal.type) {
-        root.innerHTML = "";
-        return;
-      }
-
-      let html = "";
-
-      switch (state.modal.type) {
-        case "firm-create":
-          html = this.renderFirmForm("create");
-          break;
-        case "firm-edit":
-          html = this.renderFirmForm("edit", Number(state.modal.payload.itemId));
-          break;
-        case "contact-create":
-          html = this.renderContactForm("create", state.modal.payload);
-          break;
-        case "contact-edit":
-          html = this.renderContactForm("edit", state.modal.payload);
-          break;
-        case "task-create":
-          html = this.renderTaskForm(state.modal.payload);
-          break;
-        case "history-create":
-          html = this.renderHistoryForm(state.modal.payload);
-          break;
-        default:
-          html = "";
-      }
-
-      root.innerHTML = html;
-    },
-
-    renderFirmForm(mode, itemId = null) {
-      const firm = mode === "edit" ? dataModel.getFirmById(itemId) : null;
-      const title = mode === "edit" ? "Firma bearbeiten" : "Neue Firma";
-      const classifications = optionsModel.firmClassifications();
-
-      return `
-        <div class="bbz-modal-backdrop show">
-          <div class="bbz-modal">
-            <div class="bbz-modal-header">
-              <div class="bbz-modal-title">${title}</div>
-              <button class="bbz-button bbz-button-secondary" data-close-modal>Schließen</button>
-            </div>
-
-            <form data-modal-form="firm" data-mode="${mode}" data-item-id="${itemId || ""}">
-              <div class="bbz-modal-body">
-                <div class="bbz-form-grid">
-                  <div class="bbz-field">
-                    <label>Firma</label>
-                    <input class="bbz-input" name="title" required value="${helpers.escapeHtml(firm ? firm.title : "")}" />
-                  </div>
-                  <div class="bbz-field">
-                    <label>Klassifizierung</label>
-                    <select class="bbz-select" name="klassifizierung">
-                      <option value="">Bitte wählen</option>
-                      ${classifications.map((v) => `<option value="${helpers.escapeHtml(v)}" ${(firm && firm.klassifizierung) === v ? "selected" : ""}>${helpers.escapeHtml(v)}</option>`).join("")}
-                    </select>
-                  </div>
-
-                  <div class="bbz-field bbz-span-2">
-                    <label>Adresse</label>
-                    <input class="bbz-input" name="adresse" value="${helpers.escapeHtml(firm ? firm.adresse : "")}" />
-                  </div>
-
-                  <div class="bbz-field">
-                    <label>PLZ</label>
-                    <input class="bbz-input" name="plz" value="${helpers.escapeHtml(firm ? firm.plz : "")}" />
-                  </div>
-                  <div class="bbz-field">
-                    <label>Ort</label>
-                    <input class="bbz-input" name="ort" value="${helpers.escapeHtml(firm ? firm.ort : "")}" />
-                  </div>
-
-                  <div class="bbz-field">
-                    <label>Land</label>
-                    <input class="bbz-input" name="land" value="${helpers.escapeHtml(firm ? firm.land : "")}" />
-                  </div>
-                  <div class="bbz-field">
-                    <label>Hauptnummer</label>
-                    <input class="bbz-input" name="hauptnummer" value="${helpers.escapeHtml(firm ? firm.hauptnummer : "")}" />
-                  </div>
-
-                  <label class="bbz-checkbox">
-                    <input type="checkbox" name="vip" ${firm && firm.vip ? "checked" : ""} />
-                    VIP
-                  </label>
-                </div>
-              </div>
-
-              <div class="bbz-modal-footer">
-                <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Abbrechen</button>
-                <button type="submit" class="bbz-button bbz-button-primary" data-modal-submit data-defaultLabel="Speichern">Speichern</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      `;
-    },
-
-    renderContactForm(mode, payload = {}) {
-      const itemId = Number(payload.itemId || 0) || null;
-      const contact = mode === "edit" ? dataModel.getContactById(itemId) : null;
-      const title = mode === "edit" ? "Kontakt bearbeiten" : "Neuer Kontakt";
-      const preselectedFirmId = Number(payload.prefillFirmId || (contact ? contact.firmId : 0) || 0) || "";
-
-      return `
-        <div class="bbz-modal-backdrop show">
-          <div class="bbz-modal">
-            <div class="bbz-modal-header">
-              <div class="bbz-modal-title">${title}</div>
-              <button class="bbz-button bbz-button-secondary" data-close-modal>Schließen</button>
-            </div>
-
-            <form data-modal-form="contact" data-mode="${mode}" data-item-id="${itemId || ""}">
-              <div class="bbz-modal-body">
-                <div class="bbz-form-grid">
-                  <div class="bbz-field">
-                    <label>Nachname</label>
-                    <input class="bbz-input" name="nachname" required value="${helpers.escapeHtml(contact ? contact.nachname : "")}" />
-                  </div>
-                  <div class="bbz-field">
-                    <label>Vorname</label>
-                    <input class="bbz-input" name="vorname" value="${helpers.escapeHtml(contact ? contact.vorname : "")}" />
-                  </div>
-
-                  <div class="bbz-field">
-                    <label>Anrede</label>
-                    <input class="bbz-input" name="anrede" value="${helpers.escapeHtml(contact ? contact.anrede : "")}" />
-                  </div>
-                  <div class="bbz-field">
-                    <label>Firma</label>
-                    <select class="bbz-select" name="firmaLookupId" required>
-                      <option value="">Bitte wählen</option>
-                      ${state.enriched.firms.map((f) => `<option value="${f.id}" ${String(preselectedFirmId) === String(f.id) ? "selected" : ""}>${helpers.escapeHtml(f.title)}</option>`).join("")}
-                    </select>
-                  </div>
-
-                  <div class="bbz-field">
-                    <label>Funktion</label>
-                    <input class="bbz-input" name="funktion" value="${helpers.escapeHtml(contact ? contact.funktion : "")}" />
-                  </div>
-                  <div class="bbz-field">
-                    <label>Rolle</label>
-                    <input class="bbz-input" name="rolle" value="${helpers.escapeHtml(contact ? contact.rolle : "")}" />
-                  </div>
-
-                  <div class="bbz-field">
-                    <label>Email 1</label>
-                    <input class="bbz-input" name="email1" value="${helpers.escapeHtml(contact ? contact.email1 : "")}" />
-                  </div>
-                  <div class="bbz-field">
-                    <label>Email 2</label>
-                    <input class="bbz-input" name="email2" value="${helpers.escapeHtml(contact ? contact.email2 : "")}" />
-                  </div>
-
-                  <div class="bbz-field">
-                    <label>Direktwahl</label>
-                    <input class="bbz-input" name="direktwahl" value="${helpers.escapeHtml(contact ? contact.direktwahl : "")}" />
-                  </div>
-                  <div class="bbz-field">
-                    <label>Mobile</label>
-                    <input class="bbz-input" name="mobile" value="${helpers.escapeHtml(contact ? contact.mobile : "")}" />
-                  </div>
-
-                  <div class="bbz-field">
-                    <label>Geburtstag</label>
-                    <input type="date" class="bbz-input" name="geburtstag" value="${helpers.escapeHtml(helpers.toDateInput(contact ? contact.geburtstag : ""))}" />
-                  </div>
-                  <div class="bbz-field">
-                    <label>Leadbbz0</label>
-                    <input class="bbz-input" value="${helpers.escapeHtml(contact ? contact.leadbbz0 : "")}" disabled placeholder="Lookup-Feld, vorläufig nur Anzeige" />
-                  </div>
-
-                  <div class="bbz-field">
-                    <label>SGF (Komma getrennt)</label>
-                    <input class="bbz-input" name="sgf" value="${helpers.escapeHtml(((contact && contact.sgf) || []).join(", "))}" />
-                  </div>
-                  <div class="bbz-field">
-                    <label>Event (Komma getrennt)</label>
-                    <input class="bbz-input" name="event" value="${helpers.escapeHtml(((contact && contact.event) || []).join(", "))}" />
-                  </div>
-
-                  <div class="bbz-field bbz-span-2">
-                    <label>Eventhistory</label>
-                    <textarea class="bbz-textarea" name="eventhistory">${helpers.escapeHtml(contact ? contact.eventhistory : "")}</textarea>
-                  </div>
-
-                  <div class="bbz-field bbz-span-2">
-                    <label>Kommentar</label>
-                    <textarea class="bbz-textarea" name="kommentar">${helpers.escapeHtml(contact ? contact.kommentar : "")}</textarea>
-                  </div>
-
-                  <label class="bbz-checkbox">
-                    <input type="checkbox" name="archiviert" ${contact && contact.archiviert ? "checked" : ""} />
-                    Archiviert
-                  </label>
-                </div>
-              </div>
-
-              <div class="bbz-modal-footer">
-                <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Abbrechen</button>
-                <button type="submit" class="bbz-button bbz-button-primary" data-modal-submit data-defaultLabel="Speichern">Speichern</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      `;
-    },
-
-    renderTaskForm(payload = {}) {
-      const prefillContactId = Number(payload.prefillContactId || 0) || "";
-
-      return `
-        <div class="bbz-modal-backdrop show">
-          <div class="bbz-modal">
-            <div class="bbz-modal-header">
-              <div class="bbz-modal-title">Neue Aufgabe</div>
-              <button class="bbz-button bbz-button-secondary" data-close-modal>Schließen</button>
-            </div>
-
-            <form data-modal-form="task">
-              <div class="bbz-modal-body">
-                <div class="bbz-form-grid">
-                  <div class="bbz-field bbz-span-2">
-                    <label>Titel</label>
-                    <input class="bbz-input" name="title" required />
-                  </div>
-
-                  <div class="bbz-field">
-                    <label>Kontakt</label>
-                    <select class="bbz-select" name="kontaktLookupId" required>
-                      <option value="">Bitte wählen</option>
-                      ${state.enriched.contacts.map((c) => `<option value="${c.id}" ${String(prefillContactId) === String(c.id) ? "selected" : ""}>${helpers.escapeHtml(c.fullName)}${c.firmTitle ? ` · ${helpers.escapeHtml(c.firmTitle)}` : ""}</option>`).join("")}
-                    </select>
-                  </div>
-
-                  <div class="bbz-field">
-                    <label>Deadline</label>
-                    <input type="date" class="bbz-input" name="deadline" required />
-                  </div>
-
-                  <div class="bbz-field">
-                    <label>Status</label>
-                    <input class="bbz-input" name="status" value="" />
-                  </div>
-                </div>
-              </div>
-
-              <div class="bbz-modal-footer">
-                <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Abbrechen</button>
-                <button type="submit" class="bbz-button bbz-button-primary" data-modal-submit data-defaultLabel="Speichern">Speichern</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      `;
-    },
-
-    renderHistoryForm(payload = {}) {
-      const prefillContactId = Number(payload.prefillContactId || 0) || "";
-
-      return `
-        <div class="bbz-modal-backdrop show">
-          <div class="bbz-modal">
-            <div class="bbz-modal-header">
-              <div class="bbz-modal-title">Neue History</div>
-              <button class="bbz-button bbz-button-secondary" data-close-modal>Schließen</button>
-            </div>
-
-            <form data-modal-form="history">
-              <div class="bbz-modal-body">
-                <div class="bbz-form-grid">
-                  <div class="bbz-field bbz-span-2">
-                    <label>Titel</label>
-                    <input class="bbz-input" name="title" required />
-                  </div>
-
-                  <div class="bbz-field">
-                    <label>Kontakt</label>
-                    <select class="bbz-select" name="kontaktLookupId" required>
-                      <option value="">Bitte wählen</option>
-                      ${state.enriched.contacts.map((c) => `<option value="${c.id}" ${String(prefillContactId) === String(c.id) ? "selected" : ""}>${helpers.escapeHtml(c.fullName)}${c.firmTitle ? ` · ${helpers.escapeHtml(c.firmTitle)}` : ""}</option>`).join("")}
-                    </select>
-                  </div>
-
-                  <div class="bbz-field">
-                    <label>Datum / Zeit</label>
-                    <input type="datetime-local" class="bbz-input" name="datum" value="${helpers.toDateTimeLocalInput(new Date().toISOString())}" required />
-                  </div>
-
-                  <div class="bbz-field">
-                    <label>Typ</label>
-                    <input class="bbz-input" name="typ" />
-                  </div>
-
-                  <div class="bbz-field">
-                    <label>Leadbbz</label>
-                    <input class="bbz-input" name="leadbbz" />
-                  </div>
-
-                  <label class="bbz-checkbox">
-                    <input type="checkbox" name="projektbezug" />
-                    Projektbezug
-                  </label>
-
-                  <div class="bbz-field bbz-span-2">
-                    <label>Notizen</label>
-                    <textarea class="bbz-textarea" name="notizen"></textarea>
-                  </div>
-                </div>
-              </div>
-
-              <div class="bbz-modal-footer">
-                <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Abbrechen</button>
-                <button type="submit" class="bbz-button bbz-button-primary" data-modal-submit data-defaultLabel="Speichern">Speichern</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      `;
-    }
-  };
-
-  const actions = {
-    async saveFirm(formData, mode, itemId) {
-      const fields = {
-        [SCHEMA.firms.fields.title]: String(formData.get("title") || "").trim(),
-        [SCHEMA.firms.fields.adresse]: String(formData.get("adresse") || "").trim(),
-        [SCHEMA.firms.fields.plz]: String(formData.get("plz") || "").trim(),
-        [SCHEMA.firms.fields.ort]: String(formData.get("ort") || "").trim(),
-        [SCHEMA.firms.fields.land]: String(formData.get("land") || "").trim(),
-        [SCHEMA.firms.fields.hauptnummer]: String(formData.get("hauptnummer") || "").trim(),
-        [SCHEMA.firms.fields.klassifizierung]: String(formData.get("klassifizierung") || "").trim(),
-        [SCHEMA.firms.fields.vip]: formData.get("vip") === "on"
-      };
-
-      if (!fields[SCHEMA.firms.fields.title]) throw new Error("Firmenname fehlt.");
-
-      if (mode === "edit" && itemId) {
-        await api.updateListItemFields(SCHEMA.firms.listTitle, itemId, fields);
-        ui.setMessage("Firma gespeichert.", "success");
-      } else {
-        await api.createListItem(SCHEMA.firms.listTitle, fields);
-        ui.setMessage("Firma angelegt.", "success");
-      }
-    },
-
-    async saveContact(formData, mode, itemId) {
-      const firmaLookupId = Number(formData.get("firmaLookupId") || 0);
-      if (!firmaLookupId) throw new Error("Bitte eine Firma auswählen.");
-
-      const fields = {
-        [SCHEMA.contacts.fields.nachname]: String(formData.get("nachname") || "").trim(),
-        [SCHEMA.contacts.fields.vorname]: String(formData.get("vorname") || "").trim(),
-        [SCHEMA.contacts.fields.anrede]: String(formData.get("anrede") || "").trim(),
-        [SCHEMA.contacts.fields.firmaLookupId]: firmaLookupId,
-        [SCHEMA.contacts.fields.funktion]: String(formData.get("funktion") || "").trim(),
-        [SCHEMA.contacts.fields.email1]: String(formData.get("email1") || "").trim(),
-        [SCHEMA.contacts.fields.email2]: String(formData.get("email2") || "").trim(),
-        [SCHEMA.contacts.fields.direktwahl]: String(formData.get("direktwahl") || "").trim(),
-        [SCHEMA.contacts.fields.mobile]: String(formData.get("mobile") || "").trim(),
-        [SCHEMA.contacts.fields.rolle]: String(formData.get("rolle") || "").trim(),
-        [SCHEMA.contacts.fields.sgf]: helpers.splitCsv(formData.get("sgf")),
-        [SCHEMA.contacts.fields.geburtstag]: formData.get("geburtstag") ? new Date(`${formData.get("geburtstag")}T00:00:00`).toISOString() : null,
-        [SCHEMA.contacts.fields.kommentar]: String(formData.get("kommentar") || "").trim(),
-        [SCHEMA.contacts.fields.event]: helpers.splitCsv(formData.get("event")),
-        [SCHEMA.contacts.fields.eventhistory]: String(formData.get("eventhistory") || "").trim(),
-        [SCHEMA.contacts.fields.archiviert]: formData.get("archiviert") === "on"
-      };
-
-      if (!fields[SCHEMA.contacts.fields.nachname]) {
-        throw new Error("Nachname fehlt.");
-      }
-
-      if (mode === "edit" && itemId) {
-        await api.updateListItemFields(SCHEMA.contacts.listTitle, itemId, fields);
-        ui.setMessage("Kontakt gespeichert.", "success");
-      } else {
-        await api.createListItem(SCHEMA.contacts.listTitle, fields);
-        ui.setMessage("Kontakt angelegt.", "success");
-      }
-    },
-
-    async saveTask(formData) {
-      const kontaktLookupId = Number(formData.get("kontaktLookupId") || 0);
-      if (!kontaktLookupId) throw new Error("Bitte einen Kontakt auswählen.");
-
-      const deadline = formData.get("deadline") ? new Date(`${formData.get("deadline")}T00:00:00`).toISOString() : null;
-
-      const fields = {
-        [SCHEMA.tasks.fields.title]: String(formData.get("title") || "").trim(),
-        [SCHEMA.tasks.fields.kontaktLookupId]: kontaktLookupId,
-        [SCHEMA.tasks.fields.deadline]: deadline,
-        [SCHEMA.tasks.fields.status]: String(formData.get("status") || "").trim()
-      };
-
-      if (!fields[SCHEMA.tasks.fields.title]) throw new Error("Titel fehlt.");
-
-      await api.createListItem(SCHEMA.tasks.listTitle, fields);
-      ui.setMessage("Task angelegt.", "success");
-    },
-
-    async saveHistory(formData) {
-      const kontaktLookupId = Number(formData.get("kontaktLookupId") || 0);
-      if (!kontaktLookupId) throw new Error("Bitte einen Kontakt auswählen.");
-
-      const datum = helpers.fromDateTimeLocalInput(formData.get("datum"));
-      if (!datum) throw new Error("Datum/Zeit fehlt oder ist ungültig.");
-
-      const fields = {
-        [SCHEMA.history.fields.title]: String(formData.get("title") || "").trim(),
-        [SCHEMA.history.fields.kontaktLookupId]: kontaktLookupId,
-        [SCHEMA.history.fields.datum]: datum,
-        [SCHEMA.history.fields.typ]: String(formData.get("typ") || "").trim(),
-        [SCHEMA.history.fields.notizen]: String(formData.get("notizen") || "").trim(),
-        [SCHEMA.history.fields.projektbezug]: formData.get("projektbezug") === "on",
-        [SCHEMA.history.fields.leadbbz]: String(formData.get("leadbbz") || "").trim()
-      };
-
-      if (!fields[SCHEMA.history.fields.title]) throw new Error("Titel fehlt.");
-
-      await api.createListItem(SCHEMA.history.listTitle, fields);
-      ui.setMessage("History-Eintrag angelegt.", "success");
-    }
-  };
-
-  const views = {
-    kpiBlock(label, value, meta = "") {
-      return `
-        <div class="bbz-kpi">
-          <div class="bbz-kpi-label">${helpers.escapeHtml(label)}</div>
-          <div class="bbz-kpi-value">${helpers.escapeHtml(String(value))}</div>
-          ${meta ? `<div class="bbz-kpi-meta">${helpers.escapeHtml(meta)}</div>` : ""}
-        </div>
-      `;
-    },
-
-    miniItem(title, meta) {
-      return `
-        <div class="bbz-mini-item">
-          <div class="bbz-mini-title">${title}</div>
-          <div class="bbz-mini-meta">${meta}</div>
-        </div>
-      `;
-    },
-
-    actionBar(items) {
-      return `<div class="flex items-center gap-2 flex-wrap">${items.filter(Boolean).join("")}</div>`;
-    },
-
-    renderRoute() {
-      if (state.meta.loading) return ui.loadingBlock();
-
-      switch (state.filters.route) {
-        case "firms":
-          return state.selection.firmId ? this.firmDetail() : this.firms();
-        case "contacts":
-          return state.selection.contactId ? this.contactDetail() : this.contacts();
-        case "planning":
-          return this.planning();
-        case "events":
-          return this.events();
-        default:
-          return this.firms();
-      }
-    },
-
-    firms() {
-      const filters = state.filters.firms;
-      const rows = state.enriched.firms.filter((firm) => {
-        const search = filters.search.trim().toLowerCase();
-        const searchMatch =
-          !search ||
-          [firm.title, firm.ort, firm.klassifizierung, firm.hauptnummer, firm.adresse, firm.land, ...firm.contacts.map((c) => c.fullName)]
-            .some((v) => helpers.textIncludes(v, search));
-        const klassifizierungMatch =
-          !filters.klassifizierung || String(firm.klassifizierung || "").toLowerCase() === String(filters.klassifizierung || "").toLowerCase();
-        const vipMatch =
-          !filters.vip || (filters.vip === "yes" && firm.vip) || (filters.vip === "no" && !firm.vip);
-        return searchMatch && klassifizierungMatch && vipMatch;
-      });
-
-      const classifications = optionsModel.firmClassifications();
-      const aCount = state.enriched.firms.filter((f) => String(f.klassifizierung).toUpperCase().includes("A")).length;
-      const bCount = state.enriched.firms.filter((f) => String(f.klassifizierung).toUpperCase().includes("B")).length;
-      const cCount = state.enriched.firms.filter((f) => String(f.klassifizierung).toUpperCase().includes("C")).length;
-      const overdueTasks = state.enriched.tasks.filter((t) => t.isOpen && t.isOverdue).length;
-
-      const urgentFirms = [...state.enriched.firms].filter((f) => f.openTasksCount > 0).sort((a, b) => helpers.compareDateAsc(a.nextDeadline, b.nextDeadline)).slice(0, 6);
-      const latestFirms = [...state.enriched.firms].filter((f) => f.latestActivity).sort((a, b) => helpers.compareDateDesc(a.latestActivity, b.latestActivity)).slice(0, 6);
-
-      return `
-        <div>
-          <div class="bbz-kpis">
-            ${this.kpiBlock("Firmen", state.enriched.firms.length, "gesamt")}
-            ${this.kpiBlock("A / B / C", `${aCount} / ${bCount} / ${cCount}`, "Segmente")}
-            ${this.kpiBlock("Kontakte", state.enriched.contacts.length, "Ansprechpartner")}
-            ${this.kpiBlock("Überfällige Tasks", overdueTasks, "sofort prüfen")}
-          </div>
-
-          <div class="bbz-grid bbz-grid-70-30">
-            <section class="bbz-section">
-              <div class="bbz-section-header">
-                <div>
-                  <div class="bbz-section-title">Firmen-Cockpit</div>
-                  <div class="bbz-section-subtitle">Hauptarbeitsliste mit Fokus auf Segment, Tasks und Fristen</div>
-                </div>
-                ${this.actionBar([
-                  `<button class="bbz-button bbz-button-primary" data-open-modal="firm-create">Neue Firma</button>`
-                ])}
-              </div>
-
-              <div class="bbz-section-body">
-                <div class="bbz-filters-3">
-                  <input class="bbz-input" data-filter="firms-search" type="text" placeholder="Suche nach Firma, Ort, Ansprechpartner, Telefon ..." value="${helpers.escapeHtml(filters.search)}" />
-                  <select class="bbz-select" data-filter="firms-klassifizierung">
-                    <option value="">Alle Klassifizierungen</option>
-                    ${classifications.map((v) => `<option value="${helpers.escapeHtml(v)}" ${filters.klassifizierung === v ? "selected" : ""}>${helpers.escapeHtml(v)}</option>`).join("")}
-                  </select>
-                  <select class="bbz-select" data-filter="firms-vip">
-                    <option value="">VIP egal</option>
-                    <option value="yes" ${filters.vip === "yes" ? "selected" : ""}>Nur VIP</option>
-                    <option value="no" ${filters.vip === "no" ? "selected" : ""}>Nur nicht VIP</option>
-                  </select>
-                </div>
-
-                <div class="bbz-table-wrap">
-                  <table class="bbz-table">
-                    <thead>
-                      <tr>
-                        <th>Firma</th>
-                        <th>Ort</th>
-                        <th>Klassifizierung</th>
-                        <th>VIP</th>
-                        <th>Kontakte</th>
-                        <th>Offene Tasks</th>
-                        <th>Nächste Deadline</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      ${
-                        rows.length
-                          ? rows.map((firm) => `
-                            <tr>
-                              <td>
-                                <a class="bbz-link" data-action="open-firm" data-id="${firm.id}">${helpers.escapeHtml(firm.title)}</a>
-                                <div class="bbz-subtext">${helpers.escapeHtml(firm.hauptnummer || "—")}</div>
-                              </td>
-                              <td>${helpers.escapeHtml(helpers.joinNonEmpty([firm.plz, firm.ort], " ")) || '<span class="bbz-muted">—</span>'}</td>
-                              <td>${firm.klassifizierung ? `<span class="${helpers.firmBadgeClass(firm.klassifizierung)}">${helpers.escapeHtml(firm.klassifizierung)}</span>` : '<span class="bbz-muted">—</span>'}</td>
-                              <td>${firm.vip ? '<span class="bbz-pill bbz-pill-vip">VIP</span>' : '<span class="bbz-muted">—</span>'}</td>
-                              <td>${firm.contactsCount}</td>
-                              <td>${firm.openTasksCount}</td>
-                              <td class="${firm.nextDeadline && helpers.isOverdue(firm.nextDeadline) ? "bbz-danger" : ""}">${helpers.formatDate(firm.nextDeadline) || '<span class="bbz-muted">—</span>'}</td>
-                            </tr>
-                          `).join("")
-                          : `<tr><td colspan="7">${ui.emptyBlock("Keine Firmen für die aktuelle Filterung gefunden.")}</td></tr>`
-                      }
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </section>
-
-            <div class="bbz-cockpit-stack">
-              <section class="bbz-section">
-                <div class="bbz-section-header">
-                  <div>
-                    <div class="bbz-section-title">Dringend</div>
-                    <div class="bbz-section-subtitle">Firmen mit offenen Tasks</div>
-                  </div>
-                </div>
-                <div class="bbz-section-body">
-                  ${
-                    urgentFirms.length
-                      ? `<div class="bbz-mini-list">
-                          ${urgentFirms.map((f) => this.miniItem(
-                            `<a class="bbz-link" data-action="open-firm" data-id="${f.id}">${helpers.escapeHtml(f.title)}</a>`,
-                            `${f.openTasksCount} offene Tasks · nächste Deadline ${helpers.formatDate(f.nextDeadline) || "—"}`
-                          )).join("")}
-                        </div>`
-                      : ui.emptyBlock("Keine dringenden Firmen.")
-                  }
-                </div>
-              </section>
-
-              <section class="bbz-section">
-                <div class="bbz-section-header">
-                  <div>
-                    <div class="bbz-section-title">Zuletzt aktiv</div>
-                    <div class="bbz-section-subtitle">Firmen mit jüngster History</div>
-                  </div>
-                </div>
-                <div class="bbz-section-body">
-                  ${
-                    latestFirms.length
-                      ? `<div class="bbz-mini-list">
-                          ${latestFirms.map((f) => this.miniItem(
-                            `<a class="bbz-link" data-action="open-firm" data-id="${f.id}">${helpers.escapeHtml(f.title)}</a>`,
-                            `Letzte Aktivität ${helpers.formatDateTime(f.latestActivity) || "—"}`
-                          )).join("")}
-                        </div>`
-                      : ui.emptyBlock("Noch keine Aktivitäten vorhanden.")
-                  }
-                </div>
-              </section>
-            </div>
-          </div>
-        </div>
-      `;
-    },
-
-    firmDetail() {
-      return ui.emptyBlock("Firmendetail ist in dieser stabilen Recovery-Version bewusst reduziert.");
-    },
-
-    contacts() {
-      const rows = state.enriched.contacts.filter((contact) => {
-        const search = state.filters.contacts.search.trim().toLowerCase();
-        const searchMatch =
-          !search ||
-          [contact.fullName, contact.firmTitle, contact.funktion, contact.rolle, contact.email1, contact.email2, contact.direktwahl, contact.mobile, contact.kommentar, ...contact.sgf, ...contact.event]
-            .some((v) => helpers.textIncludes(v, search));
-        const archiveMatch = !state.filters.contacts.archiviertAusblenden || !contact.archiviert;
-        return searchMatch && archiveMatch;
-      });
-
-      return `
-        <section class="bbz-section">
-          <div class="bbz-section-header">
-            <div>
-              <div class="bbz-section-title">Kontakte</div>
-              <div class="bbz-section-subtitle">Operative Ansprechpartner über alle Firmen</div>
-            </div>
-            ${this.actionBar([
-              `<button class="bbz-button bbz-button-primary" data-open-modal="contact-create">Kontakt anlegen</button>`
-            ])}
-          </div>
-
-          <div class="bbz-section-body">
-            <div class="bbz-filters-3">
-              <input class="bbz-input" data-filter="contacts-search" type="text" placeholder="Suche nach Name, Firma, Funktion, Rolle, E-Mail, SGF, Event ..." value="${helpers.escapeHtml(state.filters.contacts.search)}" />
-              <label class="bbz-checkbox">
-                <input type="checkbox" data-filter="contacts-archiviert" ${state.filters.contacts.archiviertAusblenden ? "checked" : ""} />
-                Archivierte ausblenden
-              </label>
-              <div></div>
-            </div>
-
-            <div class="bbz-table-wrap">
-              <table class="bbz-table">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Firma</th>
-                    <th>Funktion</th>
-                    <th>Rolle</th>
-                    <th>E-Mail</th>
-                    <th>Telefon</th>
-                    <th>Archiviert</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${
-                    rows.length
-                      ? rows.map((c) => `
-                        <tr>
-                          <td><a class="bbz-link" data-action="open-contact" data-id="${c.id}">${helpers.escapeHtml(c.fullName || c.nachname)}</a></td>
-                          <td>${c.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${c.firmId}">${helpers.escapeHtml(c.firmTitle || "Firma")}</a>` : `<span class="bbz-muted">—</span>`}</td>
-                          <td>${helpers.escapeHtml(c.funktion) || '<span class="bbz-muted">—</span>'}</td>
-                          <td>${helpers.escapeHtml(c.rolle) || '<span class="bbz-muted">—</span>'}</td>
-                          <td>${c.email1 ? `<a class="bbz-link" href="mailto:${helpers.escapeHtml(c.email1)}">${helpers.escapeHtml(c.email1)}</a>` : '<span class="bbz-muted">—</span>'}</td>
-                          <td>${helpers.escapeHtml(helpers.joinNonEmpty([c.direktwahl, c.mobile], " / ")) || '<span class="bbz-muted">—</span>'}</td>
-                          <td>${c.archiviert ? '<span class="bbz-danger">Ja</span>' : '<span class="bbz-muted">Nein</span>'}</td>
-                        </tr>
-                      `).join("")
-                      : `<tr><td colspan="7">${ui.emptyBlock("Keine Kontakte für die aktuelle Filterung gefunden.")}</td></tr>`
-                  }
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-      `;
-    },
-
-    contactDetail() {
-      return ui.emptyBlock("Kontaktdetail ist in dieser stabilen Recovery-Version bewusst reduziert.");
-    },
-
-    planning() {
-      return ui.emptyBlock("Planung wird nach der Stabilisierung wieder voll ausgebaut.");
-    },
-
-    events() {
-      return ui.emptyBlock("Events werden nach der Stabilisierung wieder voll ausgebaut.");
-    }
-  };
-
-  const controller = {
-    async init() {
-      ui.init();
-      ui.renderShell();
-      ui.setMessage("");
-      ui.renderView(ui.loadingBlock("Authentifizierung wird vorbereitet ..."));
-
-      try {
-        ui.setLoading(true);
-        await api.initAuth();
-
-        if (state.auth.isAuthenticated) {
-          await api.acquireToken();
-          await api.loadAll();
-          ui.setMessage("Anmeldung erkannt. Daten wurden geladen.", "success");
-        } else {
-          ui.setMessage("Bitte anmelden, um die SharePoint-Listen über Microsoft Graph zu laden.", "warning");
-        }
-      } catch (error) {
-        console.error(error);
-        state.meta.lastError = error;
-        ui.setMessage(`Fehler beim Initialisieren: ${error.message}`, "error");
-      } finally {
-        ui.setLoading(false);
-        this.render();
-      }
-    },
-
-    async handleLogin() {
-      try {
-        if (!state.auth.isReady) {
-          ui.setMessage("Authentifizierung ist noch nicht bereit. Bitte Seite neu laden.", "warning");
-          return;
-        }
-
-        ui.setLoading(true);
-        ui.setMessage("");
-
-        await api.login();
-        await api.loadAll();
-
-        ui.setMessage("Anmeldung erfolgreich. Daten wurden geladen.", "success");
-      } catch (error) {
-        console.error(error);
-        ui.setMessage(`Anmeldung fehlgeschlagen: ${error.message}`, "error");
-      } finally {
-        ui.setLoading(false);
-        this.render();
-      }
-    },
-
-    async handleRefresh() {
-      if (!state.auth.isReady) {
-        ui.setMessage("Authentifizierung ist noch nicht bereit.", "warning");
-        return;
-      }
-
-      if (!state.auth.isAuthenticated) {
-        ui.setMessage("Bitte zuerst anmelden.", "warning");
-        return;
-      }
-
-      try {
-        ui.setLoading(true);
-        ui.setMessage("");
-
-        await api.acquireToken();
-        await api.loadAll();
-
-        ui.setMessage("Daten erfolgreich neu geladen.", "success");
-      } catch (error) {
-        console.error(error);
-        ui.setMessage(`Fehler beim Laden: ${error.message}`, "error");
-      } finally {
-        ui.setLoading(false);
-        this.render();
-      }
-    },
-
-    async reloadData() {
-      try {
-        ui.setLoading(true);
-        await api.acquireToken();
-        await api.loadAll();
-      } finally {
-        ui.setLoading(false);
-        this.render();
-      }
-    },
-
-    navigate(route) {
-      state.filters.route = route;
-      if (route !== "firms") state.selection.firmId = null;
-      if (route !== "contacts") state.selection.contactId = null;
-      this.render();
-    },
-
-    openFirm(id) {
-      state.selection.firmId = id;
-      state.selection.contactId = null;
-      state.filters.route = "firms";
-      this.render();
-    },
-
-    openContact(id) {
-      state.selection.contactId = id;
-      state.filters.route = "contacts";
-      this.render();
-    },
-
-    render() {
-      ui.renderShell();
-      ui.renderView(views.renderRoute());
-      modal.render();
-    }
-  };
-
-  function startApp() {
-    controller.init();
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", startApp, { once: true });
-  } else {
-    startApp();
+  function $(selector) {
+    return document.querySelector(selector);
   }
+
+  function byId(id) {
+    return document.getElementById(id);
+  }
+
+  function qsAny(selectors) {
+    for (const selector of selectors) {
+      const el = selector.startsWith('#') ? byId(selector.slice(1)) : $(selector);
+      if (el) return el;
+    }
+    return null;
+  }
+
+  function collectDom() {
+    dom.appStatus = qsAny(['#appStatus', '#statusMessage']);
+    dom.reloadButton = qsAny(['#btnReloadAll', '#reloadApp']);
+
+    dom.firmList = qsAny(['#firmList', '#firmsList', '#companyList']);
+    dom.firmSearch = qsAny(['#firmSearch', '#searchFirms', '#companySearch']);
+    dom.firmCount = qsAny(['#firmCount', '#firmsCount']);
+    dom.firmDetail = qsAny(['#firmDetail', '#firmDetails', '#companyDetail']);
+    dom.firmDetailTitle = qsAny(['#firmDetailTitle', '#companyDetailTitle']);
+    dom.firmDetailMeta = qsAny(['#firmDetailMeta', '#companyDetailMeta']);
+
+    dom.contactList = qsAny(['#contactList', '#contactsList']);
+    dom.contactSearch = qsAny(['#contactSearch', '#searchContacts']);
+    dom.contactCount = qsAny(['#contactCount', '#contactsCount']);
+    dom.contactDetail = qsAny(['#contactDetail', '#contactDetails']);
+    dom.contactDetailTitle = qsAny(['#contactDetailTitle']);
+    dom.contactDetailMeta = qsAny(['#contactDetailMeta']);
+
+    dom.contactForm = qsAny(['#contactForm', '#formContact']);
+    dom.contactFirmId = qsAny(['#contactFirmId', '#contactCompanyId']);
+    dom.contactTitle = qsAny(['#contactTitle']);
+    dom.contactFirstName = qsAny(['#contactFirstName']);
+    dom.contactLastName = qsAny(['#contactLastName']);
+    dom.contactEmail = qsAny(['#contactEmail']);
+    dom.contactPhone = qsAny(['#contactPhone']);
+    dom.contactMobile = qsAny(['#contactMobile']);
+    dom.contactRole = qsAny(['#contactRole']);
+    dom.contactNotes = qsAny(['#contactNotes']);
+    dom.contactLeadDisplay = qsAny(['#contactLeadDisplay', '#contactLeadbbz0']);
+
+    dom.taskForm = qsAny(['#taskForm', '#formTask']);
+    dom.taskContactId = qsAny(['#taskContactId']);
+    dom.taskTitle = qsAny(['#taskTitle']);
+    dom.taskDueDate = qsAny(['#taskDueDate']);
+    dom.taskStatus = qsAny(['#taskStatus']);
+    dom.taskNotes = qsAny(['#taskNotes']);
+
+    dom.historyForm = qsAny(['#historyForm', '#formHistory']);
+    dom.historyContactId = qsAny(['#historyContactId']);
+    dom.historyDate = qsAny(['#historyDate']);
+    dom.historyType = qsAny(['#historyType']);
+    dom.historyNotes = qsAny(['#historyNotes']);
+    dom.historyProjectRelated = qsAny(['#historyProjectRelated']);
+  }
+
+  function setStatus(message, isError) {
+    if (dom.appStatus) {
+      dom.appStatus.textContent = message || '';
+      dom.appStatus.classList.toggle('text-red-600', Boolean(isError));
+      dom.appStatus.classList.toggle('text-slate-600', !isError);
+    }
+    if (message) {
+      (isError ? console.error : console.log)('[CRM STATUS]', message);
+    }
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function formatDate(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return new Intl.DateTimeFormat('de-CH', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(date);
+  }
+
+  function formatDateTimeLocalValue(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return [
+      date.getFullYear(),
+      '-',
+      pad(date.getMonth() + 1),
+      '-',
+      pad(date.getDate()),
+      'T',
+      pad(date.getHours()),
+      ':',
+      pad(date.getMinutes())
+    ].join('');
+  }
+
+  function normalizeText(value) {
+    return String(value || '').trim().toLowerCase();
+  }
+
+  function valueOrEmpty(value) {
+    return value == null ? '' : String(value);
+  }
+
+  function boolFromField(value) {
+    return value === true || value === 'true' || value === 1 || value === '1' || value === 'Ja';
+  }
+
+  function getField(item, internalName, fallback) {
+    if (!item || !item.fields) return fallback;
+    const value = item.fields[internalName];
+    return value == null ? fallback : value;
+  }
+
+  function requireAccessTokenResult(token) {
+    if (!token) {
+      throw new Error('Kein Access Token verfügbar. Login ist zwar aktiv, aber app.js findet keinen Token-Provider.');
+    }
+    return token;
+  }
+
+  async function getAccessToken() {
+    if (state.token) return state.token;
+
+    if (window.authManager && typeof window.authManager.getAccessToken === 'function') {
+      state.token = await window.authManager.getAccessToken();
+      return requireAccessTokenResult(state.token);
+    }
+
+    if (typeof window.getAccessToken === 'function') {
+      state.token = await window.getAccessToken();
+      return requireAccessTokenResult(state.token);
+    }
+
+    if (window.CRM_AUTH && typeof window.CRM_AUTH.getAccessToken === 'function') {
+      state.token = await window.CRM_AUTH.getAccessToken();
+      return requireAccessTokenResult(state.token);
+    }
+
+    if (window.msalInstance && typeof window.msalInstance.acquireTokenSilent === 'function') {
+      const accounts = window.msalInstance.getAllAccounts();
+      if (accounts && accounts.length) {
+        const response = await window.msalInstance.acquireTokenSilent({
+          account: accounts[0],
+          scopes: ['Sites.ReadWrite.All']
+        });
+        state.token = response && response.accessToken;
+        return requireAccessTokenResult(state.token);
+      }
+    }
+
+    throw new Error('Kein kompatibler Token-Provider gefunden.');
+  }
+
+  async function graphFetch(path, options) {
+    const token = await getAccessToken();
+    const headers = Object.assign(
+      {
+        Authorization: 'Bearer ' + token,
+        Accept: 'application/json'
+      },
+      options && options.body ? { 'Content-Type': 'application/json' } : {},
+      (options && options.headers) || {}
+    );
+
+    const response = await fetch('https://graph.microsoft.com/v1.0' + path, Object.assign({}, options, { headers }));
+    const text = await response.text();
+    const payload = text ? JSON.parse(text) : {};
+
+    if (!response.ok) {
+      throw new Error('Graph ' + response.status + ': ' + JSON.stringify(payload));
+    }
+
+    return payload;
+  }
+
+  async function ensureSiteAndLists() {
+    if (!state.siteId) {
+      const site = await graphFetch('/sites/' + CONFIG.site.hostname + ':' + CONFIG.site.sitePath);
+      state.siteId = site.id;
+      log('siteId', state.siteId);
+    }
+
+    const listNames = Object.values(CONFIG.lists);
+    for (const listName of listNames) {
+      if (!state.listIds[listName]) {
+        const list = await graphFetch('/sites/' + state.siteId + '/lists/' + encodeURIComponent(listName));
+        state.listIds[listName] = list.id;
+        log('listId', listName, list.id);
+      }
+    }
+  }
+
+  async function getAllItems(listName) {
+    await ensureSiteAndLists();
+    const listId = state.listIds[listName];
+    const items = [];
+    let path = '/sites/' + state.siteId + '/lists/' + listId + '/items?expand=fields&top=' + CONFIG.pageSize;
+
+    while (path) {
+      const data = await graphFetch(path);
+      items.push(...(data.value || []));
+      const nextLink = data['@odata.nextLink'];
+      if (nextLink) {
+        path = nextLink.replace('https://graph.microsoft.com/v1.0', '');
+      } else {
+        path = null;
+      }
+    }
+
+    return items;
+  }
+
+  async function createItem(listName, fields) {
+    await ensureSiteAndLists();
+    const listId = state.listIds[listName];
+    return graphFetch('/sites/' + state.siteId + '/lists/' + listId + '/items', {
+      method: 'POST',
+      body: JSON.stringify({ fields })
+    });
+  }
+
+  function sortByTitle(items, fieldName) {
+    return items.slice().sort((a, b) => {
+      const left = normalizeText(getField(a, fieldName, ''));
+      const right = normalizeText(getField(b, fieldName, ''));
+      return left.localeCompare(right, 'de');
+    });
+  }
+
+  function getFirmName(firm) {
+    const f = CONFIG.fields.firms;
+    return getField(firm, f.title, 'Ohne Firmenname');
+  }
+
+  function getContactName(contact) {
+    const f = CONFIG.fields.contacts;
+    const firstName = valueOrEmpty(getField(contact, f.firstName, '')).trim();
+    const lastName = valueOrEmpty(getField(contact, f.lastName, '')).trim();
+    const title = valueOrEmpty(getField(contact, f.title, '')).trim();
+    const combined = [firstName, lastName].filter(Boolean).join(' ').trim();
+    return combined || title || 'Ohne Name';
+  }
+
+  function getFirmById(firmId) {
+    return state.firms.find((firm) => String(firm.id) === String(firmId)) || null;
+  }
+
+  function getContactById(contactId) {
+    return state.contacts.find((contact) => String(contact.id) === String(contactId)) || null;
+  }
+
+  function getContactsForFirm(firmId) {
+    const field = CONFIG.fields.contacts.firmLookupId;
+    return state.contacts.filter((contact) => String(getField(contact, field, '')) === String(firmId));
+  }
+
+  function getTasksForContact(contactId) {
+    const field = CONFIG.fields.tasks.contactLookupId;
+    return state.tasks.filter((task) => String(getField(task, field, '')) === String(contactId));
+  }
+
+  function getHistoryForContact(contactId) {
+    const field = CONFIG.fields.history.contactLookupId;
+    return state.history.filter((entry) => String(getField(entry, field, '')) === String(contactId));
+  }
+
+  function getTasksForFirm(firmId) {
+    const contactIds = new Set(getContactsForFirm(firmId).map((contact) => String(contact.id)));
+    return state.tasks.filter((task) => contactIds.has(String(getField(task, CONFIG.fields.tasks.contactLookupId, ''))));
+  }
+
+  function getHistoryForFirm(firmId) {
+    const contactIds = new Set(getContactsForFirm(firmId).map((contact) => String(contact.id)));
+    return state.history.filter((entry) => contactIds.has(String(getField(entry, CONFIG.fields.history.contactLookupId, ''))));
+  }
+
+  function matchesSearch(item, fields, search) {
+    if (!search) return true;
+    const q = normalizeText(search);
+    return fields.some((field) => normalizeText(getField(item, field, '')).includes(q));
+  }
+
+  function filteredFirms() {
+    const f = CONFIG.fields.firms;
+    return sortByTitle(
+      state.firms.filter((firm) => matchesSearch(firm, [f.title, f.abc, f.email, f.phone, f.website, f.notes], state.filters.firmSearch)),
+      f.title
+    );
+  }
+
+  function filteredContacts() {
+    const f = CONFIG.fields.contacts;
+    return state.contacts
+      .filter((contact) => {
+        const matches = matchesSearch(
+          contact,
+          [f.title, f.firstName, f.lastName, f.email, f.phone, f.mobile, f.role, f.notes, f.leadDisplay],
+          state.filters.contactSearch
+        );
+        if (!matches) return false;
+        if (!state.selectedFirmId) return true;
+        return String(getField(contact, f.firmLookupId, '')) === String(state.selectedFirmId);
+      })
+      .sort((a, b) => getContactName(a).localeCompare(getContactName(b), 'de'));
+  }
+
+  function renderFirmList() {
+    if (!dom.firmList) return;
+    const firms = filteredFirms();
+    if (dom.firmCount) dom.firmCount.textContent = String(firms.length);
+
+    dom.firmList.innerHTML = firms.length
+      ? firms
+          .map((firm) => {
+            const firmId = String(firm.id);
+            const selected = String(state.selectedFirmId) === firmId;
+            const abc = valueOrEmpty(getField(firm, CONFIG.fields.firms.abc, '—'));
+            const contactCount = getContactsForFirm(firm.id).length;
+            return (
+              '<button type="button" class="crm-firm-row w-full text-left border rounded-lg px-3 py-2 mb-2 ' +
+              (selected ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white') +
+              '" data-firm-id="' +
+              escapeHtml(firmId) +
+              '">' +
+              '<div class="font-semibold">' +
+              escapeHtml(getFirmName(firm)) +
+              '</div>' +
+              '<div class="text-sm text-slate-600">ABC: ' +
+              escapeHtml(abc) +
+              ' · Kontakte: ' +
+              contactCount +
+              '</div>' +
+              '</button>'
+            );
+          })
+          .join('')
+      : '<div class="text-slate-500">Keine Firmen gefunden.</div>';
+  }
+
+  function renderContactList() {
+    if (!dom.contactList) return;
+    const contacts = filteredContacts();
+    if (dom.contactCount) dom.contactCount.textContent = String(contacts.length);
+
+    dom.contactList.innerHTML = contacts.length
+      ? contacts
+          .map((contact) => {
+            const contactId = String(contact.id);
+            const selected = String(state.selectedContactId) === contactId;
+            const firm = getFirmById(getField(contact, CONFIG.fields.contacts.firmLookupId, ''));
+            return (
+              '<button type="button" class="crm-contact-row w-full text-left border rounded-lg px-3 py-2 mb-2 ' +
+              (selected ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white') +
+              '" data-contact-id="' +
+              escapeHtml(contactId) +
+              '">' +
+              '<div class="font-semibold">' +
+              escapeHtml(getContactName(contact)) +
+              '</div>' +
+              '<div class="text-sm text-slate-600">' +
+              escapeHtml(getField(contact, CONFIG.fields.contacts.email, '')) +
+              '</div>' +
+              '<div class="text-xs text-slate-500">' +
+              escapeHtml(firm ? getFirmName(firm) : 'Ohne Firma') +
+              '</div>' +
+              '</button>'
+            );
+          })
+          .join('')
+      : '<div class="text-slate-500">Keine Kontakte gefunden.</div>';
+  }
+
+  function renderFirmDetail() {
+    if (!dom.firmDetail) return;
+
+    if (!state.selectedFirmId) {
+      dom.firmDetail.innerHTML = '<div class="text-slate-500">Bitte eine Firma auswählen.</div>';
+      return;
+    }
+
+    const firm = getFirmById(state.selectedFirmId);
+    if (!firm) {
+      dom.firmDetail.innerHTML = '<div class="text-red-600">Ausgewählte Firma nicht gefunden.</div>';
+      return;
+    }
+
+    const contacts = getContactsForFirm(firm.id).sort((a, b) => getContactName(a).localeCompare(getContactName(b), 'de'));
+    const tasks = getTasksForFirm(firm.id).sort((a, b) => {
+      const left = new Date(getField(a, CONFIG.fields.tasks.dueDate, '2999-12-31')).getTime();
+      const right = new Date(getField(b, CONFIG.fields.tasks.dueDate, '2999-12-31')).getTime();
+      return left - right;
+    });
+    const history = getHistoryForFirm(firm.id).sort((a, b) => {
+      const left = new Date(getField(a, CONFIG.fields.history.date, '1900-01-01')).getTime();
+      const right = new Date(getField(b, CONFIG.fields.history.date, '1900-01-01')).getTime();
+      return right - left;
+    });
+
+    if (dom.firmDetailTitle) dom.firmDetailTitle.textContent = getFirmName(firm);
+    if (dom.firmDetailMeta) {
+      dom.firmDetailMeta.textContent = 'ABC: ' + valueOrEmpty(getField(firm, CONFIG.fields.firms.abc, '—'));
+    }
+
+    const contactHtml = contacts.length
+      ? contacts
+          .map((contact) => {
+            return (
+              '<button type="button" class="crm-open-contact block w-full text-left border rounded-md px-3 py-2 mb-2 border-slate-200" data-contact-id="' +
+              escapeHtml(String(contact.id)) +
+              '">' +
+              '<div class="font-medium">' +
+              escapeHtml(getContactName(contact)) +
+              '</div>' +
+              '<div class="text-sm text-slate-600">' +
+              escapeHtml(getField(contact, CONFIG.fields.contacts.email, '')) +
+              '</div>' +
+              '</button>'
+            );
+          })
+          .join('')
+      : '<div class="text-slate-500">Keine Kontakte zugeordnet.</div>';
+
+    const taskHtml = tasks.length
+      ? tasks
+          .map((task) => {
+            const contact = getContactById(getField(task, CONFIG.fields.tasks.contactLookupId, ''));
+            return (
+              '<div class="border rounded-md px-3 py-2 mb-2 border-slate-200">' +
+              '<div class="font-medium">' +
+              escapeHtml(getField(task, CONFIG.fields.tasks.title, 'Ohne Titel')) +
+              '</div>' +
+              '<div class="text-sm text-slate-600">Fällig: ' +
+              escapeHtml(formatDate(getField(task, CONFIG.fields.tasks.dueDate, ''))) +
+              ' · Status: ' +
+              escapeHtml(getField(task, CONFIG.fields.tasks.status, '—')) +
+              '</div>' +
+              '<div class="text-xs text-slate-500">Kontakt: ' +
+              escapeHtml(contact ? getContactName(contact) : '—') +
+              '</div>' +
+              '</div>'
+            );
+          })
+          .join('')
+      : '<div class="text-slate-500">Keine Tasks vorhanden.</div>';
+
+    const historyHtml = history.length
+      ? history
+          .map((entry) => {
+            const contact = getContactById(getField(entry, CONFIG.fields.history.contactLookupId, ''));
+            return (
+              '<div class="border rounded-md px-3 py-2 mb-2 border-slate-200">' +
+              '<div class="font-medium">' +
+              escapeHtml(formatDate(getField(entry, CONFIG.fields.history.date, ''))) +
+              ' · ' +
+              escapeHtml(getField(entry, CONFIG.fields.history.type, '')) +
+              '</div>' +
+              '<div class="text-sm text-slate-700 whitespace-pre-wrap">' +
+              escapeHtml(getField(entry, CONFIG.fields.history.notes, '')) +
+              '</div>' +
+              '<div class="text-xs text-slate-500">Kontakt: ' +
+              escapeHtml(contact ? getContactName(contact) : '—') +
+              ' · Projektbezug: ' +
+              (boolFromField(getField(entry, CONFIG.fields.history.projectRelated, false)) ? 'Ja' : 'Nein') +
+              '</div>' +
+              '</div>'
+            );
+          })
+          .join('')
+      : '<div class="text-slate-500">Keine History vorhanden.</div>';
+
+    dom.firmDetail.innerHTML =
+      '<div class="space-y-6">' +
+      '<section><h3 class="font-semibold mb-2">Kontakte</h3>' +
+      contactHtml +
+      '</section>' +
+      '<section><h3 class="font-semibold mb-2">Tasks</h3>' +
+      taskHtml +
+      '</section>' +
+      '<section><h3 class="font-semibold mb-2">History</h3>' +
+      historyHtml +
+      '</section>' +
+      '</div>';
+  }
+
+  function renderContactDetail() {
+    if (!dom.contactDetail) return;
+
+    if (!state.selectedContactId) {
+      dom.contactDetail.innerHTML = '<div class="text-slate-500">Bitte einen Kontakt auswählen.</div>';
+      if (dom.contactLeadDisplay) dom.contactLeadDisplay.value = '';
+      return;
+    }
+
+    const contact = getContactById(state.selectedContactId);
+    if (!contact) {
+      dom.contactDetail.innerHTML = '<div class="text-red-600">Ausgewählter Kontakt nicht gefunden.</div>';
+      return;
+    }
+
+    const firm = getFirmById(getField(contact, CONFIG.fields.contacts.firmLookupId, ''));
+    const tasks = getTasksForContact(contact.id).sort((a, b) => {
+      const left = new Date(getField(a, CONFIG.fields.tasks.dueDate, '2999-12-31')).getTime();
+      const right = new Date(getField(b, CONFIG.fields.tasks.dueDate, '2999-12-31')).getTime();
+      return left - right;
+    });
+    const history = getHistoryForContact(contact.id).sort((a, b) => {
+      const left = new Date(getField(a, CONFIG.fields.history.date, '1900-01-01')).getTime();
+      const right = new Date(getField(b, CONFIG.fields.history.date, '1900-01-01')).getTime();
+      return right - left;
+    });
+
+    if (dom.contactDetailTitle) dom.contactDetailTitle.textContent = getContactName(contact);
+    if (dom.contactDetailMeta) {
+      dom.contactDetailMeta.textContent = [
+        firm ? getFirmName(firm) : 'Ohne Firma',
+        getField(contact, CONFIG.fields.contacts.email, ''),
+        getField(contact, CONFIG.fields.contacts.phone, '')
+      ]
+        .filter(Boolean)
+        .join(' · ');
+    }
+
+    if (dom.contactLeadDisplay) {
+      if ('value' in dom.contactLeadDisplay) {
+        dom.contactLeadDisplay.value = valueOrEmpty(getField(contact, CONFIG.fields.contacts.leadDisplay, ''));
+      } else {
+        dom.contactLeadDisplay.textContent = valueOrEmpty(getField(contact, CONFIG.fields.contacts.leadDisplay, ''));
+      }
+    }
+
+    const taskHtml = tasks.length
+      ? tasks
+          .map((task) => {
+            return (
+              '<div class="border rounded-md px-3 py-2 mb-2 border-slate-200">' +
+              '<div class="font-medium">' +
+              escapeHtml(getField(task, CONFIG.fields.tasks.title, 'Ohne Titel')) +
+              '</div>' +
+              '<div class="text-sm text-slate-600">Fällig: ' +
+              escapeHtml(formatDate(getField(task, CONFIG.fields.tasks.dueDate, ''))) +
+              ' · Status: ' +
+              escapeHtml(getField(task, CONFIG.fields.tasks.status, '—')) +
+              '</div>' +
+              '<div class="text-sm whitespace-pre-wrap">' +
+              escapeHtml(getField(task, CONFIG.fields.tasks.notes, '')) +
+              '</div>' +
+              '</div>'
+            );
+          })
+          .join('')
+      : '<div class="text-slate-500">Keine Tasks vorhanden.</div>';
+
+    const historyHtml = history.length
+      ? history
+          .map((entry) => {
+            return (
+              '<div class="border rounded-md px-3 py-2 mb-2 border-slate-200">' +
+              '<div class="font-medium">' +
+              escapeHtml(formatDate(getField(entry, CONFIG.fields.history.date, ''))) +
+              ' · ' +
+              escapeHtml(getField(entry, CONFIG.fields.history.type, '')) +
+              '</div>' +
+              '<div class="text-sm whitespace-pre-wrap">' +
+              escapeHtml(getField(entry, CONFIG.fields.history.notes, '')) +
+              '</div>' +
+              '<div class="text-xs text-slate-500">Projektbezug: ' +
+              (boolFromField(getField(entry, CONFIG.fields.history.projectRelated, false)) ? 'Ja' : 'Nein') +
+              '</div>' +
+              '</div>'
+            );
+          })
+          .join('')
+      : '<div class="text-slate-500">Keine History vorhanden.</div>';
+
+    dom.contactDetail.innerHTML =
+      '<div class="space-y-6">' +
+      '<section><h3 class="font-semibold mb-2">Kontakt</h3>' +
+      '<div class="border rounded-md px-3 py-2 border-slate-200">' +
+      '<div><strong>Name:</strong> ' +
+      escapeHtml(getContactName(contact)) +
+      '</div>' +
+      '<div><strong>Rolle:</strong> ' +
+      escapeHtml(getField(contact, CONFIG.fields.contacts.role, '—')) +
+      '</div>' +
+      '<div><strong>E-Mail:</strong> ' +
+      escapeHtml(getField(contact, CONFIG.fields.contacts.email, '—')) +
+      '</div>' +
+      '<div><strong>Telefon:</strong> ' +
+      escapeHtml(getField(contact, CONFIG.fields.contacts.phone, '—')) +
+      '</div>' +
+      '<div><strong>Mobile:</strong> ' +
+      escapeHtml(getField(contact, CONFIG.fields.contacts.mobile, '—')) +
+      '</div>' +
+      '</div></section>' +
+      '<section><h3 class="font-semibold mb-2">Tasks</h3>' +
+      taskHtml +
+      '</section>' +
+      '<section><h3 class="font-semibold mb-2">History</h3>' +
+      historyHtml +
+      '</section>' +
+      '</div>';
+  }
+
+  function fillFirmSelectOptions() {
+    if (!dom.contactFirmId) return;
+    const current = dom.contactFirmId.value;
+    const options = ['<option value="">Firma wählen</option>']
+      .concat(
+        sortByTitle(state.firms, CONFIG.fields.firms.title).map((firm) => {
+          return '<option value="' + escapeHtml(String(firm.id)) + '">' + escapeHtml(getFirmName(firm)) + '</option>';
+        })
+      )
+      .join('');
+    dom.contactFirmId.innerHTML = options;
+    if (current) dom.contactFirmId.value = current;
+  }
+
+  function fillContactSelectOptions() {
+    const contactOptions = ['<option value="">Kontakt wählen</option>']
+      .concat(
+        state.contacts
+          .slice()
+          .sort((a, b) => getContactName(a).localeCompare(getContactName(b), 'de'))
+          .map((contact) => {
+            const firm = getFirmById(getField(contact, CONFIG.fields.contacts.firmLookupId, ''));
+            const label = getContactName(contact) + (firm ? ' (' + getFirmName(firm) + ')' : '');
+            return '<option value="' + escapeHtml(String(contact.id)) + '">' + escapeHtml(label) + '</option>';
+          })
+      )
+      .join('');
+
+    if (dom.taskContactId) {
+      const currentTaskContactId = dom.taskContactId.value;
+      dom.taskContactId.innerHTML = contactOptions;
+      if (currentTaskContactId) dom.taskContactId.value = currentTaskContactId;
+    }
+
+    if (dom.historyContactId) {
+      const currentHistoryContactId = dom.historyContactId.value;
+      dom.historyContactId.innerHTML = contactOptions;
+      if (currentHistoryContactId) dom.historyContactId.value = currentHistoryContactId;
+    }
+  }
+
+  function syncFormsWithSelection() {
+    if (dom.contactFirmId && state.selectedFirmId) {
+      dom.contactFirmId.value = String(state.selectedFirmId);
+    }
+    if (dom.taskContactId && state.selectedContactId) {
+      dom.taskContactId.value = String(state.selectedContactId);
+    }
+    if (dom.historyContactId && state.selectedContactId) {
+      dom.historyContactId.value = String(state.selectedContactId);
+    }
+  }
+
+  function renderAll() {
+    renderFirmList();
+    renderContactList();
+    renderFirmDetail();
+    renderContactDetail();
+    fillFirmSelectOptions();
+    fillContactSelectOptions();
+    syncFormsWithSelection();
+  }
+
+  async function loadAllData() {
+    setStatus('Lade CRM-Daten ...', false);
+    await ensureSiteAndLists();
+
+    const [firms, contacts, history, tasks] = await Promise.all([
+      getAllItems(CONFIG.lists.firms),
+      getAllItems(CONFIG.lists.contacts),
+      getAllItems(CONFIG.lists.history),
+      getAllItems(CONFIG.lists.tasks)
+    ]);
+
+    state.firms = firms;
+    state.contacts = contacts;
+    state.history = history;
+    state.tasks = tasks;
+
+    if (!state.selectedFirmId && state.firms.length) {
+      state.selectedFirmId = state.firms[0].id;
+    }
+
+    if (state.selectedFirmId) {
+      const contactsForFirm = getContactsForFirm(state.selectedFirmId);
+      if (!state.selectedContactId && contactsForFirm.length) {
+        state.selectedContactId = contactsForFirm[0].id;
+      }
+    }
+
+    renderAll();
+    setStatus('CRM-Daten geladen.', false);
+  }
+
+  function resetContactForm() {
+    if (!dom.contactForm) return;
+    dom.contactForm.reset();
+    if (dom.contactFirmId && state.selectedFirmId) dom.contactFirmId.value = String(state.selectedFirmId);
+  }
+
+  function resetTaskForm() {
+    if (!dom.taskForm) return;
+    dom.taskForm.reset();
+    if (dom.taskContactId && state.selectedContactId) dom.taskContactId.value = String(state.selectedContactId);
+  }
+
+  function resetHistoryForm() {
+    if (!dom.historyForm) return;
+    dom.historyForm.reset();
+    if (dom.historyContactId && state.selectedContactId) dom.historyContactId.value = String(state.selectedContactId);
+    if (dom.historyDate) dom.historyDate.value = formatDateTimeLocalValue(new Date().toISOString());
+  }
+
+  async function onCreateContact(event) {
+    event.preventDefault();
+
+    const fields = CONFIG.fields.contacts;
+    const firmId = valueOrEmpty(dom.contactFirmId && dom.contactFirmId.value).trim();
+    const firstName = valueOrEmpty(dom.contactFirstName && dom.contactFirstName.value).trim();
+    const lastName = valueOrEmpty(dom.contactLastName && dom.contactLastName.value).trim();
+    const title = valueOrEmpty(dom.contactTitle && dom.contactTitle.value).trim() || [firstName, lastName].filter(Boolean).join(' ').trim();
+
+    if (!firmId) throw new Error('Kontakt kann nicht gespeichert werden: Firma fehlt.');
+    if (!title) throw new Error('Kontakt kann nicht gespeichert werden: Name fehlt.');
+
+    const payload = {};
+    payload[fields.title] = title;
+    payload[fields.firstName] = firstName;
+    payload[fields.lastName] = lastName;
+    payload[fields.email] = valueOrEmpty(dom.contactEmail && dom.contactEmail.value).trim();
+    payload[fields.phone] = valueOrEmpty(dom.contactPhone && dom.contactPhone.value).trim();
+    payload[fields.mobile] = valueOrEmpty(dom.contactMobile && dom.contactMobile.value).trim();
+    payload[fields.role] = valueOrEmpty(dom.contactRole && dom.contactRole.value).trim();
+    payload[fields.notes] = valueOrEmpty(dom.contactNotes && dom.contactNotes.value).trim();
+    payload[fields.firmLookupId] = Number(firmId);
+
+    await createItem(CONFIG.lists.contacts, payload);
+    await loadAllData();
+    resetContactForm();
+  }
+
+  async function onCreateTask(event) {
+    event.preventDefault();
+
+    const fields = CONFIG.fields.tasks;
+    const contactId = valueOrEmpty(dom.taskContactId && dom.taskContactId.value).trim();
+    const title = valueOrEmpty(dom.taskTitle && dom.taskTitle.value).trim();
+    const dueDate = valueOrEmpty(dom.taskDueDate && dom.taskDueDate.value).trim();
+
+    if (!contactId) throw new Error('Task kann nicht gespeichert werden: Kontakt fehlt.');
+    if (!title) throw new Error('Task kann nicht gespeichert werden: Titel fehlt.');
+
+    const payload = {};
+    payload[fields.title] = title;
+    payload[fields.contactLookupId] = Number(contactId);
+    if (dueDate) payload[fields.dueDate] = new Date(dueDate).toISOString();
+    payload[fields.status] = valueOrEmpty(dom.taskStatus && dom.taskStatus.value).trim();
+    payload[fields.notes] = valueOrEmpty(dom.taskNotes && dom.taskNotes.value).trim();
+
+    await createItem(CONFIG.lists.tasks, payload);
+    await loadAllData();
+    resetTaskForm();
+  }
+
+  async function onCreateHistory(event) {
+    event.preventDefault();
+
+    const fields = CONFIG.fields.history;
+    const contactId = valueOrEmpty(dom.historyContactId && dom.historyContactId.value).trim();
+    const dateValue = valueOrEmpty(dom.historyDate && dom.historyDate.value).trim();
+    const type = valueOrEmpty(dom.historyType && dom.historyType.value).trim();
+    const notes = valueOrEmpty(dom.historyNotes && dom.historyNotes.value).trim();
+
+    if (!contactId) throw new Error('History kann nicht gespeichert werden: Kontakt fehlt.');
+    if (!dateValue) throw new Error('History kann nicht gespeichert werden: Datum fehlt.');
+    if (!type) throw new Error('History kann nicht gespeichert werden: Typ fehlt.');
+    if (!notes) throw new Error('History kann nicht gespeichert werden: Notizen fehlen.');
+
+    const payload = {};
+    payload[fields.contactLookupId] = Number(contactId);
+    payload[fields.date] = new Date(dateValue).toISOString();
+    payload[fields.type] = type;
+    payload[fields.notes] = notes;
+    payload[fields.projectRelated] = Boolean(dom.historyProjectRelated && dom.historyProjectRelated.checked);
+
+    await createItem(CONFIG.lists.history, payload);
+    await loadAllData();
+    resetHistoryForm();
+  }
+
+  function selectFirm(firmId) {
+    state.selectedFirmId = String(firmId);
+    const firmContacts = getContactsForFirm(state.selectedFirmId);
+    if (!firmContacts.some((contact) => String(contact.id) === String(state.selectedContactId))) {
+      state.selectedContactId = firmContacts.length ? String(firmContacts[0].id) : null;
+    }
+    renderAll();
+  }
+
+  function selectContact(contactId) {
+    const contact = getContactById(contactId);
+    state.selectedContactId = String(contactId);
+    if (contact) {
+      state.selectedFirmId = String(getField(contact, CONFIG.fields.contacts.firmLookupId, state.selectedFirmId || ''));
+    }
+    renderAll();
+  }
+
+  function bindEvents() {
+    if (dom.reloadButton) {
+      dom.reloadButton.addEventListener('click', () => {
+        loadAllData().catch(handleError);
+      });
+    }
+
+    if (dom.firmSearch) {
+      dom.firmSearch.addEventListener('input', (event) => {
+        state.filters.firmSearch = event.target.value || '';
+        renderFirmList();
+      });
+    }
+
+    if (dom.contactSearch) {
+      dom.contactSearch.addEventListener('input', (event) => {
+        state.filters.contactSearch = event.target.value || '';
+        renderContactList();
+      });
+    }
+
+    if (dom.firmList) {
+      dom.firmList.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-firm-id]');
+        if (!button) return;
+        selectFirm(button.getAttribute('data-firm-id'));
+      });
+    }
+
+    if (dom.contactList) {
+      dom.contactList.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-contact-id]');
+        if (!button) return;
+        selectContact(button.getAttribute('data-contact-id'));
+      });
+    }
+
+    if (dom.firmDetail) {
+      dom.firmDetail.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-contact-id]');
+        if (!button) return;
+        selectContact(button.getAttribute('data-contact-id'));
+      });
+    }
+
+    if (dom.contactForm) {
+      dom.contactForm.addEventListener('submit', (event) => {
+        onCreateContact(event).catch(handleError);
+      });
+    }
+
+    if (dom.taskForm) {
+      dom.taskForm.addEventListener('submit', (event) => {
+        onCreateTask(event).catch(handleError);
+      });
+    }
+
+    if (dom.historyForm) {
+      dom.historyForm.addEventListener('submit', (event) => {
+        onCreateHistory(event).catch(handleError);
+      });
+    }
+  }
+
+  function validateConfig() {
+    const missing = [];
+    Object.entries(CONFIG.fields).forEach(([entity, map]) => {
+      Object.entries(map).forEach(([key, value]) => {
+        if (!value) missing.push(entity + '.' + key);
+      });
+    });
+    if (missing.length) {
+      throw new Error('Konfiguration unvollständig: ' + missing.join(', '));
+    }
+  }
+
+  function handleError(error) {
+    console.error(error);
+    const message = error && error.message ? error.message : String(error);
+    setStatus(message, true);
+  }
+
+  async function init() {
+    if (state.initialized) return;
+    state.initialized = true;
+    collectDom();
+    validateConfig();
+    bindEvents();
+    resetHistoryForm();
+    await loadAllData();
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    init().catch(handleError);
+  });
+
+  window.CRM_APP = {
+    init,
+    reload: loadAllData,
+    state,
+    config: CONFIG,
+    selectFirm,
+    selectContact
+  };
 })();
