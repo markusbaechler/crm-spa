@@ -152,6 +152,13 @@
     .bbz-textarea:focus { outline: none; border-color: #8fb4ff; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.10); }
     .bbz-span-2 { grid-column: span 2; }
 
+    .bbz-field-hint { font-size: 10px; color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: 4px; }
+
+    .bbz-multi-choice { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0 2px; }
+    .bbz-multi-choice-item { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; background: #fff; font-size: 13px; cursor: pointer; user-select: none; }
+    .bbz-multi-choice-item:has(input:checked) { background: var(--blue-soft); border-color: #93b4f5; color: var(--blue); }
+    .bbz-multi-choice-item input { width: 13px; height: 13px; accent-color: var(--blue); }
+
     /* ===================== RESPONSIVE ===================== */
     @media (max-width: 1280px) {
       .bbz-kpis, .bbz-grid-3, .bbz-grid-70-30 { grid-template-columns: 1fr 1fr; }
