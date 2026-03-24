@@ -344,12 +344,25 @@
       return null;
     },
 
-    writeKey(listKey, spec, asLookupId = false) {
+    writeKeyStrict(listKey, spec, asLookupId = false) {
       const col = this.findColumn(listKey, spec);
-      if (col) return asLookupId ? `${col.name}LookupId` : col.name;
+      if (!col) return null;
+      return asLookupId ? `${col.name}LookupId` : col.name;
+    },
+
+    writeKeyLoose(listKey, spec, asLookupId = false) {
+      const strict = this.writeKeyStrict(listKey, spec, asLookupId);
+      if (strict) return strict;
 
       const fb = (spec.fallback || [])[0] || spec.display;
       return asLookupId ? `${fb}LookupId` : fb;
+    },
+
+    assignIfResolved(target, listKey, spec, value, asLookupId = false) {
+      const key = this.writeKeyStrict(listKey, spec, asLookupId);
+      if (!key) return false;
+      target[key] = value;
+      return true;
     }
   };
 
@@ -1069,6 +1082,7 @@
       const contact = mode === "edit" ? dataModel.getContactById(itemId) : null;
       const preselectedFirmId = Number(payload.prefillFirmId || contact?.firmId || 0) || "";
       const leadOptions = optionsModel.contactLeadLookupOptions();
+      const leadResolved = !!resolver.writeKeyStrict("contacts", FIELD_SPECS.contacts.leadbbz0, true);
       const title = mode === "edit" ? "Kontakt bearbeiten" : "Neuer Kontakt";
 
       return `
@@ -1126,10 +1140,14 @@
                   </div>
                   <div class="bbz-field">
                     <label>Leadbbz0</label>
-                    <select class="bbz-select" name="leadbbz0LookupId">
-                      <option value="">Bitte wählen</option>
-                      ${leadOptions.map(o => `<option value="${o.id}" ${String(contact?.leadbbz0LookupId || "") === String(o.id) ? "selected" : ""}>${helpers.escapeHtml(o.label)}</option>`).join("")}
-                    </select>
+                    ${
+                      leadResolved
+                        ? `<select class="bbz-select" name="leadbbz0LookupId">
+                            <option value="">Bitte wählen</option>
+                            ${leadOptions.map(o => `<option value="${o.id}" ${String(contact?.leadbbz0LookupId || "") === String(o.id) ? "selected" : ""}>${helpers.escapeHtml(o.label)}</option>`).join("")}
+                          </select>`
+                        : `<input class="bbz-input" value="${helpers.escapeHtml(contact?.leadbbz0 || "")}" disabled placeholder="Lookup intern noch nicht aufgelöst" />`
+                    }
                   </div>
                   <div class="bbz-field">
                     <label>Geburtstag</label>
@@ -1170,6 +1188,7 @@
     renderTaskForm(payload = {}) {
       const prefillContactId = Number(payload.prefillContactId || 0) || "";
       const leadOptions = optionsModel.taskLeadLookupOptions();
+      const leadResolved = !!resolver.writeKeyStrict("tasks", FIELD_SPECS.tasks.leadbbz, true);
 
       return `
         <div class="bbz-modal-backdrop show">
@@ -1202,10 +1221,14 @@
                   </div>
                   <div class="bbz-field">
                     <label>Leadbbz</label>
-                    <select class="bbz-select" name="leadbbzLookupId">
-                      <option value="">Bitte wählen</option>
-                      ${leadOptions.map(o => `<option value="${o.id}">${helpers.escapeHtml(o.label)}</option>`).join("")}
-                    </select>
+                    ${
+                      leadResolved
+                        ? `<select class="bbz-select" name="leadbbzLookupId">
+                            <option value="">Bitte wählen</option>
+                            ${leadOptions.map(o => `<option value="${o.id}">${helpers.escapeHtml(o.label)}</option>`).join("")}
+                          </select>`
+                        : `<input class="bbz-input" value="" disabled placeholder="Lookup intern noch nicht aufgelöst" />`
+                    }
                   </div>
                 </div>
               </div>
@@ -1279,16 +1302,16 @@
   const actions = {
     async saveFirm(formData, mode, itemId) {
       const fields = {};
-      fields[resolver.writeKey("firms", FIELD_SPECS.firms.title)] = String(formData.get("title") || "").trim();
-      fields[resolver.writeKey("firms", FIELD_SPECS.firms.adresse)] = String(formData.get("adresse") || "").trim();
-      fields[resolver.writeKey("firms", FIELD_SPECS.firms.plz)] = String(formData.get("plz") || "").trim();
-      fields[resolver.writeKey("firms", FIELD_SPECS.firms.ort)] = String(formData.get("ort") || "").trim();
-      fields[resolver.writeKey("firms", FIELD_SPECS.firms.land)] = String(formData.get("land") || "").trim();
-      fields[resolver.writeKey("firms", FIELD_SPECS.firms.hauptnummer)] = String(formData.get("hauptnummer") || "").trim();
-      fields[resolver.writeKey("firms", FIELD_SPECS.firms.klassifizierung)] = String(formData.get("klassifizierung") || "").trim();
-      fields[resolver.writeKey("firms", FIELD_SPECS.firms.vip)] = formData.get("vip") === "on";
+      fields[resolver.writeKeyLoose("firms", FIELD_SPECS.firms.title)] = String(formData.get("title") || "").trim();
+      fields[resolver.writeKeyLoose("firms", FIELD_SPECS.firms.adresse)] = String(formData.get("adresse") || "").trim();
+      fields[resolver.writeKeyLoose("firms", FIELD_SPECS.firms.plz)] = String(formData.get("plz") || "").trim();
+      fields[resolver.writeKeyLoose("firms", FIELD_SPECS.firms.ort)] = String(formData.get("ort") || "").trim();
+      fields[resolver.writeKeyLoose("firms", FIELD_SPECS.firms.land)] = String(formData.get("land") || "").trim();
+      fields[resolver.writeKeyLoose("firms", FIELD_SPECS.firms.hauptnummer)] = String(formData.get("hauptnummer") || "").trim();
+      fields[resolver.writeKeyLoose("firms", FIELD_SPECS.firms.klassifizierung)] = String(formData.get("klassifizierung") || "").trim();
+      fields[resolver.writeKeyLoose("firms", FIELD_SPECS.firms.vip)] = formData.get("vip") === "on";
 
-      if (!fields[resolver.writeKey("firms", FIELD_SPECS.firms.title)]) throw new Error("Firmenname fehlt.");
+      if (!fields[resolver.writeKeyLoose("firms", FIELD_SPECS.firms.title)]) throw new Error("Firmenname fehlt.");
 
       if (mode === "edit" && itemId) {
         await api.updateListItemFields(CONFIG.lists.firms, itemId, fields);
@@ -1306,31 +1329,29 @@
       const leadbbz0LookupId = Number(formData.get("leadbbz0LookupId") || 0) || null;
 
       const fields = {};
-      fields[resolver.writeKey("contacts", FIELD_SPECS.contacts.nachname)] = String(formData.get("nachname") || "").trim();
-      fields[resolver.writeKey("contacts", FIELD_SPECS.contacts.vorname)] = String(formData.get("vorname") || "").trim();
-      fields[resolver.writeKey("contacts", FIELD_SPECS.contacts.anrede)] = String(formData.get("anrede") || "").trim();
-      fields[resolver.writeKey("contacts", FIELD_SPECS.contacts.firma, true)] = firmaLookupId;
-      fields[resolver.writeKey("contacts", FIELD_SPECS.contacts.funktion)] = String(formData.get("funktion") || "").trim();
-      fields[resolver.writeKey("contacts", FIELD_SPECS.contacts.email1)] = String(formData.get("email1") || "").trim();
-      fields[resolver.writeKey("contacts", FIELD_SPECS.contacts.email2)] = String(formData.get("email2") || "").trim();
-      fields[resolver.writeKey("contacts", FIELD_SPECS.contacts.direktwahl)] = String(formData.get("direktwahl") || "").trim();
-      fields[resolver.writeKey("contacts", FIELD_SPECS.contacts.mobile)] = String(formData.get("mobile") || "").trim();
-      fields[resolver.writeKey("contacts", FIELD_SPECS.contacts.rolle)] = String(formData.get("rolle") || "").trim();
-      fields[resolver.writeKey("contacts", FIELD_SPECS.contacts.sgf)] = helpers.splitCsv(formData.get("sgf"));
-      fields[resolver.writeKey("contacts", FIELD_SPECS.contacts.geburtstag)] =
+      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.nachname)] = String(formData.get("nachname") || "").trim();
+      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.vorname)] = String(formData.get("vorname") || "").trim();
+      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.anrede)] = String(formData.get("anrede") || "").trim();
+      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.firma, true)] = firmaLookupId;
+      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.funktion)] = String(formData.get("funktion") || "").trim();
+      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.email1)] = String(formData.get("email1") || "").trim();
+      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.email2)] = String(formData.get("email2") || "").trim();
+      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.direktwahl)] = String(formData.get("direktwahl") || "").trim();
+      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.mobile)] = String(formData.get("mobile") || "").trim();
+      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.rolle)] = String(formData.get("rolle") || "").trim();
+      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.sgf)] = helpers.splitCsv(formData.get("sgf"));
+      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.geburtstag)] =
         formData.get("geburtstag") ? new Date(`${formData.get("geburtstag")}T00:00:00`).toISOString() : null;
-      fields[resolver.writeKey("contacts", FIELD_SPECS.contacts.kommentar)] = String(formData.get("kommentar") || "").trim();
-      fields[resolver.writeKey("contacts", FIELD_SPECS.contacts.event)] = helpers.splitCsv(formData.get("event"));
-      fields[resolver.writeKey("contacts", FIELD_SPECS.contacts.eventhistory)] = String(formData.get("eventhistory") || "").trim();
-      fields[resolver.writeKey("contacts", FIELD_SPECS.contacts.archiviert)] = formData.get("archiviert") === "on";
+      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.kommentar)] = String(formData.get("kommentar") || "").trim();
+      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.event)] = helpers.splitCsv(formData.get("event"));
+      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.eventhistory)] = String(formData.get("eventhistory") || "").trim();
+      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.archiviert)] = formData.get("archiviert") === "on";
 
-      if (leadbbz0LookupId) {
-        fields[resolver.writeKey("contacts", FIELD_SPECS.contacts.leadbbz0, true)] = leadbbz0LookupId;
-      } else {
-        fields[resolver.writeKey("contacts", FIELD_SPECS.contacts.leadbbz0, true)] = null;
+      if (resolver.writeKeyStrict("contacts", FIELD_SPECS.contacts.leadbbz0, true)) {
+        fields[resolver.writeKeyStrict("contacts", FIELD_SPECS.contacts.leadbbz0, true)] = leadbbz0LookupId || null;
       }
 
-      if (!fields[resolver.writeKey("contacts", FIELD_SPECS.contacts.nachname)]) {
+      if (!fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.nachname)]) {
         throw new Error("Nachname fehlt.");
       }
 
@@ -1350,19 +1371,17 @@
       const leadbbzLookupId = Number(formData.get("leadbbzLookupId") || 0) || null;
       const fields = {};
 
-      fields[resolver.writeKey("tasks", FIELD_SPECS.tasks.title)] = String(formData.get("title") || "").trim();
-      fields[resolver.writeKey("tasks", FIELD_SPECS.tasks.kontakt, true)] = kontaktLookupId;
-      fields[resolver.writeKey("tasks", FIELD_SPECS.tasks.deadline)] =
+      fields[resolver.writeKeyLoose("tasks", FIELD_SPECS.tasks.title)] = String(formData.get("title") || "").trim();
+      fields[resolver.writeKeyLoose("tasks", FIELD_SPECS.tasks.kontakt, true)] = kontaktLookupId;
+      fields[resolver.writeKeyLoose("tasks", FIELD_SPECS.tasks.deadline)] =
         formData.get("deadline") ? new Date(`${formData.get("deadline")}T00:00:00`).toISOString() : null;
-      fields[resolver.writeKey("tasks", FIELD_SPECS.tasks.status)] = String(formData.get("status") || "").trim();
+      fields[resolver.writeKeyLoose("tasks", FIELD_SPECS.tasks.status)] = String(formData.get("status") || "").trim();
 
-      if (leadbbzLookupId) {
-        fields[resolver.writeKey("tasks", FIELD_SPECS.tasks.leadbbz, true)] = leadbbzLookupId;
-      } else {
-        fields[resolver.writeKey("tasks", FIELD_SPECS.tasks.leadbbz, true)] = null;
+      if (resolver.writeKeyStrict("tasks", FIELD_SPECS.tasks.leadbbz, true)) {
+        fields[resolver.writeKeyStrict("tasks", FIELD_SPECS.tasks.leadbbz, true)] = leadbbzLookupId || null;
       }
 
-      if (!fields[resolver.writeKey("tasks", FIELD_SPECS.tasks.title)]) throw new Error("Titel fehlt.");
+      if (!fields[resolver.writeKeyLoose("tasks", FIELD_SPECS.tasks.title)]) throw new Error("Titel fehlt.");
 
       await api.createListItem(CONFIG.lists.tasks, fields);
       ui.setMessage("Task angelegt.", "success");
@@ -1376,15 +1395,15 @@
       if (!datum) throw new Error("Datum/Zeit fehlt oder ist ungültig.");
 
       const fields = {};
-      fields[resolver.writeKey("history", FIELD_SPECS.history.title)] = String(formData.get("title") || "").trim();
-      fields[resolver.writeKey("history", FIELD_SPECS.history.kontakt, true)] = kontaktLookupId;
-      fields[resolver.writeKey("history", FIELD_SPECS.history.datum)] = datum;
-      fields[resolver.writeKey("history", FIELD_SPECS.history.typ)] = String(formData.get("typ") || "").trim();
-      fields[resolver.writeKey("history", FIELD_SPECS.history.notizen)] = String(formData.get("notizen") || "").trim();
-      fields[resolver.writeKey("history", FIELD_SPECS.history.projektbezug)] = formData.get("projektbezug") === "on";
-      fields[resolver.writeKey("history", FIELD_SPECS.history.leadbbz)] = String(formData.get("leadbbz") || "").trim();
+      fields[resolver.writeKeyLoose("history", FIELD_SPECS.history.title)] = String(formData.get("title") || "").trim();
+      fields[resolver.writeKeyLoose("history", FIELD_SPECS.history.kontakt, true)] = kontaktLookupId;
+      fields[resolver.writeKeyLoose("history", FIELD_SPECS.history.datum)] = datum;
+      fields[resolver.writeKeyLoose("history", FIELD_SPECS.history.typ)] = String(formData.get("typ") || "").trim();
+      fields[resolver.writeKeyLoose("history", FIELD_SPECS.history.notizen)] = String(formData.get("notizen") || "").trim();
+      fields[resolver.writeKeyLoose("history", FIELD_SPECS.history.projektbezug)] = formData.get("projektbezug") === "on";
+      fields[resolver.writeKeyLoose("history", FIELD_SPECS.history.leadbbz)] = String(formData.get("leadbbz") || "").trim();
 
-      if (!fields[resolver.writeKey("history", FIELD_SPECS.history.title)]) throw new Error("Titel fehlt.");
+      if (!fields[resolver.writeKeyLoose("history", FIELD_SPECS.history.title)]) throw new Error("Titel fehlt.");
 
       await api.createListItem(CONFIG.lists.history, fields);
       ui.setMessage("History-Eintrag angelegt.", "success");
