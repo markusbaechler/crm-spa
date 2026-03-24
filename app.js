@@ -27,51 +27,70 @@
     }
   };
 
-  const FIELD_SPECS = {
+  const SCHEMA = {
     firms: {
-      title: { display: "Firma", fallback: ["Title"] },
-      adresse: { display: "Adresse", fallback: ["Adresse"] },
-      plz: { display: "PLZ", fallback: ["PLZ"] },
-      ort: { display: "Ort", fallback: ["Ort"] },
-      land: { display: "Land", fallback: ["Land"] },
-      hauptnummer: { display: "Hauptnummer", fallback: ["Hauptnummer"] },
-      klassifizierung: { display: "Klassifizierung", fallback: ["Klassifizierung"] },
-      vip: { display: "VIP", fallback: ["VIP"] }
+      listTitle: CONFIG.lists.firms,
+      fields: {
+        id: "id",
+        title: "Title",
+        adresse: "Adresse",
+        plz: "PLZ",
+        ort: "Ort",
+        land: "Land",
+        hauptnummer: "Hauptnummer",
+        klassifizierung: "Klassifizierung",
+        vip: "VIP"
+      }
     },
     contacts: {
-      nachname: { display: "Nachname", fallback: ["Title"] },
-      vorname: { display: "Vorname", fallback: ["Vorname"] },
-      anrede: { display: "Anrede", fallback: ["Anrede"] },
-      firma: { display: "Firma", fallback: ["Firma"], isLookup: true },
-      funktion: { display: "Funktion", fallback: ["Funktion"] },
-      email1: { display: "Email1", fallback: ["Email1"] },
-      email2: { display: "Email2", fallback: ["Email2"] },
-      direktwahl: { display: "Direktwahl", fallback: ["Direktwahl"] },
-      mobile: { display: "Mobile", fallback: ["Mobile"] },
-      rolle: { display: "Rolle", fallback: ["Rolle"] },
-      leadbbz0: { display: "Leadbbz0", fallback: ["Leadbbz0"], isLookup: true },
-      sgf: { display: "SGF", fallback: ["SGF"] },
-      geburtstag: { display: "Geburtstag", fallback: ["Geburtstag"] },
-      kommentar: { display: "Kommentar", fallback: ["Kommentar"] },
-      event: { display: "Event", fallback: ["Event"] },
-      eventhistory: { display: "Eventhistory", fallback: ["Eventhistory"] },
-      archiviert: { display: "Archiviert", fallback: ["Archiviert"] }
+      listTitle: CONFIG.lists.contacts,
+      fields: {
+        id: "id",
+        nachname: "Title",
+        vorname: "Vorname",
+        anrede: "Anrede",
+        firma: "Firma",
+        firmaLookupId: "FirmaLookupId",
+        funktion: "Funktion",
+        email1: "Email1",
+        email2: "Email2",
+        direktwahl: "Direktwahl",
+        mobile: "Mobile",
+        rolle: "Rolle",
+        leadbbz0: "Leadbbz0",
+        sgf: "SGF",
+        geburtstag: "Geburtstag",
+        kommentar: "Kommentar",
+        event: "Event",
+        eventhistory: "Eventhistory",
+        archiviert: "Archiviert"
+      }
     },
     history: {
-      title: { display: "Title", fallback: ["Title"] },
-      kontakt: { display: "Nachname", fallback: ["Nachname"], isLookup: true },
-      datum: { display: "Datum", fallback: ["Datum"] },
-      typ: { display: "Typ", fallback: ["Typ"] },
-      notizen: { display: "Notizen", fallback: ["Notizen"] },
-      projektbezug: { display: "Projektbezug", fallback: ["Projektbezug"] },
-      leadbbz: { display: "Leadbbz", fallback: ["Leadbbz"] }
+      listTitle: CONFIG.lists.history,
+      fields: {
+        id: "id",
+        title: "Title",
+        kontakt: "Nachname",
+        kontaktLookupId: "NachnameLookupId",
+        datum: "Datum",
+        typ: "Typ",
+        notizen: "Notizen",
+        projektbezug: "Projektbezug",
+        leadbbz: "Leadbbz"
+      }
     },
     tasks: {
-      title: { display: "Title", fallback: ["Title"] },
-      kontakt: { display: "Name", fallback: ["Name"], isLookup: true },
-      deadline: { display: "Deadline", fallback: ["Deadline"] },
-      status: { display: "Status", fallback: ["Status"] },
-      leadbbz: { display: "Leadbbz", fallback: ["Leadbbz"], isLookup: true }
+      listTitle: CONFIG.lists.tasks,
+      fields: {
+        id: "id",
+        title: "Title",
+        kontakt: "Name",
+        kontaktLookupId: "NameLookupId",
+        deadline: "Deadline",
+        status: "Status",
+        leadbbz: "Leadbbz"
+      }
     }
   };
 
@@ -87,8 +106,7 @@
       siteId: null,
       loading: false,
       saving: false,
-      lastError: null,
-      columnsByList: {}
+      lastError: null
     },
     data: {
       firms: [],
@@ -105,10 +123,24 @@
     },
     filters: {
       route: CONFIG.defaults.route,
-      firms: { search: "", klassifizierung: "", vip: "" },
-      contacts: { search: "", archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden },
-      planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, onlyOverdue: false },
-      events: { search: "", onlyWithOpenTasks: false }
+      firms: {
+        search: "",
+        klassifizierung: "",
+        vip: ""
+      },
+      contacts: {
+        search: "",
+        archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden
+      },
+      planning: {
+        search: "",
+        onlyOpen: CONFIG.defaults.planningShowOnlyOpen,
+        onlyOverdue: false
+      },
+      events: {
+        search: "",
+        onlyWithOpenTasks: false
+      }
     },
     selection: {
       firmId: null,
@@ -129,6 +161,7 @@
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#039;");
     },
+
     bool(value) {
       if (typeof value === "boolean") return value;
       if (typeof value === "number") return value === 1;
@@ -138,9 +171,11 @@
       }
       return false;
     },
+
     isEmpty(value) {
       return value === null || value === undefined || value === "";
     },
+
     toArray(value) {
       if (Array.isArray(value)) return value;
       if (value === null || value === undefined || value === "") return [];
@@ -151,44 +186,39 @@
       }
       return [value];
     },
+
     normalizeChoiceList(value) {
       return helpers.toArray(value).filter(Boolean);
     },
+
     splitCsv(value) {
       return String(value || "")
         .split(",")
         .map(v => v.trim())
         .filter(Boolean);
     },
+
     uniqSorted(values) {
       return [...new Set(values.filter(Boolean).map(v => String(v).trim()).filter(Boolean))]
         .sort((a, b) => a.localeCompare(b, "de"));
     },
-    normalizeName(value) {
-      return String(value || "")
-        .toLowerCase()
-        .replace(/[\s_\-:./\\()[\]{}]+/g, "");
-    },
-    distinctLookupOptions(items) {
-      const map = new Map();
-      items.forEach(item => {
-        const id = Number(item.lookupId || 0);
-        const label = String(item.label || "").trim();
-        if (!id || !label) return;
-        if (!map.has(id)) map.set(id, { id, label });
-      });
-      return [...map.values()].sort((a, b) => a.label.localeCompare(b.label, "de"));
-    },
+
     toDate(value) {
       if (!value) return null;
       const d = new Date(value);
       return Number.isNaN(d.getTime()) ? null : d;
     },
+
     formatDate(value) {
       const d = helpers.toDate(value);
       if (!d) return "";
-      return d.toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" });
+      return d.toLocaleDateString("de-CH", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric"
+      });
     },
+
     formatDateTime(value) {
       const d = helpers.toDate(value);
       if (!d) return "";
@@ -200,6 +230,7 @@
         minute: "2-digit"
       });
     },
+
     toDateInput(value) {
       const d = helpers.toDate(value);
       if (!d) return "";
@@ -208,6 +239,7 @@
       const dd = String(d.getDate()).padStart(2, "0");
       return `${yyyy}-${mm}-${dd}`;
     },
+
     toDateTimeLocalInput(value) {
       const d = helpers.toDate(value);
       if (!d) return "";
@@ -218,26 +250,31 @@
       const mi = String(d.getMinutes()).padStart(2, "0");
       return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
     },
+
     fromDateTimeLocalInput(value) {
       if (!value) return null;
       const d = new Date(value);
       if (Number.isNaN(d.getTime())) return null;
       return d.toISOString();
     },
+
     todayStart() {
       const d = new Date();
       d.setHours(0, 0, 0, 0);
       return d;
     },
+
     isOpenTask(status) {
       const v = String(status || "").trim().toLowerCase();
       return !["erledigt", "geschlossen", "completed", "done", "closed"].includes(v);
     },
+
     isOverdue(deadline) {
       const d = helpers.toDate(deadline);
       if (!d) return false;
       return d < helpers.todayStart();
     },
+
     compareDateAsc(a, b) {
       const ad = helpers.toDate(a);
       const bd = helpers.toDate(b);
@@ -246,6 +283,7 @@
       if (!bd) return -1;
       return ad - bd;
     },
+
     compareDateDesc(a, b) {
       const ad = helpers.toDate(a);
       const bd = helpers.toDate(b);
@@ -254,15 +292,19 @@
       if (!bd) return -1;
       return bd - ad;
     },
+
     textIncludes(haystack, needle) {
       return String(haystack || "").toLowerCase().includes(String(needle || "").toLowerCase());
     },
+
     joinNonEmpty(values, sep = " · ") {
       return values.filter(v => !helpers.isEmpty(v)).join(sep);
     },
+
     fullName(contact) {
       return helpers.joinNonEmpty([contact.vorname, contact.nachname], " ").trim();
     },
+
     firmBadgeClass(value) {
       const v = String(value || "").toUpperCase();
       if (v.includes("A")) return "bbz-pill bbz-pill-a";
@@ -270,21 +312,25 @@
       if (v.includes("C")) return "bbz-pill bbz-pill-c";
       return "bbz-pill";
     },
+
     statusClass(status, deadline) {
       if (!helpers.isOpenTask(status)) return "bbz-success";
       if (helpers.isOverdue(deadline)) return "bbz-danger";
       return "bbz-warning";
     },
+
     multiChoiceHtml(values) {
       const list = helpers.normalizeChoiceList(values);
       if (!list.length) return '<span class="bbz-muted">—</span>';
       return list.map(v => `<span class="bbz-chip">${helpers.escapeHtml(v)}</span>`).join("");
     },
+
     ensureMsalAvailable() {
       if (!window.msal || !window.msal.PublicClientApplication) {
         throw new Error("MSAL-Bibliothek wurde nicht geladen.");
       }
     },
+
     validateConfig() {
       const missing = [];
       if (!CONFIG.graph.clientId) missing.push("clientId");
@@ -297,88 +343,9 @@
     }
   };
 
-  const resolver = {
-    getListTitle(listKey) {
-      return CONFIG.lists[listKey];
-    },
-
-    getColumns(listKey) {
-      return state.meta.columnsByList[this.getListTitle(listKey)] || [];
-    },
-
-    findColumn(listKey, spec) {
-      const columns = this.getColumns(listKey);
-      if (!columns.length) return null;
-
-      const targets = [
-        helpers.normalizeName(spec.display),
-        ...(spec.fallback || []).map(helpers.normalizeName)
-      ];
-
-      return columns.find(col => {
-        const n1 = helpers.normalizeName(col.name);
-        const n2 = helpers.normalizeName(col.displayName);
-        return targets.includes(n1) || targets.includes(n2);
-      }) || null;
-    },
-
-    readField(fields, listKey, spec, asLookupId = false) {
-      const col = this.findColumn(listKey, spec);
-      const keys = [];
-
-      if (col) {
-        keys.push(asLookupId ? `${col.name}LookupId` : col.name);
-      }
-
-      for (const fb of spec.fallback || []) {
-        keys.push(asLookupId ? `${fb}LookupId` : fb);
-      }
-
-      if (asLookupId && spec.display) keys.push(`${spec.display}LookupId`);
-      if (!asLookupId && spec.display) keys.push(spec.display);
-
-      for (const key of keys) {
-        if (key in fields) return fields[key];
-      }
-
-      return null;
-    },
-
-    writeKeyStrict(listKey, spec, asLookupId = false) {
-      const col = this.findColumn(listKey, spec);
-      if (!col) return null;
-      return asLookupId ? `${col.name}LookupId` : col.name;
-    },
-
-    writeKeyLoose(listKey, spec, asLookupId = false) {
-      const strict = this.writeKeyStrict(listKey, spec, asLookupId);
-      if (strict) return strict;
-
-      const fb = (spec.fallback || [])[0] || spec.display;
-      return asLookupId ? `${fb}LookupId` : fb;
-    },
-
-    assignIfResolved(target, listKey, spec, value, asLookupId = false) {
-      const key = this.writeKeyStrict(listKey, spec, asLookupId);
-      if (!key) return false;
-      target[key] = value;
-      return true;
-    }
-  };
-
   const optionsModel = {
     firmClassifications() {
       return helpers.uniqSorted(state.data.firms.map(f => f.klassifizierung));
-    },
-    contactLeadLookupOptions() {
-      return helpers.distinctLookupOptions(
-        state.data.contacts.map(c => ({ lookupId: c.leadbbz0LookupId, label: c.leadbbz0 }))
-      );
-    },
-    taskLeadLookupOptions() {
-      return helpers.distinctLookupOptions(
-        state.data.tasks.map(t => ({ lookupId: t.leadbbzLookupId, label: t.leadbbz }))
-      );
     }
   };
 
@@ -641,6 +608,7 @@
 
       state.auth.account = loginResponse.account;
       state.auth.isAuthenticated = true;
+
       await this.acquireToken();
     },
 
@@ -653,7 +621,9 @@
           account: state.auth.account,
           scopes: CONFIG.graph.scopes
         });
+
         if (!tokenResponse?.accessToken) throw new Error("Kein Access Token aus acquireTokenSilent erhalten.");
+
         state.auth.token = tokenResponse.accessToken;
         return state.auth.token;
       } catch {
@@ -661,7 +631,9 @@
           account: state.auth.account,
           scopes: CONFIG.graph.scopes
         });
+
         if (!tokenResponse?.accessToken) throw new Error("Kein Access Token aus acquireTokenPopup erhalten.");
+
         state.auth.token = tokenResponse.accessToken;
         return state.auth.token;
       }
@@ -698,12 +670,6 @@
       return state.meta.siteId;
     },
 
-    async getListColumns(listTitle) {
-      const siteId = await this.getSiteId();
-      const data = await this.graphRequest(`/sites/${siteId}/lists/${encodeURIComponent(listTitle)}/columns?$top=200`);
-      return data.value || [];
-    },
-
     async getListItems(listTitle) {
       const siteId = await this.getSiteId();
       const data = await this.graphRequest(`/sites/${siteId}/lists/${encodeURIComponent(listTitle)}/items?expand=fields&top=5000`);
@@ -727,18 +693,11 @@
     },
 
     async loadAll() {
-      const listTitles = Object.values(CONFIG.lists);
-
-      const columnResults = await Promise.all(listTitles.map(title => this.getListColumns(title)));
-      listTitles.forEach((title, idx) => {
-        state.meta.columnsByList[title] = columnResults[idx];
-      });
-
       const [firms, contacts, history, tasks] = await Promise.all([
-        this.getListItems(CONFIG.lists.firms),
-        this.getListItems(CONFIG.lists.contacts),
-        this.getListItems(CONFIG.lists.history),
-        this.getListItems(CONFIG.lists.tasks)
+        this.getListItems(SCHEMA.firms.listTitle),
+        this.getListItems(SCHEMA.contacts.listTitle),
+        this.getListItems(SCHEMA.history.listTitle),
+        this.getListItems(SCHEMA.tasks.listTitle)
       ]);
 
       state.data.firms = firms.map(item => normalizer.firm(item));
@@ -751,78 +710,79 @@
   };
 
   const normalizer = {
+    getField(item, fieldName) {
+      return item?.fields?.[fieldName];
+    },
+
     itemId(item) {
       return Number(item?.id) || null;
     },
 
-    read(item, listKey, fieldKey, asLookupId = false) {
-      const spec = FIELD_SPECS[listKey][fieldKey];
-      return resolver.readField(item?.fields || {}, listKey, spec, asLookupId);
-    },
-
     firm(item) {
+      const f = SCHEMA.firms.fields;
       return {
         id: this.itemId(item),
-        title: this.read(item, "firms", "title") || "",
-        adresse: this.read(item, "firms", "adresse") || "",
-        plz: this.read(item, "firms", "plz") || "",
-        ort: this.read(item, "firms", "ort") || "",
-        land: this.read(item, "firms", "land") || "",
-        hauptnummer: this.read(item, "firms", "hauptnummer") || "",
-        klassifizierung: this.read(item, "firms", "klassifizierung") || "",
-        vip: helpers.bool(this.read(item, "firms", "vip"))
+        title: this.getField(item, f.title) || "",
+        adresse: this.getField(item, f.adresse) || "",
+        plz: this.getField(item, f.plz) || "",
+        ort: this.getField(item, f.ort) || "",
+        land: this.getField(item, f.land) || "",
+        hauptnummer: this.getField(item, f.hauptnummer) || "",
+        klassifizierung: this.getField(item, f.klassifizierung) || "",
+        vip: helpers.bool(this.getField(item, f.vip))
       };
     },
 
     contact(item) {
+      const f = SCHEMA.contacts.fields;
       return {
         id: this.itemId(item),
-        nachname: this.read(item, "contacts", "nachname") || "",
-        vorname: this.read(item, "contacts", "vorname") || "",
-        anrede: this.read(item, "contacts", "anrede") || "",
-        firmaRaw: this.read(item, "contacts", "firma") || "",
-        firmaLookupId: Number(this.read(item, "contacts", "firma", true)) || null,
-        funktion: this.read(item, "contacts", "funktion") || "",
-        email1: this.read(item, "contacts", "email1") || "",
-        email2: this.read(item, "contacts", "email2") || "",
-        direktwahl: this.read(item, "contacts", "direktwahl") || "",
-        mobile: this.read(item, "contacts", "mobile") || "",
-        rolle: this.read(item, "contacts", "rolle") || "",
-        leadbbz0: this.read(item, "contacts", "leadbbz0") || "",
-        leadbbz0LookupId: Number(this.read(item, "contacts", "leadbbz0", true)) || null,
-        sgf: helpers.normalizeChoiceList(this.read(item, "contacts", "sgf")),
-        geburtstag: this.read(item, "contacts", "geburtstag") || "",
-        kommentar: this.read(item, "contacts", "kommentar") || "",
-        event: helpers.normalizeChoiceList(this.read(item, "contacts", "event")),
-        eventhistory: this.read(item, "contacts", "eventhistory") || "",
-        archiviert: helpers.bool(this.read(item, "contacts", "archiviert"))
+        nachname: this.getField(item, f.nachname) || "",
+        vorname: this.getField(item, f.vorname) || "",
+        anrede: this.getField(item, f.anrede) || "",
+        firmaRaw: this.getField(item, f.firma),
+        firmaLookupId: Number(this.getField(item, f.firmaLookupId)) || null,
+        funktion: this.getField(item, f.funktion) || "",
+        email1: this.getField(item, f.email1) || "",
+        email2: this.getField(item, f.email2) || "",
+        direktwahl: this.getField(item, f.direktwahl) || "",
+        mobile: this.getField(item, f.mobile) || "",
+        rolle: this.getField(item, f.rolle) || "",
+        leadbbz0: this.getField(item, f.leadbbz0) || "",
+        sgf: helpers.normalizeChoiceList(this.getField(item, f.sgf)),
+        geburtstag: this.getField(item, f.geburtstag) || "",
+        kommentar: this.getField(item, f.kommentar) || "",
+        event: helpers.normalizeChoiceList(this.getField(item, f.event)),
+        eventhistory: this.getField(item, f.eventhistory) || "",
+        archiviert: helpers.bool(this.getField(item, f.archiviert))
       };
     },
 
     history(item) {
+      const f = SCHEMA.history.fields;
       return {
         id: this.itemId(item),
-        title: this.read(item, "history", "title") || "",
-        kontaktRaw: this.read(item, "history", "kontakt") || "",
-        kontaktLookupId: Number(this.read(item, "history", "kontakt", true)) || null,
-        datum: this.read(item, "history", "datum") || "",
-        typ: this.read(item, "history", "typ") || "",
-        notizen: this.read(item, "history", "notizen") || "",
-        projektbezug: this.read(item, "history", "projektbezug") || "",
-        leadbbz: this.read(item, "history", "leadbbz") || ""
+        title: this.getField(item, f.title) || "",
+        kontaktRaw: this.getField(item, f.kontakt),
+        kontaktLookupId: Number(this.getField(item, f.kontaktLookupId)) || null,
+        datum: this.getField(item, f.datum) || "",
+        typ: this.getField(item, f.typ) || "",
+        notizen: this.getField(item, f.notizen) || "",
+        projektbezug: this.getField(item, f.projektbezug) || "",
+        leadbbz: this.getField(item, f.leadbbz) || ""
       };
     },
 
     task(item) {
+      const f = SCHEMA.tasks.fields;
       return {
         id: this.itemId(item),
-        title: this.read(item, "tasks", "title") || "",
-        kontaktRaw: this.read(item, "tasks", "kontakt") || "",
-        kontaktLookupId: Number(this.read(item, "tasks", "kontakt", true)) || null,
-        deadline: this.read(item, "tasks", "deadline") || "",
-        status: this.read(item, "tasks", "status") || "",
-        leadbbz: this.read(item, "tasks", "leadbbz") || "",
-        leadbbzLookupId: Number(this.read(item, "tasks", "leadbbz", true)) || null
+        title: this.getField(item, f.title) || "",
+        kontaktRaw: this.getField(item, f.kontakt),
+        kontaktLookupId: Number(this.getField(item, f.kontaktLookupId)) || null,
+        deadline: this.getField(item, f.deadline) || "",
+        status: this.getField(item, f.status) || "",
+        leadbbz: this.getField(item, f.leadbbz) || ""
       };
     }
   };
@@ -878,9 +838,7 @@
         const firmTasks = tasks.filter(t => firmContactIds.has(t.contactId));
         const firmHistory = history.filter(h => firmContactIds.has(h.contactId));
         const openTasks = firmTasks.filter(t => t.isOpen);
-        const nextDeadlineTask = openTasks
-          .filter(t => helpers.toDate(t.deadline))
-          .sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline))[0] || null;
+        const nextDeadlineTask = openTasks.filter(t => helpers.toDate(t.deadline)).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline))[0] || null;
         const latestHistory = [...firmHistory].sort((a, b) => helpers.compareDateDesc(a.datum, b.datum))[0] || null;
 
         return {
@@ -974,7 +932,7 @@
       const closeButtons = [...document.querySelectorAll("[data-close-modal]")];
       if (submit) {
         submit.disabled = isSaving;
-        submit.textContent = isSaving ? "Speichern ..." : (submit.dataset.defaultlabel || "Speichern");
+        submit.textContent = isSaving ? "Speichern ..." : (submit.dataset.defaultLabel || submit.dataset.defaultlabel || "Speichern");
       }
       closeButtons.forEach(btn => { btn.disabled = isSaving; });
     },
@@ -989,6 +947,7 @@
       }
 
       let html = "";
+
       switch (state.modal.type) {
         case "firm-create":
           html = this.renderFirmForm("create");
@@ -1017,8 +976,8 @@
 
     renderFirmForm(mode, itemId = null) {
       const firm = mode === "edit" ? dataModel.getFirmById(itemId) : null;
-      const classifications = optionsModel.firmClassifications();
       const title = mode === "edit" ? "Firma bearbeiten" : "Neue Firma";
+      const classifications = optionsModel.firmClassifications();
 
       return `
         <div class="bbz-modal-backdrop show">
@@ -1027,6 +986,7 @@
               <div class="bbz-modal-title">${title}</div>
               <button class="bbz-button bbz-button-secondary" data-close-modal>Schließen</button>
             </div>
+
             <form data-modal-form="firm" data-mode="${mode}" data-item-id="${itemId || ""}">
               <div class="bbz-modal-body">
                 <div class="bbz-form-grid">
@@ -1041,10 +1001,12 @@
                       ${classifications.map(v => `<option value="${helpers.escapeHtml(v)}" ${(firm?.klassifizierung || "") === v ? "selected" : ""}>${helpers.escapeHtml(v)}</option>`).join("")}
                     </select>
                   </div>
+
                   <div class="bbz-field bbz-span-2">
                     <label>Adresse</label>
                     <input class="bbz-input" name="adresse" value="${helpers.escapeHtml(firm?.adresse || "")}" />
                   </div>
+
                   <div class="bbz-field">
                     <label>PLZ</label>
                     <input class="bbz-input" name="plz" value="${helpers.escapeHtml(firm?.plz || "")}" />
@@ -1053,6 +1015,7 @@
                     <label>Ort</label>
                     <input class="bbz-input" name="ort" value="${helpers.escapeHtml(firm?.ort || "")}" />
                   </div>
+
                   <div class="bbz-field">
                     <label>Land</label>
                     <input class="bbz-input" name="land" value="${helpers.escapeHtml(firm?.land || "")}" />
@@ -1061,15 +1024,17 @@
                     <label>Hauptnummer</label>
                     <input class="bbz-input" name="hauptnummer" value="${helpers.escapeHtml(firm?.hauptnummer || "")}" />
                   </div>
+
                   <label class="bbz-checkbox">
                     <input type="checkbox" name="vip" ${firm?.vip ? "checked" : ""} />
                     VIP
                   </label>
                 </div>
               </div>
+
               <div class="bbz-modal-footer">
                 <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Abbrechen</button>
-                <button type="submit" class="bbz-button bbz-button-primary" data-modal-submit data-defaultlabel="Speichern">Speichern</button>
+                <button type="submit" class="bbz-button bbz-button-primary" data-modal-submit data-defaultLabel="Speichern">Speichern</button>
               </div>
             </form>
           </div>
@@ -1080,10 +1045,8 @@
     renderContactForm(mode, payload = {}) {
       const itemId = Number(payload.itemId || 0) || null;
       const contact = mode === "edit" ? dataModel.getContactById(itemId) : null;
-      const preselectedFirmId = Number(payload.prefillFirmId || contact?.firmId || 0) || "";
-      const leadOptions = optionsModel.contactLeadLookupOptions();
-      const leadResolved = !!resolver.writeKeyStrict("contacts", FIELD_SPECS.contacts.leadbbz0, true);
       const title = mode === "edit" ? "Kontakt bearbeiten" : "Neuer Kontakt";
+      const preselectedFirmId = Number(payload.prefillFirmId || contact?.firmId || 0) || "";
 
       return `
         <div class="bbz-modal-backdrop show">
@@ -1092,6 +1055,7 @@
               <div class="bbz-modal-title">${title}</div>
               <button class="bbz-button bbz-button-secondary" data-close-modal>Schließen</button>
             </div>
+
             <form data-modal-form="contact" data-mode="${mode}" data-item-id="${itemId || ""}">
               <div class="bbz-modal-body">
                 <div class="bbz-form-grid">
@@ -1103,6 +1067,7 @@
                     <label>Vorname</label>
                     <input class="bbz-input" name="vorname" value="${helpers.escapeHtml(contact?.vorname || "")}" />
                   </div>
+
                   <div class="bbz-field">
                     <label>Anrede</label>
                     <input class="bbz-input" name="anrede" value="${helpers.escapeHtml(contact?.anrede || "")}" />
@@ -1114,6 +1079,7 @@
                       ${state.enriched.firms.map(f => `<option value="${f.id}" ${String(preselectedFirmId) === String(f.id) ? "selected" : ""}>${helpers.escapeHtml(f.title)}</option>`).join("")}
                     </select>
                   </div>
+
                   <div class="bbz-field">
                     <label>Funktion</label>
                     <input class="bbz-input" name="funktion" value="${helpers.escapeHtml(contact?.funktion || "")}" />
@@ -1122,6 +1088,7 @@
                     <label>Rolle</label>
                     <input class="bbz-input" name="rolle" value="${helpers.escapeHtml(contact?.rolle || "")}" />
                   </div>
+
                   <div class="bbz-field">
                     <label>Email 1</label>
                     <input class="bbz-input" name="email1" value="${helpers.escapeHtml(contact?.email1 || "")}" />
@@ -1130,6 +1097,7 @@
                     <label>Email 2</label>
                     <input class="bbz-input" name="email2" value="${helpers.escapeHtml(contact?.email2 || "")}" />
                   </div>
+
                   <div class="bbz-field">
                     <label>Direktwahl</label>
                     <input class="bbz-input" name="direktwahl" value="${helpers.escapeHtml(contact?.direktwahl || "")}" />
@@ -1138,21 +1106,16 @@
                     <label>Mobile</label>
                     <input class="bbz-input" name="mobile" value="${helpers.escapeHtml(contact?.mobile || "")}" />
                   </div>
-                  <div class="bbz-field">
-                    <label>Leadbbz0</label>
-                    ${
-                      leadResolved
-                        ? `<select class="bbz-select" name="leadbbz0LookupId">
-                            <option value="">Bitte wählen</option>
-                            ${leadOptions.map(o => `<option value="${o.id}" ${String(contact?.leadbbz0LookupId || "") === String(o.id) ? "selected" : ""}>${helpers.escapeHtml(o.label)}</option>`).join("")}
-                          </select>`
-                        : `<input class="bbz-input" value="${helpers.escapeHtml(contact?.leadbbz0 || "")}" disabled placeholder="Lookup intern noch nicht aufgelöst" />`
-                    }
-                  </div>
+
                   <div class="bbz-field">
                     <label>Geburtstag</label>
                     <input type="date" class="bbz-input" name="geburtstag" value="${helpers.escapeHtml(helpers.toDateInput(contact?.geburtstag || ""))}" />
                   </div>
+                  <div class="bbz-field">
+                    <label>Leadbbz0</label>
+                    <input class="bbz-input" name="leadbbz0" value="${helpers.escapeHtml(contact?.leadbbz0 || "")}" />
+                  </div>
+
                   <div class="bbz-field">
                     <label>SGF (Komma getrennt)</label>
                     <input class="bbz-input" name="sgf" value="${helpers.escapeHtml((contact?.sgf || []).join(", "))}" />
@@ -1161,23 +1124,27 @@
                     <label>Event (Komma getrennt)</label>
                     <input class="bbz-input" name="event" value="${helpers.escapeHtml((contact?.event || []).join(", "))}" />
                   </div>
+
                   <div class="bbz-field bbz-span-2">
                     <label>Eventhistory</label>
                     <textarea class="bbz-textarea" name="eventhistory">${helpers.escapeHtml(contact?.eventhistory || "")}</textarea>
                   </div>
+
                   <div class="bbz-field bbz-span-2">
                     <label>Kommentar</label>
                     <textarea class="bbz-textarea" name="kommentar">${helpers.escapeHtml(contact?.kommentar || "")}</textarea>
                   </div>
+
                   <label class="bbz-checkbox">
                     <input type="checkbox" name="archiviert" ${contact?.archiviert ? "checked" : ""} />
                     Archiviert
                   </label>
                 </div>
               </div>
+
               <div class="bbz-modal-footer">
                 <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Abbrechen</button>
-                <button type="submit" class="bbz-button bbz-button-primary" data-modal-submit data-defaultlabel="Speichern">Speichern</button>
+                <button type="submit" class="bbz-button bbz-button-primary" data-modal-submit data-defaultLabel="Speichern">Speichern</button>
               </div>
             </form>
           </div>
@@ -1187,8 +1154,6 @@
 
     renderTaskForm(payload = {}) {
       const prefillContactId = Number(payload.prefillContactId || 0) || "";
-      const leadOptions = optionsModel.taskLeadLookupOptions();
-      const leadResolved = !!resolver.writeKeyStrict("tasks", FIELD_SPECS.tasks.leadbbz, true);
 
       return `
         <div class="bbz-modal-backdrop show">
@@ -1197,6 +1162,7 @@
               <div class="bbz-modal-title">Neue Aufgabe</div>
               <button class="bbz-button bbz-button-secondary" data-close-modal>Schließen</button>
             </div>
+
             <form data-modal-form="task">
               <div class="bbz-modal-body">
                 <div class="bbz-form-grid">
@@ -1204,6 +1170,7 @@
                     <label>Titel</label>
                     <input class="bbz-input" name="title" required />
                   </div>
+
                   <div class="bbz-field">
                     <label>Kontakt</label>
                     <select class="bbz-select" name="kontaktLookupId" required>
@@ -1211,30 +1178,22 @@
                       ${state.enriched.contacts.map(c => `<option value="${c.id}" ${String(prefillContactId) === String(c.id) ? "selected" : ""}>${helpers.escapeHtml(c.fullName)}${c.firmTitle ? ` · ${helpers.escapeHtml(c.firmTitle)}` : ""}</option>`).join("")}
                     </select>
                   </div>
+
                   <div class="bbz-field">
                     <label>Deadline</label>
                     <input type="date" class="bbz-input" name="deadline" required />
                   </div>
+
                   <div class="bbz-field">
                     <label>Status</label>
                     <input class="bbz-input" name="status" value="" />
                   </div>
-                  <div class="bbz-field">
-                    <label>Leadbbz</label>
-                    ${
-                      leadResolved
-                        ? `<select class="bbz-select" name="leadbbzLookupId">
-                            <option value="">Bitte wählen</option>
-                            ${leadOptions.map(o => `<option value="${o.id}">${helpers.escapeHtml(o.label)}</option>`).join("")}
-                          </select>`
-                        : `<input class="bbz-input" value="" disabled placeholder="Lookup intern noch nicht aufgelöst" />`
-                    }
-                  </div>
                 </div>
               </div>
+
               <div class="bbz-modal-footer">
                 <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Abbrechen</button>
-                <button type="submit" class="bbz-button bbz-button-primary" data-modal-submit data-defaultlabel="Speichern">Speichern</button>
+                <button type="submit" class="bbz-button bbz-button-primary" data-modal-submit data-defaultLabel="Speichern">Speichern</button>
               </div>
             </form>
           </div>
@@ -1252,6 +1211,7 @@
               <div class="bbz-modal-title">Neue History</div>
               <button class="bbz-button bbz-button-secondary" data-close-modal>Schließen</button>
             </div>
+
             <form data-modal-form="history">
               <div class="bbz-modal-body">
                 <div class="bbz-form-grid">
@@ -1259,6 +1219,7 @@
                     <label>Titel</label>
                     <input class="bbz-input" name="title" required />
                   </div>
+
                   <div class="bbz-field">
                     <label>Kontakt</label>
                     <select class="bbz-select" name="kontaktLookupId" required>
@@ -1266,31 +1227,37 @@
                       ${state.enriched.contacts.map(c => `<option value="${c.id}" ${String(prefillContactId) === String(c.id) ? "selected" : ""}>${helpers.escapeHtml(c.fullName)}${c.firmTitle ? ` · ${helpers.escapeHtml(c.firmTitle)}` : ""}</option>`).join("")}
                     </select>
                   </div>
+
                   <div class="bbz-field">
                     <label>Datum / Zeit</label>
                     <input type="datetime-local" class="bbz-input" name="datum" value="${helpers.toDateTimeLocalInput(new Date().toISOString())}" required />
                   </div>
+
                   <div class="bbz-field">
                     <label>Typ</label>
-                    <input class="bbz-input" name="typ" value="" />
+                    <input class="bbz-input" name="typ" />
                   </div>
+
                   <div class="bbz-field">
                     <label>Leadbbz</label>
-                    <input class="bbz-input" name="leadbbz" value="" />
+                    <input class="bbz-input" name="leadbbz" />
                   </div>
+
                   <label class="bbz-checkbox">
                     <input type="checkbox" name="projektbezug" />
                     Projektbezug
                   </label>
+
                   <div class="bbz-field bbz-span-2">
                     <label>Notizen</label>
                     <textarea class="bbz-textarea" name="notizen"></textarea>
                   </div>
                 </div>
               </div>
+
               <div class="bbz-modal-footer">
                 <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Abbrechen</button>
-                <button type="submit" class="bbz-button bbz-button-primary" data-modal-submit data-defaultlabel="Speichern">Speichern</button>
+                <button type="submit" class="bbz-button bbz-button-primary" data-modal-submit data-defaultLabel="Speichern">Speichern</button>
               </div>
             </form>
           </div>
@@ -1301,23 +1268,24 @@
 
   const actions = {
     async saveFirm(formData, mode, itemId) {
-      const fields = {};
-      fields[resolver.writeKeyLoose("firms", FIELD_SPECS.firms.title)] = String(formData.get("title") || "").trim();
-      fields[resolver.writeKeyLoose("firms", FIELD_SPECS.firms.adresse)] = String(formData.get("adresse") || "").trim();
-      fields[resolver.writeKeyLoose("firms", FIELD_SPECS.firms.plz)] = String(formData.get("plz") || "").trim();
-      fields[resolver.writeKeyLoose("firms", FIELD_SPECS.firms.ort)] = String(formData.get("ort") || "").trim();
-      fields[resolver.writeKeyLoose("firms", FIELD_SPECS.firms.land)] = String(formData.get("land") || "").trim();
-      fields[resolver.writeKeyLoose("firms", FIELD_SPECS.firms.hauptnummer)] = String(formData.get("hauptnummer") || "").trim();
-      fields[resolver.writeKeyLoose("firms", FIELD_SPECS.firms.klassifizierung)] = String(formData.get("klassifizierung") || "").trim();
-      fields[resolver.writeKeyLoose("firms", FIELD_SPECS.firms.vip)] = formData.get("vip") === "on";
+      const fields = {
+        [SCHEMA.firms.fields.title]: String(formData.get("title") || "").trim(),
+        [SCHEMA.firms.fields.adresse]: String(formData.get("adresse") || "").trim(),
+        [SCHEMA.firms.fields.plz]: String(formData.get("plz") || "").trim(),
+        [SCHEMA.firms.fields.ort]: String(formData.get("ort") || "").trim(),
+        [SCHEMA.firms.fields.land]: String(formData.get("land") || "").trim(),
+        [SCHEMA.firms.fields.hauptnummer]: String(formData.get("hauptnummer") || "").trim(),
+        [SCHEMA.firms.fields.klassifizierung]: String(formData.get("klassifizierung") || "").trim(),
+        [SCHEMA.firms.fields.vip]: formData.get("vip") === "on"
+      };
 
-      if (!fields[resolver.writeKeyLoose("firms", FIELD_SPECS.firms.title)]) throw new Error("Firmenname fehlt.");
+      if (!fields[SCHEMA.firms.fields.title]) throw new Error("Firmenname fehlt.");
 
       if (mode === "edit" && itemId) {
-        await api.updateListItemFields(CONFIG.lists.firms, itemId, fields);
+        await api.updateListItemFields(SCHEMA.firms.listTitle, itemId, fields);
         ui.setMessage("Firma gespeichert.", "success");
       } else {
-        await api.createListItem(CONFIG.lists.firms, fields);
+        await api.createListItem(SCHEMA.firms.listTitle, fields);
         ui.setMessage("Firma angelegt.", "success");
       }
     },
@@ -1326,71 +1294,57 @@
       const firmaLookupId = Number(formData.get("firmaLookupId") || 0);
       if (!firmaLookupId) throw new Error("Bitte eine Firma auswählen.");
 
-      const leadbbz0LookupId = Number(formData.get("leadbbz0LookupId") || 0) || null;
+      const fields = {
+        [SCHEMA.contacts.fields.nachname]: String(formData.get("nachname") || "").trim(),
+        [SCHEMA.contacts.fields.vorname]: String(formData.get("vorname") || "").trim(),
+        [SCHEMA.contacts.fields.anrede]: String(formData.get("anrede") || "").trim(),
+        [SCHEMA.contacts.fields.firmaLookupId]: firmaLookupId,
+        [SCHEMA.contacts.fields.funktion]: String(formData.get("funktion") || "").trim(),
+        [SCHEMA.contacts.fields.email1]: String(formData.get("email1") || "").trim(),
+        [SCHEMA.contacts.fields.email2]: String(formData.get("email2") || "").trim(),
+        [SCHEMA.contacts.fields.direktwahl]: String(formData.get("direktwahl") || "").trim(),
+        [SCHEMA.contacts.fields.mobile]: String(formData.get("mobile") || "").trim(),
+        [SCHEMA.contacts.fields.rolle]: String(formData.get("rolle") || "").trim(),
+        [SCHEMA.contacts.fields.leadbbz0]: String(formData.get("leadbbz0") || "").trim(),
+        [SCHEMA.contacts.fields.sgf]: helpers.splitCsv(formData.get("sgf")),
+        [SCHEMA.contacts.fields.geburtstag]: formData.get("geburtstag") ? new Date(`${formData.get("geburtstag")}T00:00:00`).toISOString() : null,
+        [SCHEMA.contacts.fields.kommentar]: String(formData.get("kommentar") || "").trim(),
+        [SCHEMA.contacts.fields.event]: helpers.splitCsv(formData.get("event")),
+        [SCHEMA.contacts.fields.eventhistory]: String(formData.get("eventhistory") || "").trim(),
+        [SCHEMA.contacts.fields.archiviert]: formData.get("archiviert") === "on"
+      };
 
-      const fields = {};
-      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.nachname)] = String(formData.get("nachname") || "").trim();
-      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.vorname)] = String(formData.get("vorname") || "").trim();
-      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.anrede)] = String(formData.get("anrede") || "").trim();
-      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.firma, true)] = firmaLookupId;
-      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.funktion)] = String(formData.get("funktion") || "").trim();
-      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.email1)] = String(formData.get("email1") || "").trim();
-      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.email2)] = String(formData.get("email2") || "").trim();
-      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.direktwahl)] = String(formData.get("direktwahl") || "").trim();
-      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.mobile)] = String(formData.get("mobile") || "").trim();
-      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.rolle)] = String(formData.get("rolle") || "").trim();
-      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.sgf)] = helpers.splitCsv(formData.get("sgf"));
-      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.geburtstag)] =
-        formData.get("geburtstag") ? new Date(`${formData.get("geburtstag")}T00:00:00`).toISOString() : null;
-      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.kommentar)] = String(formData.get("kommentar") || "").trim();
-      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.event)] = helpers.splitCsv(formData.get("event"));
-      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.eventhistory)] = String(formData.get("eventhistory") || "").trim();
-      fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.archiviert)] = formData.get("archiviert") === "on";
-
-      if (resolver.writeKeyStrict("contacts", FIELD_SPECS.contacts.leadbbz0, true)) {
-        fields[resolver.writeKeyStrict("contacts", FIELD_SPECS.contacts.leadbbz0, true)] = leadbbz0LookupId || null;
-      }
-
-      if (!fields[resolver.writeKeyLoose("contacts", FIELD_SPECS.contacts.nachname)]) {
-        throw new Error("Nachname fehlt.");
-      }
+      if (!fields[SCHEMA.contacts.fields.nachname]) throw new Error("Nachname fehlt.");
 
       if (mode === "edit" && itemId) {
-        await api.updateListItemFields(CONFIG.lists.contacts, itemId, fields);
+        await api.updateListItemFields(SCHEMA.contacts.listTitle, itemId, fields);
         ui.setMessage("Kontakt gespeichert.", "success");
       } else {
-        await api.createListItem(CONFIG.lists.contacts, fields);
+        await api.createListItem(SCHEMA.contacts.listTitle, fields);
         ui.setMessage("Kontakt angelegt.", "success");
       }
     },
 
     async saveTask(formData) {
-  const kontaktLookupId = Number(formData.get("kontaktLookupId") || 0);
-  if (!kontaktLookupId) throw new Error("Bitte einen Kontakt auswählen.");
+      const kontaktLookupId = Number(formData.get("kontaktLookupId") || 0);
+      if (!kontaktLookupId) throw new Error("Bitte einen Kontakt auswählen.");
 
-  const fields = {};
+      const deadline = formData.get("deadline")
+        ? new Date(`${formData.get("deadline")}T00:00:00`).toISOString()
+        : null;
 
-  fields[resolver.writeKeyLoose("tasks", FIELD_SPECS.tasks.title)] =
-    String(formData.get("title") || "").trim();
+      const fields = {
+        [SCHEMA.tasks.fields.title]: String(formData.get("title") || "").trim(),
+        [SCHEMA.tasks.fields.kontaktLookupId]: kontaktLookupId,
+        [SCHEMA.tasks.fields.deadline]: deadline,
+        [SCHEMA.tasks.fields.status]: String(formData.get("status") || "").trim()
+      };
 
-  fields[resolver.writeKeyLoose("tasks", FIELD_SPECS.tasks.kontakt, true)] =
-    kontaktLookupId;
+      if (!fields[SCHEMA.tasks.fields.title]) throw new Error("Titel fehlt.");
 
-  fields[resolver.writeKeyLoose("tasks", FIELD_SPECS.tasks.deadline)] =
-    formData.get("deadline")
-      ? new Date(`${formData.get("deadline")}T00:00:00`).toISOString()
-      : null;
-
-  fields[resolver.writeKeyLoose("tasks", FIELD_SPECS.tasks.status)] =
-    String(formData.get("status") || "").trim();
-
-  if (!fields[resolver.writeKeyLoose("tasks", FIELD_SPECS.tasks.title)]) {
-    throw new Error("Titel fehlt.");
-  }
-
-  await api.createListItem(CONFIG.lists.tasks, fields);
-  ui.setMessage("Task angelegt.", "success");
-}
+      await api.createListItem(SCHEMA.tasks.listTitle, fields);
+      ui.setMessage("Task angelegt.", "success");
+    },
 
     async saveHistory(formData) {
       const kontaktLookupId = Number(formData.get("kontaktLookupId") || 0);
@@ -1399,18 +1353,19 @@
       const datum = helpers.fromDateTimeLocalInput(formData.get("datum"));
       if (!datum) throw new Error("Datum/Zeit fehlt oder ist ungültig.");
 
-      const fields = {};
-      fields[resolver.writeKeyLoose("history", FIELD_SPECS.history.title)] = String(formData.get("title") || "").trim();
-      fields[resolver.writeKeyLoose("history", FIELD_SPECS.history.kontakt, true)] = kontaktLookupId;
-      fields[resolver.writeKeyLoose("history", FIELD_SPECS.history.datum)] = datum;
-      fields[resolver.writeKeyLoose("history", FIELD_SPECS.history.typ)] = String(formData.get("typ") || "").trim();
-      fields[resolver.writeKeyLoose("history", FIELD_SPECS.history.notizen)] = String(formData.get("notizen") || "").trim();
-      fields[resolver.writeKeyLoose("history", FIELD_SPECS.history.projektbezug)] = formData.get("projektbezug") === "on";
-      fields[resolver.writeKeyLoose("history", FIELD_SPECS.history.leadbbz)] = String(formData.get("leadbbz") || "").trim();
+      const fields = {
+        [SCHEMA.history.fields.title]: String(formData.get("title") || "").trim(),
+        [SCHEMA.history.fields.kontaktLookupId]: kontaktLookupId,
+        [SCHEMA.history.fields.datum]: datum,
+        [SCHEMA.history.fields.typ]: String(formData.get("typ") || "").trim(),
+        [SCHEMA.history.fields.notizen]: String(formData.get("notizen") || "").trim(),
+        [SCHEMA.history.fields.projektbezug]: formData.get("projektbezug") === "on",
+        [SCHEMA.history.fields.leadbbz]: String(formData.get("leadbbz") || "").trim()
+      };
 
-      if (!fields[resolver.writeKeyLoose("history", FIELD_SPECS.history.title)]) throw new Error("Titel fehlt.");
+      if (!fields[SCHEMA.history.fields.title]) throw new Error("Titel fehlt.");
 
-      await api.createListItem(CONFIG.lists.history, fields);
+      await api.createListItem(SCHEMA.history.listTitle, fields);
       ui.setMessage("History-Eintrag angelegt.", "success");
     }
   };
@@ -1464,8 +1419,7 @@
         const search = filters.search.trim().toLowerCase();
         const searchMatch =
           !search ||
-          [firm.title, firm.ort, firm.klassifizierung, firm.hauptnummer, firm.adresse, firm.land, ...firm.contacts.map(c => c.fullName)]
-            .some(v => helpers.textIncludes(v, search));
+          [firm.title, firm.ort, firm.klassifizierung, firm.hauptnummer, firm.adresse, firm.land, ...firm.contacts.map(c => c.fullName)].some(v => helpers.textIncludes(v, search));
         const klassifizierungMatch =
           !filters.klassifizierung || String(firm.klassifizierung || "").toLowerCase() === String(filters.klassifizierung || "").toLowerCase();
         const vipMatch =
@@ -1478,15 +1432,8 @@
       const cCount = state.enriched.firms.filter(f => String(f.klassifizierung).toUpperCase().includes("C")).length;
       const overdueTasks = state.enriched.tasks.filter(t => t.isOpen && t.isOverdue).length;
 
-      const urgentFirms = [...state.enriched.firms]
-        .filter(f => f.openTasksCount > 0)
-        .sort((a, b) => helpers.compareDateAsc(a.nextDeadline, b.nextDeadline))
-        .slice(0, 6);
-
-      const latestFirms = [...state.enriched.firms]
-        .filter(f => f.latestActivity)
-        .sort((a, b) => helpers.compareDateDesc(a.latestActivity, b.latestActivity))
-        .slice(0, 6);
+      const urgentFirms = [...state.enriched.firms].filter(f => f.openTasksCount > 0).sort((a, b) => helpers.compareDateAsc(a.nextDeadline, b.nextDeadline)).slice(0, 6);
+      const latestFirms = [...state.enriched.firms].filter(f => f.latestActivity).sort((a, b) => helpers.compareDateDesc(a.latestActivity, b.latestActivity)).slice(0, 6);
 
       return `
         <div>
@@ -1782,8 +1729,8 @@
         const search = filters.search.trim().toLowerCase();
         const searchMatch =
           !search ||
-          [contact.fullName, contact.firmTitle, contact.funktion, contact.rolle, contact.email1, contact.email2, contact.direktwahl, contact.mobile, contact.kommentar, ...contact.sgf, ...contact.event]
-            .some(v => helpers.textIncludes(v, search));
+          [contact.fullName, contact.firmTitle, contact.funktion, contact.rolle, contact.email1, contact.email2, contact.direktwahl, contact.mobile, contact.kommentar, ...contact.sgf, ...contact.event].some(v => helpers.textIncludes(v, search));
+
         const archiveMatch = !filters.archiviertAusblenden || !contact.archiviert;
         return searchMatch && archiveMatch;
       });
@@ -2097,8 +2044,7 @@
             const search = filters.search.trim().toLowerCase();
             const searchMatch =
               !search ||
-              [group.name, item.contactName, item.firmTitle, item.rolle, item.funktion, item.eventhistory, item.latestHistoryText]
-                .some(v => helpers.textIncludes(v, search));
+              [group.name, item.contactName, item.firmTitle, item.rolle, item.funktion, item.eventhistory, item.latestHistoryText].some(v => helpers.textIncludes(v, search));
             const openMatch = !filters.onlyWithOpenTasks || item.openTasksCount > 0;
             return searchMatch && openMatch;
           });
