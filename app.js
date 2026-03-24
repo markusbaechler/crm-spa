@@ -1042,115 +1042,115 @@
       `;
     },
 
-    renderContactForm(mode, payload = {}) {
-      const itemId = Number(payload.itemId || 0) || null;
-      const contact = mode === "edit" ? dataModel.getContactById(itemId) : null;
-      const title = mode === "edit" ? "Kontakt bearbeiten" : "Neuer Kontakt";
-      const preselectedFirmId = Number(payload.prefillFirmId || contact?.firmId || 0) || "";
+   renderContactForm(mode, payload = {}) {
+  const itemId = Number(payload.itemId || 0) || null;
+  const contact = mode === "edit" ? dataModel.getContactById(itemId) : null;
+  const title = mode === "edit" ? "Kontakt bearbeiten" : "Neuer Kontakt";
+  const preselectedFirmId = Number(payload.prefillFirmId || contact?.firmId || 0) || "";
 
-      return `
-        <div class="bbz-modal-backdrop show">
-          <div class="bbz-modal">
-            <div class="bbz-modal-header">
-              <div class="bbz-modal-title">${title}</div>
-              <button class="bbz-button bbz-button-secondary" data-close-modal>Schließen</button>
-            </div>
-
-            <form data-modal-form="contact" data-mode="${mode}" data-item-id="${itemId || ""}">
-              <div class="bbz-modal-body">
-                <div class="bbz-form-grid">
-                  <div class="bbz-field">
-                    <label>Nachname</label>
-                    <input class="bbz-input" name="nachname" required value="${helpers.escapeHtml(contact?.nachname || "")}" />
-                  </div>
-                  <div class="bbz-field">
-                    <label>Vorname</label>
-                    <input class="bbz-input" name="vorname" value="${helpers.escapeHtml(contact?.vorname || "")}" />
-                  </div>
-
-                  <div class="bbz-field">
-                    <label>Anrede</label>
-                    <input class="bbz-input" name="anrede" value="${helpers.escapeHtml(contact?.anrede || "")}" />
-                  </div>
-                  <div class="bbz-field">
-                    <label>Firma</label>
-                    <select class="bbz-select" name="firmaLookupId" required>
-                      <option value="">Bitte wählen</option>
-                      ${state.enriched.firms.map(f => `<option value="${f.id}" ${String(preselectedFirmId) === String(f.id) ? "selected" : ""}>${helpers.escapeHtml(f.title)}</option>`).join("")}
-                    </select>
-                  </div>
-
-                  <div class="bbz-field">
-                    <label>Funktion</label>
-                    <input class="bbz-input" name="funktion" value="${helpers.escapeHtml(contact?.funktion || "")}" />
-                  </div>
-                  <div class="bbz-field">
-                    <label>Rolle</label>
-                    <input class="bbz-input" name="rolle" value="${helpers.escapeHtml(contact?.rolle || "")}" />
-                  </div>
-
-                  <div class="bbz-field">
-                    <label>Email 1</label>
-                    <input class="bbz-input" name="email1" value="${helpers.escapeHtml(contact?.email1 || "")}" />
-                  </div>
-                  <div class="bbz-field">
-                    <label>Email 2</label>
-                    <input class="bbz-input" name="email2" value="${helpers.escapeHtml(contact?.email2 || "")}" />
-                  </div>
-
-                  <div class="bbz-field">
-                    <label>Direktwahl</label>
-                    <input class="bbz-input" name="direktwahl" value="${helpers.escapeHtml(contact?.direktwahl || "")}" />
-                  </div>
-                  <div class="bbz-field">
-                    <label>Mobile</label>
-                    <input class="bbz-input" name="mobile" value="${helpers.escapeHtml(contact?.mobile || "")}" />
-                  </div>
-
-                  <div class="bbz-field">
-                    <label>Geburtstag</label>
-                    <input type="date" class="bbz-input" name="geburtstag" value="${helpers.escapeHtml(helpers.toDateInput(contact?.geburtstag || ""))}" />
-                  </div>
-                  <div class="bbz-field">
-                    <label>Leadbbz0</label>
-                    <input class="bbz-input" name="leadbbz0" value="${helpers.escapeHtml(contact?.leadbbz0 || "")}" />
-                  </div>
-
-                  <div class="bbz-field">
-                    <label>SGF (Komma getrennt)</label>
-                    <input class="bbz-input" name="sgf" value="${helpers.escapeHtml((contact?.sgf || []).join(", "))}" />
-                  </div>
-                  <div class="bbz-field">
-                    <label>Event (Komma getrennt)</label>
-                    <input class="bbz-input" name="event" value="${helpers.escapeHtml((contact?.event || []).join(", "))}" />
-                  </div>
-
-                  <div class="bbz-field bbz-span-2">
-                    <label>Eventhistory</label>
-                    <textarea class="bbz-textarea" name="eventhistory">${helpers.escapeHtml(contact?.eventhistory || "")}</textarea>
-                  </div>
-
-                  <div class="bbz-field bbz-span-2">
-                    <label>Kommentar</label>
-                    <textarea class="bbz-textarea" name="kommentar">${helpers.escapeHtml(contact?.kommentar || "")}</textarea>
-                  </div>
-
-                  <label class="bbz-checkbox">
-                    <input type="checkbox" name="archiviert" ${contact?.archiviert ? "checked" : ""} />
-                    Archiviert
-                  </label>
-                </div>
-              </div>
-
-              <div class="bbz-modal-footer">
-                <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Abbrechen</button>
-                <button type="submit" class="bbz-button bbz-button-primary" data-modal-submit data-defaultLabel="Speichern">Speichern</button>
-              </div>
-            </form>
-          </div>
+  return `
+    <div class="bbz-modal-backdrop show">
+      <div class="bbz-modal">
+        <div class="bbz-modal-header">
+          <div class="bbz-modal-title">${title}</div>
+          <button class="bbz-button bbz-button-secondary" data-close-modal>Schließen</button>
         </div>
-      `;
-    },
+
+        <form data-modal-form="contact" data-mode="${mode}" data-item-id="${itemId || ""}">
+          <div class="bbz-modal-body">
+            <div class="bbz-form-grid">
+              <div class="bbz-field">
+                <label>Nachname</label>
+                <input class="bbz-input" name="nachname" required value="${helpers.escapeHtml(contact?.nachname || "")}" />
+              </div>
+              <div class="bbz-field">
+                <label>Vorname</label>
+                <input class="bbz-input" name="vorname" value="${helpers.escapeHtml(contact?.vorname || "")}" />
+              </div>
+
+              <div class="bbz-field">
+                <label>Anrede</label>
+                <input class="bbz-input" name="anrede" value="${helpers.escapeHtml(contact?.anrede || "")}" />
+              </div>
+              <div class="bbz-field">
+                <label>Firma</label>
+                <select class="bbz-select" name="firmaLookupId" required>
+                  <option value="">Bitte wählen</option>
+                  ${state.enriched.firms.map(f => `<option value="${f.id}" ${String(preselectedFirmId) === String(f.id) ? "selected" : ""}>${helpers.escapeHtml(f.title)}</option>`).join("")}
+                </select>
+              </div>
+
+              <div class="bbz-field">
+                <label>Funktion</label>
+                <input class="bbz-input" name="funktion" value="${helpers.escapeHtml(contact?.funktion || "")}" />
+              </div>
+              <div class="bbz-field">
+                <label>Rolle</label>
+                <input class="bbz-input" name="rolle" value="${helpers.escapeHtml(contact?.rolle || "")}" />
+              </div>
+
+              <div class="bbz-field">
+                <label>Email 1</label>
+                <input class="bbz-input" name="email1" value="${helpers.escapeHtml(contact?.email1 || "")}" />
+              </div>
+              <div class="bbz-field">
+                <label>Email 2</label>
+                <input class="bbz-input" name="email2" value="${helpers.escapeHtml(contact?.email2 || "")}" />
+              </div>
+
+              <div class="bbz-field">
+                <label>Direktwahl</label>
+                <input class="bbz-input" name="direktwahl" value="${helpers.escapeHtml(contact?.direktwahl || "")}" />
+              </div>
+              <div class="bbz-field">
+                <label>Mobile</label>
+                <input class="bbz-input" name="mobile" value="${helpers.escapeHtml(contact?.mobile || "")}" />
+              </div>
+
+              <div class="bbz-field">
+                <label>Geburtstag</label>
+                <input type="date" class="bbz-input" name="geburtstag" value="${helpers.escapeHtml(helpers.toDateInput(contact?.geburtstag || ""))}" />
+              </div>
+              <div class="bbz-field">
+                <label>Leadbbz0</label>
+                <input class="bbz-input" value="${helpers.escapeHtml(contact?.leadbbz0 || "")}" disabled placeholder="Lookup-Feld, vorläufig nur Anzeige" />
+              </div>
+
+              <div class="bbz-field">
+                <label>SGF (Komma getrennt)</label>
+                <input class="bbz-input" name="sgf" value="${helpers.escapeHtml((contact?.sgf || []).join(", "))}" />
+              </div>
+              <div class="bbz-field">
+                <label>Event (Komma getrennt)</label>
+                <input class="bbz-input" name="event" value="${helpers.escapeHtml((contact?.event || []).join(", "))}" />
+              </div>
+
+              <div class="bbz-field bbz-span-2">
+                <label>Eventhistory</label>
+                <textarea class="bbz-textarea" name="eventhistory">${helpers.escapeHtml(contact?.eventhistory || "")}</textarea>
+              </div>
+
+              <div class="bbz-field bbz-span-2">
+                <label>Kommentar</label>
+                <textarea class="bbz-textarea" name="kommentar">${helpers.escapeHtml(contact?.kommentar || "")}</textarea>
+              </div>
+
+              <label class="bbz-checkbox">
+                <input type="checkbox" name="archiviert" ${contact?.archiviert ? "checked" : ""} />
+                Archiviert
+              </label>
+            </div>
+          </div>
+
+          <div class="bbz-modal-footer">
+            <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Abbrechen</button>
+            <button type="submit" class="bbz-button bbz-button-primary" data-modal-submit data-defaultLabel="Speichern">Speichern</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+}
 
     renderTaskForm(payload = {}) {
       const prefillContactId = Number(payload.prefillContactId || 0) || "";
