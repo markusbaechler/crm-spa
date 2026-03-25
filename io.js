@@ -291,7 +291,7 @@
           </div>
           <div class="bbz-modal-body">
             <p style="font-size:13px;color:var(--muted);margin:0 0 16px;line-height:1.5">
-              Importiert Daten aus einer Excel-Datei mit den Sheets <strong>Firmen</strong>, <strong>Kontakte</strong>, <strong>History</strong> und <strong>Tasks</strong>.
+              Importiert Daten aus einer Excel-Datei mit den Sheets <strong>Firmen</strong>, <strong>Kontakte</strong>, <strong>Aktivitaeten</strong> und <strong>Tasks</strong>.
               Fehlende Sheets werden übersprungen. Bestehende Datensätze werden <strong>nicht</strong> überschrieben — der Import legt nur neue Items an.
             </p>
 
@@ -299,7 +299,7 @@
               <strong>Pflichtfelder pro Sheet:</strong><br>
               📋 <strong>Firmen:</strong> Name<br>
               👤 <strong>Kontakte:</strong> Nachname, Firma (muss in Firmen-Sheet oder SP vorhanden sein)<br>
-              📅 <strong>History:</strong> Kontakt (Vorname Nachname), Datum (YYYY-MM-DD oder DD.MM.YYYY)<br>
+              📅 <strong>Aktivitaeten:</strong> Kontakt (Vorname Nachname), Datum (YYYY-MM-DD oder DD.MM.YYYY)<br>
               ✅ <strong>Tasks:</strong> Titel, Kontakt (Vorname Nachname)
             </div>
 
@@ -413,7 +413,7 @@
       _missingFirmaWarning: (row) => `Firma "${row["Firma"]}" nicht gefunden → Kontakt "${row["Nachname"]}" übersprungen`
     },
     {
-      name: "History",
+      name: "Aktivitaeten",
       required: ["Kontakt", "Datum"],
       toFields: (row, lookups) => {
         const kontaktName = String(row["Kontakt"] || "").trim();
@@ -607,7 +607,7 @@
       }
 
       // ── HISTORY ───────────────────────────────────────────────────────────
-      const historyWs = wb.Sheets["History"];
+      const historyWs = wb.Sheets["Aktivitaeten"];
       if (historyWs) {
         const rows = window.XLSX.utils.sheet_to_json(historyWs, { defval: "" });
         _log(`→ History: ${rows.length} Zeilen gefunden`, "info");
@@ -700,7 +700,7 @@
         example: ["Mustermann", "Max", "Herr", "Muster AG", "CEO", "max@muster.ch", "", "+41 71 000 00 01", "+41 79 000 00 01", "", "", "", "1980-06-15"]
       },
       {
-        name: "History",
+        name: "Aktivitaeten",
         headers: ["Kontakt", "Datum", "Kontaktart", "Lead BBZ", "Notizen", "Projektbezug"],
         example: ["Max Mustermann", "2024-01-15", "Telefon", "", "Erstgespräch geführt", "Nein"]
       },
