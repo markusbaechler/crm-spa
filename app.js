@@ -138,11 +138,11 @@
 
     filters: {
       route: CONFIG.defaults.route,
-      firms: { search: "", klassifizierung: "", vip: "" },
-      contacts: { search: "", archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden },
+      firms: { search: "", klassifizierung: "", vip: "", sortBy: "title", sortDir: "asc" },
+      contacts: { search: "", archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden, sortBy: "fullName", sortDir: "asc" },
       planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, onlyOverdue: false, groupBy: "none", sortBy: "deadline", sortDir: "asc" },
       history: { search: "", kontaktart: "", leadbbz: "" },
-      events: { search: "", onlyWithOpenTasks: false }
+      events: { search: "", onlyWithOpenTasks: false, sortBy: "contactName", sortDir: "asc" }
     },
 
     selection: {
@@ -456,11 +456,13 @@
         const setSort = event.target.closest("[data-action='set-sort']");
         if (setSort) {
           const col = setSort.dataset.col;
-          if (state.filters.planning.sortBy === col) {
-            state.filters.planning.sortDir = state.filters.planning.sortDir === "asc" ? "desc" : "asc";
+          const scope = setSort.dataset.scope || "planning";
+          const f = scope === "firms" ? state.filters.firms : scope === "contacts" ? state.filters.contacts : state.filters.planning;
+          if (f.sortBy === col) {
+            f.sortDir = f.sortDir === "asc" ? "desc" : "asc";
           } else {
-            state.filters.planning.sortBy = col;
-            state.filters.planning.sortDir = "asc";
+            f.sortBy = col;
+            f.sortDir = "asc";
           }
           controller.render();
           return;
@@ -517,6 +519,7 @@
         const el = event.target;
         if (el.matches("[data-filter='firms-klassifizierung']")) { state.filters.firms.klassifizierung = el.value; controller.render(); }
         if (el.matches("[data-filter='firms-vip']")) { state.filters.firms.vip = el.value; controller.render(); }
+        if (el.matches("[data-filter='firms-sortdir']")) { state.filters.firms.sortDir = el.value; controller.render(); }
         if (el.matches("[data-filter='contacts-archiviert']")) { state.filters.contacts.archiviertAusblenden = el.checked; controller.render(); }
         if (el.matches("[data-filter='planning-open']")) { state.filters.planning.onlyOpen = el.checked; controller.render(); }
         if (el.matches("[data-filter='planning-overdue']")) { state.filters.planning.onlyOverdue = el.checked; controller.render(); }
@@ -525,6 +528,7 @@
         if (el.matches("[data-filter='history-kontaktart']")) { state.filters.history.kontaktart = el.value; controller.render(); }
         if (el.matches("[data-filter='history-leadbbz']")) { state.filters.history.leadbbz = el.value; controller.render(); }
         if (el.matches("[data-filter='events-open']")) { state.filters.events.onlyWithOpenTasks = el.checked; controller.render(); }
+        if (el.matches("[data-filter='events-sortby']")) { state.filters.events.sortBy = el.value; controller.render(); }
         if (el.matches("[data-action='task-status-change']")) {
           controller.handleTaskStatusChange(Number(el.dataset.taskId), el.value);
         }
@@ -559,7 +563,7 @@
       }
 
       if (this.els.btnLogin) {
-        this.els.btnLogin.textContent = state.auth.isAuthenticated ? "Erneut anmelden" : "Anmelden";
+        this.els.btnLogin.textContent = state.auth.isAuthenticated ? "Angemeldet" : "Anmelden";
         this.els.btnLogin.disabled = state.meta.loading || !state.auth.isReady;
       }
       if (this.els.btnRefresh) {
@@ -568,7 +572,24 @@
     },
 
     renderView(html) {
-      if (this.els.viewRoot) this.els.viewRoot.innerHTML = html;
+      if (!this.els.viewRoot) return;
+      // Fokus + Cursor-Position bei Suchfeldern vor dem Re-Render merken
+      const active = document.activeElement;
+      const isSearchInput = active && active.matches("[data-filter$='-search']");
+      const savedFilter = isSearchInput ? active.dataset.filter : null;
+      const savedStart  = isSearchInput ? active.selectionStart : null;
+      const savedEnd    = isSearchInput ? active.selectionEnd   : null;
+
+      this.els.viewRoot.innerHTML = html;
+
+      // Fokus + Cursor wiederherstellen
+      if (savedFilter) {
+        const restored = this.els.viewRoot.querySelector(`[data-filter="${savedFilter}"]`);
+        if (restored) {
+          restored.focus();
+          try { restored.setSelectionRange(savedStart, savedEnd); } catch (_) {}
+        }
+      }
     },
 
     loadingBlock(text = "Daten werden geladen ...") {
@@ -1292,12 +1313,21 @@
 
     firms() {
       const filters = state.filters.firms;
-      const rows = state.enriched.firms.filter(firm => {
+      const filteredFirms = state.enriched.firms.filter(firm => {
         const search = filters.search.trim().toLowerCase();
         const searchMatch = !search || [firm.title, firm.ort, firm.klassifizierung, firm.hauptnummer, firm.adresse, firm.land, ...firm.contacts.map(c => c.fullName)].some(v => helpers.textIncludes(v, search));
         const klassMatch = !filters.klassifizierung || String(firm.klassifizierung || "").toLowerCase() === filters.klassifizierung.toLowerCase();
         const vipMatch = !filters.vip || (filters.vip === "yes" && firm.vip) || (filters.vip === "no" && !firm.vip);
         return searchMatch && klassMatch && vipMatch;
+      });
+      const firmSortDir = filters.sortDir === "asc" ? 1 : -1;
+      const rows = [...filteredFirms].sort((a, b) => {
+        if (filters.sortBy === "title")          return a.title.localeCompare(b.title, "de") * firmSortDir;
+        if (filters.sortBy === "klassifizierung") return String(a.klassifizierung||"").localeCompare(String(b.klassifizierung||""), "de") * firmSortDir;
+        if (filters.sortBy === "vip")            return ((b.vip ? 1 : 0) - (a.vip ? 1 : 0)) * firmSortDir;
+        if (filters.sortBy === "openTasksCount") return (a.openTasksCount - b.openTasksCount) * firmSortDir;
+        if (filters.sortBy === "latestActivity") return helpers.compareDateDesc(a.latestActivity, b.latestActivity) * -firmSortDir;
+        return 0;
       });
 
       const aCount = state.enriched.firms.filter(f => String(f.klassifizierung).toUpperCase().includes("A")).length;
@@ -1325,12 +1355,7 @@
                   <input class="bbz-input" data-filter="firms-search" type="text" placeholder="Suche nach Firma, Ort, Ansprechpartner ..." value="${helpers.escapeHtml(filters.search)}" />
                   <select class="bbz-select" data-filter="firms-klassifizierung">
                     <option value="">Alle Klassifizierungen</option>
-                    <option value="A-Kunde" ${filters.klassifizierung === "A-Kunde" ? "selected" : ""}>A-Kunde</option>
-                    <option value="B-Kunde" ${filters.klassifizierung === "B-Kunde" ? "selected" : ""}>B-Kunde</option>
-                    <option value="C-Kunde" ${filters.klassifizierung === "C-Kunde" ? "selected" : ""}>C-Kunde</option>
-                    <option value="A" ${filters.klassifizierung === "A" ? "selected" : ""}>A</option>
-                    <option value="B" ${filters.klassifizierung === "B" ? "selected" : ""}>B</option>
-                    <option value="C" ${filters.klassifizierung === "C" ? "selected" : ""}>C</option>
+                    ${(state.meta.choices?.[CONFIG.lists.firms]?.["Klassifizierung"] || [...new Set(state.enriched.firms.map(f => f.klassifizierung).filter(Boolean))].sort()).map(k => `<option value="${helpers.escapeHtml(k)}" ${filters.klassifizierung === k ? "selected" : ""}>${helpers.escapeHtml(k)}</option>`).join("")}
                   </select>
                   <select class="bbz-select" data-filter="firms-vip">
                     <option value="">VIP egal</option>
@@ -1340,7 +1365,16 @@
                 </div>
                 <div class="bbz-table-wrap">
                   <table class="bbz-table">
-                    <thead><tr><th>Firma</th><th>Ort</th><th>Klassifizierung</th><th>VIP</th><th>Kontakte</th><th>Offene Tasks</th><th>Naechste Deadline</th></tr></thead>
+                    <thead><tr>
+                      ${["title","klassifizierung","vip","openTasksCount","latestActivity"].reduce((acc,col,i) => {
+                        const labels = ["Firma","Klassifizierung","VIP","Offene Tasks","Letzte Aktivitaet"];
+                        const active = filters.sortBy === col;
+                        const icon = active ? (filters.sortDir === "asc" ? " ↑" : " ↓") : "";
+                        const sortTh = `<th style="cursor:pointer;user-select:none;${active?"color:var(--blue);":""}" data-action="set-sort" data-col="${col}" data-scope="firms">${labels[i]}${icon}</th>`;
+                        return acc + sortTh;
+                      }, "")}
+                      <th>Ort</th><th>Kontakte</th><th>Naechste Deadline</th>
+                    </tr></thead>
                     <tbody>
                       ${rows.length ? rows.map(firm => `
                         <tr>
@@ -1487,11 +1521,24 @@
 
     contacts() {
       const filters = state.filters.contacts;
-      const rows = state.enriched.contacts.filter(c => {
+      const filteredContacts = state.enriched.contacts.filter(c => {
         const search = filters.search.trim().toLowerCase();
         const searchMatch = !search || [c.fullName, c.firmTitle, c.funktion, c.rolle, c.email1, c.email2, c.direktwahl, c.mobile, c.kommentar, ...c.sgf, ...c.event].some(v => helpers.textIncludes(v, search));
         return searchMatch && (!filters.archiviertAusblenden || !c.archiviert);
       });
+      const cSortDir = filters.sortDir === "asc" ? 1 : -1;
+      const rows = [...filteredContacts].sort((a, b) => {
+        if (filters.sortBy === "fullName")  return String(a.fullName||"").localeCompare(String(b.fullName||""), "de") * cSortDir;
+        if (filters.sortBy === "firmTitle") return String(a.firmTitle||"").localeCompare(String(b.firmTitle||""), "de") * cSortDir;
+        if (filters.sortBy === "rolle")     return String(a.rolle||"").localeCompare(String(b.rolle||""), "de") * cSortDir;
+        if (filters.sortBy === "leadbbz0")  return String(a.leadbbz0||"").localeCompare(String(b.leadbbz0||""), "de") * cSortDir;
+        return 0;
+      });
+      const cTh = (label, col) => {
+        const active = filters.sortBy === col;
+        const icon = active ? (filters.sortDir === "asc" ? " ↑" : " ↓") : "";
+        return `<th style="cursor:pointer;user-select:none;${active?"color:var(--blue);":""}" data-action="set-sort" data-col="${col}" data-scope="contacts">${label}${icon}</th>`;
+      };
 
       return `
         <section class="bbz-section">
@@ -1510,7 +1557,7 @@
             </div>
             <div class="bbz-table-wrap">
               <table class="bbz-table">
-                <thead><tr><th>Name</th><th>Firma</th><th>Funktion</th><th>Rolle</th><th>E-Mail</th><th>Telefon</th><th>Archiviert</th></tr></thead>
+                <thead><tr>${cTh("Name","fullName")}${cTh("Firma","firmTitle")}<th>Funktion</th>${cTh("Rolle","rolle")}${cTh("Lead BBZ","leadbbz0")}<th>E-Mail</th><th>Telefon</th><th>Archiviert</th></tr></thead>
                 <tbody>
                   ${rows.length ? rows.map(c => `
                     <tr>
@@ -1518,10 +1565,11 @@
                       <td>${c.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${c.firmId}">${helpers.escapeHtml(c.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
                       <td>${helpers.escapeHtml(c.funktion) || '<span class="bbz-muted">—</span>'}</td>
                       <td>${helpers.escapeHtml(c.rolle) || '<span class="bbz-muted">—</span>'}</td>
+                      <td>${helpers.escapeHtml(c.leadbbz0) || '<span class="bbz-muted">—</span>'}</td>
                       <td>${c.email1 ? `<a class="bbz-link" href="mailto:${helpers.escapeHtml(c.email1)}">${helpers.escapeHtml(c.email1)}</a>` : '<span class="bbz-muted">—</span>'}</td>
                       <td>${helpers.escapeHtml(helpers.joinNonEmpty([c.direktwahl, c.mobile], " / ")) || '<span class="bbz-muted">—</span>'}</td>
                       <td>${c.archiviert ? '<span class="bbz-danger">Ja</span>' : '<span class="bbz-muted">Nein</span>'}</td>
-                    </tr>`).join("") : `<tr><td colspan="7">${ui.emptyBlock("Keine Kontakte fuer die aktuelle Filterung gefunden.")}</td></tr>`}
+                    </tr>`).join("") : `<tr><td colspan="8">${ui.emptyBlock("Keine Kontakte fuer die aktuelle Filterung gefunden.")}</td></tr>`}
                 </tbody>
               </table>
             </div>
@@ -1866,14 +1914,20 @@
 
     events() {
       const filters = state.filters.events;
-      const groups = state.enriched.events.map(group => ({
-        ...group,
-        contacts: group.contacts.filter(item => {
+      const evtSortBy  = filters.sortBy  || "contactName";
+      const evtSortDir = filters.sortDir === "asc" ? 1 : -1;
+      const groups = state.enriched.events.map(group => {
+        const filtered = group.contacts.filter(item => {
           const search = filters.search.trim().toLowerCase();
           const searchMatch = !search || [group.name, item.contactName, item.firmTitle, item.rolle, item.funktion, item.eventhistory, item.latestHistoryText].some(v => helpers.textIncludes(v, search));
           return searchMatch && (!filters.onlyWithOpenTasks || item.openTasksCount > 0);
-        })
-      })).filter(g => g.contacts.length > 0);
+        });
+        const sorted = [...filtered].sort((a, b) => {
+          if (evtSortBy === "firmTitle")    return String(a.firmTitle||"").localeCompare(String(b.firmTitle||""), "de") * evtSortDir;
+          return String(a.contactName||"").localeCompare(String(b.contactName||""), "de") * evtSortDir;
+        });
+        return { ...group, contacts: sorted };
+      }).filter(g => g.contacts.length > 0);
 
       const totalGroups = state.enriched.events.length;
       const totalContacts = state.enriched.events.reduce((sum, e) => sum + e.contactCount, 0);
@@ -1892,8 +1946,11 @@
             <div class="bbz-section-body">
               <div class="bbz-filters-3">
                 <input class="bbz-input" data-filter="events-search" type="text" placeholder="Suche nach Kategorie, Kontakt, Firma, Rolle ..." value="${helpers.escapeHtml(filters.search)}" />
+                <select class="bbz-select" data-filter="events-sortby">
+                  <option value="contactName" ${(filters.sortBy||"contactName") === "contactName" ? "selected" : ""}>Sortierung: Kontakt A–Z</option>
+                  <option value="firmTitle"   ${(filters.sortBy||"") === "firmTitle"   ? "selected" : ""}>Sortierung: Firma A–Z</option>
+                </select>
                 <label class="bbz-checkbox"><input type="checkbox" data-filter="events-open" ${filters.onlyWithOpenTasks ? "checked" : ""} /> Nur mit offenen Tasks</label>
-                <div></div>
               </div>
               ${groups.length ? `<div class="bbz-cockpit-stack">${groups.map(group => `
                 <section class="bbz-section" style="box-shadow:none;">
@@ -2430,7 +2487,7 @@
     }
   };
 
-window._bbzApp = { state, api, helpers, SCHEMA, CONFIG, dataModel, controller };
+  window._bbzApp = { state, api, helpers, SCHEMA, CONFIG, dataModel, controller };
 
   function startApp() { controller.init(); }
 
