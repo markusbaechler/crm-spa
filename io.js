@@ -591,33 +591,102 @@
 
       // ── KONTAKTE ──────────────────────────────────────────────────────────
       const kontakteWs = wb.Sheets["Kontakte"];
+
+      // Duplikat-Schlüssel: "vorname nachname|firmatitel" (case-insensitive)
+      // Speichert { id, contact } für Smart-Merge
+      const contactDupMap = new Map();
+      (state.enriched.contacts || []).forEach(c => {
+        const key = `${c.vorname} ${c.nachname}|${c.firmTitle}`.toLowerCase().trim();
+        contactDupMap.set(key, { id: c.id, contact: c });
+      });
+
+      // Lookup-Map für History/Tasks (Vorname Nachname → id)
       const contactByName = new Map(
         (state.enriched.contacts || []).map(c => [
           `${c.vorname} ${c.nachname}`.toLowerCase().trim(), c.id
         ])
       );
-      // Auch "Nachname Vorname"-Variante
       (state.enriched.contacts || []).forEach(c => {
         contactByName.set(`${c.nachname} ${c.vorname}`.toLowerCase().trim(), c.id);
         contactByName.set(c.nachname.toLowerCase().trim(), c.id);
       });
 
+      // Felder die beim Smart-Merge befüllt werden (nur wenn im SP leer)
+      const MERGE_FIELDS = [
+        { row: "Vorname",    sp: "Vorname",    contact: "vorname" },
+        { row: "Anrede",     sp: "Anrede",     contact: "anrede" },
+        { row: "Funktion",   sp: "Funktion",   contact: "funktion" },
+        { row: "E-Mail 1",   sp: "Email1",     contact: "email1" },
+        { row: "E-Mail 2",   sp: "Email2",     contact: "email2" },
+        { row: "Direktwahl", sp: "Direktwahl", contact: "direktwahl" },
+        { row: "Mobile",     sp: "Mobile",     contact: "mobile" },
+        { row: "Rolle",      sp: "Rolle",      contact: "rolle" },
+        { row: "Lead BBZ",   sp: "Leadbbz0",   contact: "leadbbz0" },
+        { row: "Kommentar",  sp: "Kommentar",  contact: "kommentar" }
+      ];
+
+      let totalMerged = 0;
+
       if (kontakteWs) {
         const rows = window.XLSX.utils.sheet_to_json(kontakteWs, { defval: "" });
         _log(`→ Kontakte: ${rows.length} Zeilen gefunden`, "info");
-        let created = 0, skipped = 0;
+        let created = 0, skipped = 0, merged = 0;
 
         for (const row of rows) {
           const sheetDef = IMPORT_SHEETS[1];
-          const result = sheetDef.toFields(row, { firmByName });
+          const nachname  = String(row["Nachname"] || "").trim();
+          const vorname   = String(row["Vorname"]  || "").trim();
+          const firmaName = String(row["Firma"]    || "").trim();
 
+          if (!nachname || !firmaName) {
+            skipped++;
+            _log(`  ⚠ Kontakt übersprungen (Pflichtfeld fehlt): ${nachname || "?"}`, "warn");
+            continue;
+          }
+
+          // ── Duplikat-Prüfung: Vorname + Nachname + Firma ──
+          const dupKey = `${vorname} ${nachname}|${firmaName}`.toLowerCase().trim();
+          const existing = contactDupMap.get(dupKey);
+
+          if (existing) {
+            // Smart-Merge: nur leere Felder ergänzen
+            const patch = {};
+            for (const fd of MERGE_FIELDS) {
+              const importVal = String(row[fd.row] || "").trim();
+              const existingVal = String(existing.contact[fd.contact] || "").trim();
+              if (importVal && !existingVal) {
+                patch[fd.sp] = importVal;
+              }
+            }
+
+            if (Object.keys(patch).length > 0) {
+              try {
+                await api.patchItem("CRMContacts", existing.id, patch);
+                const updatedFields = Object.keys(patch).join(", ");
+                _log(`  🔄 Kontakt ergänzt: "${vorname} ${nachname}" → ${updatedFields}`, "ok");
+                merged++;
+              } catch (err) {
+                skipped++;
+                _log(`  ❌ Merge Fehler ("${vorname} ${nachname}"): ${err.message}`, "error");
+              }
+            } else {
+              skipped++;
+              _log(`  ⬜ Duplikat, keine neuen Felder: "${vorname} ${nachname}" (${firmaName})`, "info");
+            }
+
+            // Kontakt für History/Tasks-Lookup registrieren (auch wenn kein Merge nötig)
+            contactByName.set(`${vorname} ${nachname}`.toLowerCase().trim(), existing.id);
+            continue;
+          }
+
+          // ── Neu anlegen ──
+          const result = sheetDef.toFields(row, { firmByName });
           if (!result) {
             skipped++;
-            const firmaName = String(row["Firma"] || "").trim();
-            if (firmaName && !firmByName.has(firmaName.toLowerCase())) {
+            if (!firmByName.has(firmaName.toLowerCase())) {
               _log(`  ⚠ ${sheetDef._missingFirmaWarning(row)}`, "warn");
             } else {
-              _log(`  ⚠ Kontakt übersprungen (Pflichtfeld fehlt): ${row["Nachname"] || "?"}`, "warn");
+              _log(`  ⚠ Kontakt übersprungen (Firma-Lookup fehlgeschlagen): ${nachname}`, "warn");
             }
             continue;
           }
@@ -633,35 +702,56 @@
               await api.patchItem("CRMContacts", newId, pf);
             }
 
-            // Neuen Kontakt in Lookup-Map aufnehmen (für History/Tasks im selben Import)
-            const fullName = `${String(row["Vorname"]||"").trim()} ${String(row["Nachname"]).trim()}`.toLowerCase().trim();
+            const fullName = `${vorname} ${nachname}`.toLowerCase().trim();
             contactByName.set(fullName, newId);
-            contactByName.set(String(row["Nachname"]).trim().toLowerCase(), newId);
+            contactByName.set(nachname.toLowerCase(), newId);
+            contactDupMap.set(dupKey, { id: newId, contact: { vorname, nachname, firmTitle: firmaName, ...result.patchFields } });
             created++;
-            _log(`  ✅ Kontakt angelegt: "${row["Vorname"] || ""} ${row["Nachname"]}"`, "ok");
+            _log(`  ✅ Kontakt neu angelegt: "${vorname} ${nachname}"`, "ok");
           } catch (err) {
             skipped++;
-            _log(`  ❌ Kontakt Fehler ("${row["Nachname"]}"): ${err.message}`, "error");
+            _log(`  ❌ Kontakt Fehler ("${nachname}"): ${err.message}`, "error");
           }
         }
-        _log(`  Kontakte: ${created} angelegt, ${skipped} übersprungen`, "info");
+        totalMerged += merged;
+        _log(`  Kontakte: ${created} angelegt, ${merged} ergänzt (Merge), ${skipped} übersprungen`, "info");
         totalCreated += created; totalSkipped += skipped;
       }
 
       // ── HISTORY ───────────────────────────────────────────────────────────
       const historyWs = wb.Sheets["Aktivitaeten"];
+
+      // Duplikat-Schlüssel: kontaktId|datum|kontaktart
+      const historyDupSet = new Set(
+        (state.enriched.history || []).map(h =>
+          `${h.contactId}|${h.datum ? h.datum.slice(0,10) : ""}|${String(h.typ||"").toLowerCase()}`
+        )
+      );
+
       if (historyWs) {
         const rows = window.XLSX.utils.sheet_to_json(historyWs, { defval: "" });
-        _log(`→ History: ${rows.length} Zeilen gefunden`, "info");
+        _log(`→ Aktivitaeten: ${rows.length} Zeilen gefunden`, "info");
         let created = 0, skipped = 0;
 
         for (const row of rows) {
           const result = IMPORT_SHEETS[2].toFields(row, { contactByName });
           if (!result) {
             skipped++;
-            _log(`  ⚠ History übersprungen: Kontakt "${row["Kontakt"]||"?"}" nicht gefunden oder Datum fehlt`, "warn");
+            _log(`  ⚠ Aktivitaet übersprungen: Kontakt "${row["Kontakt"]||"?"}" nicht gefunden oder Datum fehlt`, "warn");
             continue;
           }
+
+          // Duplikat-Prüfung
+          const datum = _parseDate(row["Datum"]) || "";
+          const kontaktId = contactByName.get(String(row["Kontakt"]||"").trim().toLowerCase());
+          const kontaktart = String(row["Kontaktart"]||"").toLowerCase();
+          const histDupKey = `${kontaktId}|${datum}|${kontaktart}`;
+          if (historyDupSet.has(histDupKey)) {
+            skipped++;
+            _log(`  ⬜ Duplikat Aktivitaet übersprungen: "${row["Kontakt"]}" am ${datum} (${row["Kontaktart"]||"—"})`, "info");
+            continue;
+          }
+
           try {
             const created_ = await api.postItem("CRMHistory", result.createFields);
             const newId = Number(created_?.id || created_?.fields?.id);
@@ -669,18 +759,28 @@
             if (Object.keys(result.patchFields).length > 0) {
               await api.patchItem("CRMHistory", newId, result.patchFields);
             }
+            historyDupSet.add(histDupKey); // verhindert Duplikate innerhalb desselben Imports
             created++;
+            _log(`  ✅ Aktivitaet angelegt: "${row["Kontakt"]}" am ${datum}`, "ok");
           } catch (err) {
             skipped++;
-            _log(`  ❌ History Fehler: ${err.message}`, "error");
+            _log(`  ❌ Aktivitaet Fehler: ${err.message}`, "error");
           }
         }
-        _log(`  History: ${created} angelegt, ${skipped} übersprungen`, "info");
+        _log(`  Aktivitaeten: ${created} angelegt, ${skipped} übersprungen`, "info");
         totalCreated += created; totalSkipped += skipped;
       }
 
       // ── TASKS ─────────────────────────────────────────────────────────────
       const tasksWs = wb.Sheets["Tasks"];
+
+      // Duplikat-Schlüssel: kontaktId|titel (case-insensitive)
+      const taskDupSet = new Set(
+        (state.enriched.tasks || []).map(t =>
+          `${t.contactId}|${String(t.title||"").toLowerCase().trim()}`
+        )
+      );
+
       if (tasksWs) {
         const rows = window.XLSX.utils.sheet_to_json(tasksWs, { defval: "" });
         _log(`→ Tasks: ${rows.length} Zeilen gefunden`, "info");
@@ -693,6 +793,17 @@
             _log(`  ⚠ Task übersprungen: Kontakt "${row["Kontakt"]||"?"}" nicht gefunden oder Titel fehlt`, "warn");
             continue;
           }
+
+          // Duplikat-Prüfung
+          const kontaktId = contactByName.get(String(row["Kontakt"]||"").trim().toLowerCase());
+          const titel = String(row["Titel"]||"").toLowerCase().trim();
+          const taskDupKey = `${kontaktId}|${titel}`;
+          if (taskDupSet.has(taskDupKey)) {
+            skipped++;
+            _log(`  ⬜ Duplikat Task übersprungen: "${row["Titel"]}" für "${row["Kontakt"]}"`, "info");
+            continue;
+          }
+
           try {
             const created_ = await api.postItem("CRMTasks", result.createFields);
             const newId = Number(created_?.id || created_?.fields?.id);
@@ -700,7 +811,9 @@
             if (Object.keys(result.patchFields).length > 0) {
               await api.patchItem("CRMTasks", newId, result.patchFields);
             }
+            taskDupSet.add(taskDupKey); // verhindert Duplikate innerhalb desselben Imports
             created++;
+            _log(`  ✅ Task angelegt: "${row["Titel"]}" für "${row["Kontakt"]}"`, "ok");
           } catch (err) {
             skipped++;
             _log(`  ❌ Task Fehler: ${err.message}`, "error");
@@ -710,7 +823,7 @@
         totalCreated += created; totalSkipped += skipped;
       }
 
-      _log(`\n Import abgeschlossen: ${totalCreated} Items erstellt, ${totalSkipped} uebersprungen.`, "ok");
+      _log(`\n Import abgeschlossen: ${totalCreated} neu angelegt, ${totalMerged} ergaenzt (Merge), ${totalSkipped} uebersprungen.`, "ok");
       await api.loadAll();
       const logFilename = `bbzCRM_Import_Log_${new Date().toISOString().slice(0,10).replace(/-/g,"")}.txt`;
       _downloadLog(logFilename, totalCreated, totalSkipped, false);
