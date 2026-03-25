@@ -271,6 +271,23 @@
       return "bbz-pill";
     },
 
+    // Leadbbz als farbiges Pill
+    leadbbzBadgeHtml(value) {
+      if (!value) return '<span class="bbz-muted">—</span>';
+      return `<span class="bbz-pill bbz-pill-lead">${helpers.escapeHtml(value)}</span>`;
+    },
+
+    // Detailband-Klasse je nach Segment und VIP
+    detailBandClass(firm) {
+      if (!firm) return "bbz-detail-band-default";
+      if (firm.vip) return "bbz-detail-band bbz-detail-band-vip";
+      const v = String(firm.klassifizierung || "").toUpperCase();
+      if (v.includes("A")) return "bbz-detail-band bbz-detail-band-a";
+      if (v.includes("B")) return "bbz-detail-band bbz-detail-band-b";
+      if (v.includes("C")) return "bbz-detail-band bbz-detail-band-c";
+      return "bbz-detail-band bbz-detail-band-default";
+    },
+
     statusClass(status, deadline) {
       if (!helpers.isOpenTask(status)) return "bbz-success";
       if (helpers.isOverdue(deadline)) return "bbz-danger";
@@ -681,6 +698,11 @@
 
     kv(label, value) {
       return `<div class="bbz-kv"><div class="bbz-kv-label">${helpers.escapeHtml(label)}</div><div class="bbz-kv-value">${value || '<span class="bbz-muted">—</span>'}</div></div>`;
+    },
+
+    // Wrapper für KV-Gruppen — gibt eine section mit kompakten Rows zurück
+    kvSection(title, rows) {
+      return `<section class="bbz-section"><div class="bbz-section-header"><div class="bbz-section-title">${helpers.escapeHtml(title)}</div></div><div class="bbz-section-body">${rows.join("")}</div></section>`;
     }
   };
 
@@ -1552,61 +1574,62 @@
       const firm = dataModel.getFirmById(state.selection.firmId);
       if (!firm) return ui.emptyBlock("Die ausgewaehlte Firma wurde nicht gefunden.");
       const recentHistory = [...firm.history].slice(0, 20);
-
+      const bandClass = helpers.detailBandClass(firm);
       return `
         <div>
-          <div class="bbz-detail-header">
-            <div>
-              <button class="bbz-button bbz-button-secondary mb-3" data-action="back-to-firms">Zurueck zur Firmenliste</button>
-              <div class="bbz-detail-title">${helpers.escapeHtml(firm.title)}</div>
-              <div class="bbz-detail-subtitle">${helpers.escapeHtml(helpers.joinNonEmpty([firm.adresse, helpers.joinNonEmpty([firm.plz, firm.ort], " "), firm.land], " · ")) || "Keine erweiterten Stammdaten"}</div>
-              <div class="flex items-center gap-2 flex-wrap mt-3">
-                ${firm.klassifizierung ? `<span class="${helpers.firmBadgeClass(firm.klassifizierung)}">${helpers.escapeHtml(firm.klassifizierung)}</span>` : ""}
-                ${firm.vip ? `<span class="bbz-pill bbz-pill-vip">VIP</span>` : ""}
+          <div class="${bandClass}">
+            <div class="bbz-detail-header" style="margin-bottom:0;">
+              <div>
+                <button class="bbz-button bbz-button-secondary mb-3" style="background:rgba(255,255,255,0.7);" data-action="back-to-firms">← Firmenliste</button>
+                <div class="bbz-detail-title">${helpers.escapeHtml(firm.title)}</div>
+                <div class="bbz-detail-subtitle">${helpers.escapeHtml(helpers.joinNonEmpty([firm.adresse, helpers.joinNonEmpty([firm.plz, firm.ort], " "), firm.land], " · ")) || "Keine Adresse erfasst"}</div>
+                <div class="flex items-center gap-2 flex-wrap mt-3">
+                  ${firm.klassifizierung ? `<span class="${helpers.firmBadgeClass(firm.klassifizierung)}">${helpers.escapeHtml(firm.klassifizierung)}</span>` : ""}
+                  ${firm.vip ? `<span class="bbz-pill bbz-pill-vip">VIP</span>` : ""}
+                </div>
+              </div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <button class="bbz-button bbz-button-secondary" style="${firm.contactsCount > 0 ? "opacity:0.4;cursor:not-allowed;" : "color:var(--red);border-color:var(--red);"}" data-action="delete-firm" data-id="${firm.id}" data-name="${helpers.escapeHtml(firm.title)}" data-contacts="${firm.contactsCount}">Löschen</button>
+                <button class="bbz-button bbz-button-secondary" data-action="open-firm-form" data-id="${firm.id}">Bearbeiten</button>
+                <button class="bbz-button bbz-button-secondary" data-action="open-task-form" data-firm-id="${firm.id}">+ Task</button>
+                <button class="bbz-button bbz-button-secondary" data-action="open-history-form" data-firm-id="${firm.id}">+ Aktivität</button>
+                <button class="bbz-button bbz-button-primary" data-action="open-contact-form" data-firm-id="${firm.id}">+ Kontakt</button>
               </div>
             </div>
-            <div class="flex items-center gap-2 flex-wrap">
-              <button class="bbz-button bbz-button-secondary" style="${firm.contactsCount > 0 ? "opacity:0.4;cursor:not-allowed;" : "color:var(--red);border-color:var(--red);"}" data-action="delete-firm" data-id="${firm.id}" data-name="${helpers.escapeHtml(firm.title)}" data-contacts="${firm.contactsCount}">Löschen</button>
-              <button class="bbz-button bbz-button-secondary" data-action="open-firm-form" data-id="${firm.id}">Bearbeiten</button>
-              <button class="bbz-button bbz-button-secondary" data-action="open-task-form" data-firm-id="${firm.id}">+ Task</button>
-              <button class="bbz-button bbz-button-secondary" data-action="open-history-form" data-firm-id="${firm.id}">+ Aktivitaet</button>
-              <button class="bbz-button bbz-button-primary" data-action="open-contact-form" data-firm-id="${firm.id}">+ Kontakt</button>
-            </div>
           </div>
-          <div class="bbz-kpis">
+          <div class="bbz-kpis" style="margin-top:10px;">
             ${this.kpiBlock("Kontakte", firm.contactsCount)}
-            ${this.kpiBlock("Offene Tasks", firm.openTasksCount)}
-            ${this.kpiBlock("Naechste Deadline", helpers.formatDate(firm.nextDeadline) || "—")}
-            ${this.kpiBlock("History", firm.history.length)}
+            ${this.kpiBlock("Offene Tasks", firm.openTasksCount, firm.tasks.some(t => t.isOpen && t.isOverdue) ? "überfällig" : "")}
+            ${this.kpiBlock("Nächste Deadline", firm.nextDeadline ? helpers.relativeDate(firm.nextDeadline) : "—")}
+            ${this.kpiBlock("Aktivitäten", firm.history.length, firm.latestActivity ? helpers.relativeDate(firm.latestActivity) : "")}
           </div>
           <div class="bbz-grid bbz-grid-3">
             <section class="bbz-section">
-              <div class="bbz-section-header"><div class="bbz-section-title">Uebersicht</div></div>
-              <div class="bbz-section-body"><div class="bbz-meta-grid">
-                ${ui.kv("Firma", helpers.escapeHtml(firm.title))}
+              <div class="bbz-section-header"><div class="bbz-section-title">Stammdaten</div></div>
+              <div class="bbz-section-body">
                 ${ui.kv("Klassifizierung", firm.klassifizierung ? `<span class="${helpers.firmBadgeClass(firm.klassifizierung)}">${helpers.escapeHtml(firm.klassifizierung)}</span>` : '<span class="bbz-muted">—</span>')}
+                ${ui.kv("VIP", firm.vip ? '<span class="bbz-pill bbz-pill-vip">VIP</span>' : '<span class="bbz-muted">Nein</span>')}
                 ${ui.kv("Adresse", helpers.escapeHtml(firm.adresse) || '<span class="bbz-muted">—</span>')}
                 ${ui.kv("PLZ / Ort", helpers.escapeHtml(helpers.joinNonEmpty([firm.plz, firm.ort], " ")) || '<span class="bbz-muted">—</span>')}
                 ${ui.kv("Land", helpers.escapeHtml(firm.land) || '<span class="bbz-muted">—</span>')}
                 ${ui.kv("Hauptnummer", helpers.escapeHtml(firm.hauptnummer) || '<span class="bbz-muted">—</span>')}
-                ${ui.kv("VIP", firm.vip ? '<span class="bbz-pill bbz-pill-vip">Ja</span>' : '<span class="bbz-muted">Nein</span>')}
-              </div></div>
+              </div>
             </section>
             <section class="bbz-section" style="grid-column: span 2;">
-              <div class="bbz-section-header"><div><div class="bbz-section-title">Kontakte</div><div class="bbz-section-subtitle">Alle Ansprechpartner dieser Firma</div></div></div>
+              <div class="bbz-section-header"><div><div class="bbz-section-title">Kontakte</div><div class="bbz-section-subtitle">Ansprechpartner dieser Firma</div></div></div>
               <div class="bbz-section-body">
                 <div class="bbz-table-wrap">
                   <table class="bbz-table">
-                    <thead><tr><th>Name</th><th>Funktion</th><th>Rolle</th><th>E-Mail</th><th>Telefon</th><th>Archiviert</th></tr></thead>
+                    <thead><tr><th></th><th>Name</th><th>Funktion</th><th>Rolle</th><th>E-Mail</th><th>Telefon</th></tr></thead>
                     <tbody>
                       ${firm.contacts.length ? firm.contacts.map(c => `
                         <tr>
-                          <td><span class="bbz-td-name">${helpers.avatarHtml(c)}<a class="bbz-link" data-action="open-contact" data-id="${c.id}">${helpers.escapeHtml(c.fullName || c.nachname)}</a></span></td>
+                          <td style="width:36px;padding-right:0;">${helpers.avatarHtml(c)}</td>
+                          <td><a class="bbz-link" data-action="open-contact" data-id="${c.id}">${helpers.escapeHtml(c.fullName || c.nachname)}</a>${c.archiviert ? ' <span class="bbz-muted" style="font-size:11px;">(archiviert)</span>' : ""}</td>
                           <td>${helpers.escapeHtml(c.funktion) || '<span class="bbz-muted">—</span>'}</td>
                           <td>${helpers.escapeHtml(c.rolle) || '<span class="bbz-muted">—</span>'}</td>
                           <td>${c.email1 ? `<a class="bbz-link" href="mailto:${helpers.escapeHtml(c.email1)}">${helpers.escapeHtml(c.email1)}</a>` : '<span class="bbz-muted">—</span>'}</td>
                           <td>${helpers.escapeHtml(helpers.joinNonEmpty([c.direktwahl, c.mobile], " / ")) || '<span class="bbz-muted">—</span>'}</td>
-                          <td>${c.archiviert ? '<span class="bbz-danger">Ja</span>' : '<span class="bbz-muted">Nein</span>'}</td>
                         </tr>`).join("") : `<tr><td colspan="6">${ui.emptyBlock("Keine Kontakte vorhanden.")}</td></tr>`}
                     </tbody>
                   </table>
@@ -1616,38 +1639,38 @@
           </div>
           <div class="bbz-grid bbz-grid-2 mt-4">
             <section class="bbz-section">
-              <div class="bbz-section-header"><div><div class="bbz-section-title">Aktivitaeten</div><div class="bbz-section-subtitle">Aggregierte History ueber alle Kontakte</div></div>
-                <button class="bbz-button bbz-button-secondary" style="height:32px;font-size:13px;" data-action="open-history-form" data-firm-id="${firm.id}">+ Aktivitaet</button>
+              <div class="bbz-section-header"><div><div class="bbz-section-title">Aktivitäten</div><div class="bbz-section-subtitle">Aggregiert über alle Kontakte</div></div>
+                <button class="bbz-button bbz-button-secondary" style="height:32px;font-size:13px;" data-action="open-history-form" data-firm-id="${firm.id}">+ Aktivität</button>
               </div>
               <div class="bbz-section-body">
                 ${recentHistory.length ? `<div class="bbz-timeline">${recentHistory.map(h => `
                   <div class="bbz-timeline-item">
-                    <div class="bbz-timeline-date">${helpers.formatDateTime(h.datum) || "—"}<br><span class="bbz-muted">${helpers.escapeHtml(h.contactName || "")}</span></div>
+                    <div class="bbz-timeline-date">${helpers.relativeDate(h.datum) || "—"}<br><span class="bbz-muted" style="font-size:11px;">${helpers.formatDate(h.datum)}</span><br><span class="bbz-muted">${helpers.escapeHtml(h.contactName || "")}</span></div>
                     <div>
-                      <div class="bbz-timeline-title">${helpers.escapeHtml(h.typ || h.title || "Eintrag")} ${h.projektbezugBool ? '<span class="bbz-chip">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}</div>
+                      <div class="bbz-timeline-title">${helpers.escapeHtml(h.typ || h.title || "Eintrag")} ${h.projektbezugBool ? '<span class="bbz-chip" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}</div>
                       <div class="bbz-timeline-text">${helpers.escapeHtml(h.notizen || "—")}</div>
                       <div style="margin-top:6px;display:flex;gap:6px;">
-                        <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 10px;" data-action="edit-history" data-id="${h.id}">Bearbeiten</button>
-                        <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 10px;color:var(--red);border-color:var(--red);" data-action="delete-history" data-id="${h.id}" data-title="${helpers.escapeHtml(h.typ || h.title || 'Eintrag')}">Löschen</button>
+                        <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;" data-action="edit-history" data-id="${h.id}">Bearbeiten</button>
+                        <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;color:var(--red);border-color:var(--red);" data-action="delete-history" data-id="${h.id}" data-title="${helpers.escapeHtml(h.typ || h.title || 'Eintrag')}">Löschen</button>
                       </div>
                     </div>
-                  </div>`).join("")}</div>` : ui.emptyBlock("Keine History-Eintraege vorhanden.")}
+                  </div>`).join("")}</div>` : ui.emptyBlock("Keine Aktivitäten vorhanden.")}
               </div>
             </section>
             <section class="bbz-section">
-              <div class="bbz-section-header"><div><div class="bbz-section-title">Aufgaben</div><div class="bbz-section-subtitle">Alle Tasks der Firma</div></div>
+              <div class="bbz-section-header"><div><div class="bbz-section-title">Aufgaben</div></div>
                 <button class="bbz-button bbz-button-secondary" style="height:32px;font-size:13px;" data-action="open-task-form" data-firm-id="${firm.id}">+ Task</button>
               </div>
               <div class="bbz-section-body">
                 <div class="bbz-table-wrap">
                   <table class="bbz-table">
-                    <thead><tr><th>Titel</th><th>Deadline</th><th>Status</th><th>Kontaktperson</th><th>Aktionen</th></tr></thead>
+                    <thead><tr><th>Titel</th><th>Deadline</th><th>Status</th><th>Kontakt</th><th>Aktionen</th></tr></thead>
                     <tbody>
                       ${firm.tasks.length ? firm.tasks.map(t => `
                         <tr>
                           <td>${helpers.escapeHtml(t.title) || '<span class="bbz-muted">—</span>'}</td>
-                          <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
-                          <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.escapeHtml(t.status) || '<span class="bbz-muted">—</span>'}</td>
+                          <td class="${helpers.isOpenTask(t.status) && helpers.isOverdue(t.deadline) ? "bbz-danger" : ""}">${t.deadline ? helpers.relativeDate(t.deadline) : '<span class="bbz-muted">—</span>'}</td>
+                          <td>${helpers.statusChipHtml(t.status, t.deadline)}</td>
                           <td>${t.contactId ? `<a class="bbz-link" data-action="open-contact" data-id="${t.contactId}">${helpers.escapeHtml(t.contactName || "Kontakt")}</a>` : helpers.escapeHtml(t.contactName || "—")}</td>
                           <td style="white-space:nowrap;">
                             <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 8px;margin-right:3px;" data-action="edit-task" data-id="${t.id}">Bearbeiten</button>
@@ -1730,42 +1753,55 @@
       const contactHistory = state.enriched.history.filter(h => h.contactId === contact.id).sort((a, b) => helpers.compareDateDesc(a.datum, b.datum));
       const contactTasks = state.enriched.tasks.filter(t => t.contactId === contact.id).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
       const isPrivat = state.meta.privateFirmId !== null && contact.firmId === state.meta.privateFirmId;
+      // Avatar-Seed für grossen Avatar
+      const seed = [...(contact.vorname.charAt(0) + contact.nachname.charAt(0))].reduce((s, c) => s + c.charCodeAt(0), 0);
+      const avatarIdx = seed % 6;
+      const initials = (contact.vorname.charAt(0) + contact.nachname.charAt(0)).toUpperCase() || "?";
 
       return `
         <div>
-          <div class="bbz-detail-header">
-            <div>
-              <button class="bbz-button bbz-button-secondary mb-3" data-action="back-to-contacts">Zurueck zur Kontaktliste</button>
-              <div class="bbz-detail-title">${helpers.escapeHtml(contact.fullName || contact.nachname)}</div>
-              <div class="bbz-detail-subtitle">
-                ${isPrivat
-                  ? `<span class="bbz-pill" style="font-size:12px;">Privatperson</span>`
-                  : contact.firmId
-                    ? `<a class="bbz-link" data-action="open-firm" data-id="${contact.firmId}">${helpers.escapeHtml(contact.firmTitle || "Firma")}</a>`
-                    : "Keine Firma verknuepft"
-                }
-                ${contact.funktion ? ` · ${helpers.escapeHtml(contact.funktion)}` : ""}
-                ${contact.rolle ? ` · ${helpers.escapeHtml(contact.rolle)}` : ""}
+          <div class="bbz-detail-band bbz-detail-band-default" style="margin-bottom:10px;">
+            <button class="bbz-button bbz-button-secondary mb-3" style="background:rgba(255,255,255,0.7);" data-action="back-to-contacts">← Kontaktliste</button>
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+              <div style="display:flex;align-items:center;gap:14px;">
+                <div class="bbz-avatar-lg" data-idx="${avatarIdx}">${helpers.escapeHtml(initials)}</div>
+                <div>
+                  <div class="bbz-detail-title">${helpers.escapeHtml(contact.fullName || contact.nachname)}</div>
+                  <div class="bbz-detail-subtitle">
+                    ${isPrivat
+                      ? `<span class="bbz-pill" style="font-size:12px;">Privatperson</span>`
+                      : contact.firmId
+                        ? `<a class="bbz-link" data-action="open-firm" data-id="${contact.firmId}">${helpers.escapeHtml(contact.firmTitle || "Firma")}</a>`
+                        : "Keine Firma verknüpft"
+                    }
+                    ${contact.funktion ? ` · ${helpers.escapeHtml(contact.funktion)}` : ""}
+                    ${contact.rolle ? ` · ${helpers.escapeHtml(contact.rolle)}` : ""}
+                  </div>
+                  <div class="flex items-center gap-2 flex-wrap mt-2">
+                    ${contact.leadbbz0 ? helpers.leadbbzBadgeHtml(contact.leadbbz0) : ""}
+                    ${contact.archiviert ? '<span class="bbz-pill" style="background:#fff1f1;color:var(--red);border-color:#f1caca;">Archiviert</span>' : ""}
+                  </div>
+                </div>
               </div>
-            </div>
-            <div class="flex items-center gap-2 flex-wrap">
-              ${contact.email1 ? `<a class="bbz-button bbz-button-secondary" href="mailto:${helpers.escapeHtml(contact.email1)}">Mail senden</a>` : ""}
-              <button class="bbz-button bbz-button-secondary" style="color:var(--red);border-color:var(--red);" data-action="delete-contact" data-id="${contact.id}" data-name="${helpers.escapeHtml(contact.fullName || contact.nachname)}">Löschen</button>
-              <button class="bbz-button bbz-button-secondary" data-action="open-contact-form" data-item-id="${contact.id}">Bearbeiten</button>
-              <button class="bbz-button bbz-button-secondary" data-action="open-task-form" data-contact-id="${contact.id}">+ Task</button>
-              <button class="bbz-button bbz-button-primary" data-action="open-history-form" data-contact-id="${contact.id}">+ Aktivitaet</button>
+              <div class="flex items-center gap-2 flex-wrap">
+                ${contact.email1 ? `<a class="bbz-button bbz-button-secondary" href="mailto:${helpers.escapeHtml(contact.email1)}">✉ Mail</a>` : ""}
+                <button class="bbz-button bbz-button-secondary" style="color:var(--red);border-color:var(--red);" data-action="delete-contact" data-id="${contact.id}" data-name="${helpers.escapeHtml(contact.fullName || contact.nachname)}">Löschen</button>
+                <button class="bbz-button bbz-button-secondary" data-action="open-contact-form" data-item-id="${contact.id}">Bearbeiten</button>
+                <button class="bbz-button bbz-button-secondary" data-action="open-task-form" data-contact-id="${contact.id}">+ Task</button>
+                <button class="bbz-button bbz-button-primary" data-action="open-history-form" data-contact-id="${contact.id}">+ Aktivität</button>
+              </div>
             </div>
           </div>
           <div class="bbz-kpis">
             ${this.kpiBlock("Tasks", contactTasks.length)}
-            ${this.kpiBlock("Offene Tasks", contactTasks.filter(t => t.isOpen).length)}
-            ${this.kpiBlock("History", contactHistory.length)}
-            ${this.kpiBlock("Letzte Aktivitaet", helpers.formatDate(contactHistory[0]?.datum) || "—")}
+            ${this.kpiBlock("Offen", contactTasks.filter(t => t.isOpen).length, contactTasks.some(t => t.isOpen && t.isOverdue) ? "überfällig" : "")}
+            ${this.kpiBlock("Aktivitäten", contactHistory.length)}
+            ${this.kpiBlock("Letzter Kontakt", contactHistory[0]?.datum ? helpers.relativeDate(contactHistory[0].datum) : "—")}
           </div>
           <div class="bbz-grid bbz-grid-3">
             <section class="bbz-section">
               <div class="bbz-section-header"><div class="bbz-section-title">Stammdaten</div></div>
-              <div class="bbz-section-body"><div class="bbz-meta-grid">
+              <div class="bbz-section-body">
                 ${ui.kv("Anrede", helpers.escapeHtml(contact.anrede) || '<span class="bbz-muted">—</span>')}
                 ${ui.kv("Vorname", helpers.escapeHtml(contact.vorname) || '<span class="bbz-muted">—</span>')}
                 ${ui.kv("Nachname", helpers.escapeHtml(contact.nachname) || '<span class="bbz-muted">—</span>')}
@@ -1780,72 +1816,52 @@
                 ${ui.kv("Direktwahl", helpers.escapeHtml(contact.direktwahl) || '<span class="bbz-muted">—</span>')}
                 ${ui.kv("Mobile", helpers.escapeHtml(contact.mobile) || '<span class="bbz-muted">—</span>')}
                 ${ui.kv("Geburtstag", helpers.formatDate(contact.geburtstag) || '<span class="bbz-muted">—</span>')}
-                ${ui.kv("Archiviert", contact.archiviert ? '<span class="bbz-danger">Ja</span>' : '<span class="bbz-muted">Nein</span>')}
-              </div></div>
+              </div>
             </section>
             <section class="bbz-section">
               <div class="bbz-section-header"><div class="bbz-section-title">CRM-Kontext</div></div>
-              <div class="bbz-section-body"><div class="bbz-meta-grid">
-                ${ui.kv("Leadbbz0", helpers.escapeHtml(contact.leadbbz0) || '<span class="bbz-muted">—</span>')}
+              <div class="bbz-section-body">
+                ${ui.kv("Lead BBZ", helpers.leadbbzBadgeHtml(contact.leadbbz0))}
                 ${ui.kv("SGF", helpers.multiChoiceHtml(contact.sgf))}
                 ${ui.kv("Event", helpers.multiChoiceHtml(contact.event))}
                 ${ui.kv("Eventhistory", helpers.multiChoiceHtml(contact.eventhistory))}
                 ${isPrivat ? "" : ui.kv("Kommentar", helpers.escapeHtml(contact.kommentar) || '<span class="bbz-muted">—</span>')}
-              </div></div>
+              </div>
             </section>
             <section class="bbz-section">
-              <div class="bbz-section-header"><div class="bbz-section-title">Uebersicht</div></div>
-              <div class="bbz-section-body"><div class="bbz-meta-grid">
-                ${ui.kv("Tasks", String(contactTasks.length))}
-                ${ui.kv("Offene Tasks", String(contactTasks.filter(t => t.isOpen).length))}
-                ${ui.kv("History", String(contactHistory.length))}
-                ${ui.kv("Letzte Aktivitaet", helpers.formatDateTime(contactHistory[0]?.datum) || '<span class="bbz-muted">—</span>')}
-              </div></div>
+              <div class="bbz-section-header"><div class="bbz-section-title">Aufgaben</div>
+                <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;" data-action="open-task-form" data-contact-id="${contact.id}">+ Task</button>
+              </div>
+              <div class="bbz-section-body">
+                ${contactTasks.length ? contactTasks.map(t => `
+                  <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line-2);">
+                    <div>
+                      <div style="font-size:13px;font-weight:600;">${helpers.escapeHtml(t.title)}</div>
+                      <div style="font-size:12px;color:var(--muted);margin-top:2px;">${t.deadline ? helpers.relativeDate(t.deadline) : "Keine Deadline"}</div>
+                    </div>
+                    ${helpers.statusChipHtml(t.status, t.deadline)}
+                  </div>`).join("") : ui.emptyBlock("Keine Tasks vorhanden.")}
+              </div>
             </section>
           </div>
-          <div class="bbz-grid bbz-grid-2 mt-4">
+          <div class="bbz-grid bbz-grid-2 mt-4" style="margin-top:12px;">
             <section class="bbz-section">
-              <div class="bbz-section-header"><div><div class="bbz-section-title">Historie</div><div class="bbz-section-subtitle">Timeline aus CRMHistory</div></div>
-                <button class="bbz-button bbz-button-primary" style="height:32px;font-size:13px;" data-action="open-history-form" data-contact-id="${contact.id}">+ Aktivitaet</button>
+              <div class="bbz-section-header"><div><div class="bbz-section-title">Aktivitäten</div></div>
+                <button class="bbz-button bbz-button-primary" style="height:32px;font-size:13px;" data-action="open-history-form" data-contact-id="${contact.id}">+ Aktivität</button>
               </div>
               <div class="bbz-section-body">
                 ${contactHistory.length ? `<div class="bbz-timeline">${contactHistory.map(h => `
                   <div class="bbz-timeline-item">
-                    <div class="bbz-timeline-date">${helpers.formatDateTime(h.datum) || "—"}</div>
+                    <div class="bbz-timeline-date">${helpers.relativeDate(h.datum) || "—"}<br><span class="bbz-muted" style="font-size:11px;">${helpers.formatDate(h.datum)}</span></div>
                     <div>
-                      <div class="bbz-timeline-title">${helpers.escapeHtml(h.typ || h.title || "Eintrag")} ${h.projektbezugBool ? '<span class="bbz-chip">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}</div>
+                      <div class="bbz-timeline-title">${helpers.escapeHtml(h.typ || h.title || "Eintrag")} ${h.projektbezugBool ? '<span class="bbz-chip" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}</div>
                       <div class="bbz-timeline-text">${helpers.escapeHtml(h.notizen || "—")}</div>
                       <div style="margin-top:6px;display:flex;gap:6px;">
-                        <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 10px;" data-action="edit-history" data-id="${h.id}">Bearbeiten</button>
-                        <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 10px;color:var(--red);border-color:var(--red);" data-action="delete-history" data-id="${h.id}" data-title="${helpers.escapeHtml(h.typ || h.title || 'Eintrag')}">Löschen</button>
+                        <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;" data-action="edit-history" data-id="${h.id}">Bearbeiten</button>
+                        <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;color:var(--red);border-color:var(--red);" data-action="delete-history" data-id="${h.id}" data-title="${helpers.escapeHtml(h.typ || h.title || 'Eintrag')}">Löschen</button>
                       </div>
                     </div>
-                  </div>`).join("")}</div>` : ui.emptyBlock("Keine Historie vorhanden.")}
-              </div>
-            </section>
-            <section class="bbz-section">
-              <div class="bbz-section-header"><div><div class="bbz-section-title">Tasks</div><div class="bbz-section-subtitle">Aufgaben dieser Person</div></div>
-                <button class="bbz-button bbz-button-primary" style="height:32px;font-size:13px;" data-action="open-task-form" data-contact-id="${contact.id}">+ Task</button>
-              </div>
-              <div class="bbz-section-body">
-                <div class="bbz-table-wrap">
-                  <table class="bbz-table">
-                    <thead><tr><th>Titel</th><th>Deadline</th><th>Status</th><th>Firma</th><th>Aktionen</th></tr></thead>
-                    <tbody>
-                      ${contactTasks.length ? contactTasks.map(t => `
-                        <tr>
-                          <td>${helpers.escapeHtml(t.title) || '<span class="bbz-muted">—</span>'}</td>
-                          <td class="${helpers.isOverdue(t.deadline) && helpers.isOpenTask(t.status) ? "bbz-danger" : ""}">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
-                          <td>${helpers.statusChipHtml(t.status, t.deadline)}</td>
-                          <td>${t.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${t.firmId}">${helpers.escapeHtml(t.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
-                          <td style="white-space:nowrap;">
-                            <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 8px;margin-right:3px;" data-action="edit-task" data-id="${t.id}">Bearbeiten</button>
-                            <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 8px;color:var(--red);border-color:var(--red);" data-action="delete-task" data-id="${t.id}" data-title="${helpers.escapeHtml(t.title)}">Löschen</button>
-                          </td>
-                        </tr>`).join("") : `<tr><td colspan="5">${ui.emptyBlock("Keine Tasks vorhanden.")}</td></tr>`}
-                    </tbody>
-                  </table>
-                </div>
+                  </div>`).join("")}</div>` : ui.emptyBlock("Noch keine Aktivitäten erfasst.")}
               </div>
             </section>
           </div>
