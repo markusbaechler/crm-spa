@@ -307,6 +307,41 @@
       return `<span class="bbz-status-chip bbz-status-open">${helpers.escapeHtml(status || "Offen")}</span>`;
     },
 
+    // Relatives Datum: "heute", "gestern", "vor 3 Tagen", "vor 2 Wochen"
+    // Fällt nach 60 Tagen auf formatDate zurück
+    relativeDate(value) {
+      const d = helpers.toDate(value);
+      if (!d) return "";
+      const today = helpers.todayStart();
+      const diffMs = today - d;
+      const diffDays = Math.floor(diffMs / 86400000);
+      if (diffDays < 0) {
+        const futureDays = Math.abs(diffDays);
+        if (futureDays === 1) return "morgen";
+        if (futureDays < 7) return `in ${futureDays} Tagen`;
+        if (futureDays < 14) return "nächste Woche";
+        return helpers.formatDate(value);
+      }
+      if (diffDays === 0) return "heute";
+      if (diffDays === 1) return "gestern";
+      if (diffDays < 7) return `vor ${diffDays} Tagen`;
+      if (diffDays < 14) return "vor 1 Woche";
+      if (diffDays < 30) return `vor ${Math.floor(diffDays / 7)} Wochen`;
+      if (diffDays < 60) return `vor ${Math.floor(diffDays / 30)} Monat${Math.floor(diffDays / 30) > 1 ? "en" : ""}`;
+      return helpers.formatDate(value);
+    },
+
+    // Aktivitäts-Signal für Firmenliste:
+    // gibt "" | "cold" (>90 Tage kein Kontakt) | "overdue" (offene überfällige Tasks) zurück
+    firmSignal(firm) {
+      if (firm.openTasksCount > 0 && firm.tasks.some(t => t.isOpen && t.isOverdue)) return "overdue";
+      const last = helpers.toDate(firm.latestActivity);
+      if (!last) return "cold";
+      const diffDays = Math.floor((helpers.todayStart() - last) / 86400000);
+      if (diffDays > 90) return "cold";
+      return "";
+    },
+
     // Debounce: verhindert excessive DOM-Rebuilds beim Tippen in Suchfeldern
     debounce(fn, ms = 150) {
       let timer = null;
@@ -398,6 +433,9 @@
       document.addEventListener("click", (event) => {
         const openFirm = event.target.closest("[data-action='open-firm']");
         if (openFirm) { controller.openFirm(openFirm.dataset.id); return; }
+
+        const navPlanning = event.target.closest("[data-action='navigate-planning']");
+        if (navPlanning) { event.preventDefault(); controller.navigate("planning"); return; }
 
         const openContact = event.target.closest("[data-action='open-contact']");
         if (openContact) { controller.openContact(openContact.dataset.id); return; }
@@ -1371,24 +1409,60 @@
         return 0;
       });
 
+      // KPI-Daten
       const aCount = state.enriched.firms.filter(f => String(f.klassifizierung).toUpperCase().includes("A")).length;
       const bCount = state.enriched.firms.filter(f => String(f.klassifizierung).toUpperCase().includes("B")).length;
       const cCount = state.enriched.firms.filter(f => String(f.klassifizierung).toUpperCase().includes("C")).length;
-      const overdueTasks = state.enriched.tasks.filter(t => t.isOpen && t.isOverdue).length;
-      const urgentFirms = [...state.enriched.firms].filter(f => f.openTasksCount > 0).sort((a, b) => helpers.compareDateAsc(a.nextDeadline, b.nextDeadline)).slice(0, 6);
-      const latestFirms = [...state.enriched.firms].filter(f => f.latestActivity).sort((a, b) => helpers.compareDateDesc(a.latestActivity, b.latestActivity)).slice(0, 6);
+      const allOpenTasks   = state.enriched.tasks.filter(t => t.isOpen);
+      const overdueTasks   = allOpenTasks.filter(t => t.isOverdue);
+      const urgentFirms    = [...state.enriched.firms].filter(f => f.openTasksCount > 0).sort((a, b) => helpers.compareDateAsc(a.nextDeadline, b.nextDeadline)).slice(0, 6);
+      const latestFirms    = [...state.enriched.firms].filter(f => f.latestActivity).sort((a, b) => helpers.compareDateDesc(a.latestActivity, b.latestActivity)).slice(0, 6);
+
+      // Fokus-Bar: überfällige + diese Woche fällig
+      const today   = helpers.todayStart();
+      const in7     = new Date(today); in7.setDate(in7.getDate() + 7);
+      const thisWeek = allOpenTasks.filter(t => { const d = helpers.toDate(t.deadline); return d && d >= today && d <= in7; });
+      const focusTasks = [...overdueTasks, ...thisWeek.filter(t => !t.isOverdue)]
+        .sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline))
+        .slice(0, 5);
+
+      // Fokus-Bar HTML
+      const focusBarHtml = (() => {
+        if (focusTasks.length === 0) {
+          return `<div class="bbz-focus-bar bbz-focus-clear">
+            <span class="bbz-focus-icon">✓</span>
+            <span class="bbz-focus-clear-text">Alles im Griff — keine überfälligen oder dringenden Tasks diese Woche</span>
+          </div>`;
+        }
+        const items = focusTasks.map(t => {
+          const isOd = t.isOverdue;
+          return `<a class="bbz-focus-item ${isOd ? "bbz-focus-overdue" : "bbz-focus-soon"}" data-action="navigate-planning">
+            <span class="bbz-focus-firm">${helpers.escapeHtml(t.firmTitle || t.contactName || "—")}</span>
+            <span class="bbz-focus-task">${helpers.escapeHtml(t.title)}</span>
+            <span class="bbz-focus-date">${isOd ? "überfällig" : helpers.relativeDate(t.deadline)}</span>
+          </a>`;
+        }).join("");
+        const moreCount = allOpenTasks.filter(t => t.isOverdue).length + thisWeek.length - focusTasks.length;
+        return `<div class="bbz-focus-bar">
+          <span class="bbz-focus-label">Fokus heute</span>
+          <div class="bbz-focus-items">${items}</div>
+          ${moreCount > 0 ? `<a class="bbz-focus-more" data-action="navigate-planning">+${moreCount} weitere →</a>` : ""}
+        </div>`;
+      })();
 
       return `
         <div>
+          ${focusBarHtml}
           <div class="bbz-kpis">
-            ${this.kpiBlock("Firmen", state.enriched.firms.length, "gesamt")}
-            ${this.kpiBlock("A / B / C", `${aCount} / ${bCount} / ${cCount}`, "Segmente")}
-            ${this.kpiBlock("Kontakte", state.enriched.contacts.length, "Ansprechpartner")}
-            ${this.kpiBlock("Ueberfaellige Tasks", overdueTasks, "sofort pruefen")}
+            ${this.kpiBlock("Firmen", state.enriched.firms.length, `${aCount}× A · ${bCount}× B · ${cCount}× C`)}
+            ${this.kpiBlock("Kontakte", state.enriched.contacts.filter(c => !c.archiviert).length, `${state.enriched.contacts.filter(c => c.archiviert).length} archiviert`)}
+            ${this.kpiBlock("Offene Tasks", allOpenTasks.length, overdueTasks.length > 0 ? `${overdueTasks.length} überfällig` : "keine überfällig")}
+            ${this.kpiBlock("Diese Woche", thisWeek.length, thisWeek.length === 0 ? "keine Deadlines" : `bis ${helpers.formatDate(in7)}`)}
           </div>
           <div class="bbz-grid bbz-grid-70-30">
             <section class="bbz-section">
-              <div class="bbz-section-header"><div><div class="bbz-section-title">Firmen-Cockpit</div><div class="bbz-section-subtitle">Hauptarbeitsliste mit Fokus auf Segment, Tasks und Fristen</div></div>
+              <div class="bbz-section-header">
+                <div><div class="bbz-section-title">Firmen-Cockpit</div><div class="bbz-section-subtitle">Segment, Tasks und Fristen auf einen Blick</div></div>
                 <button class="bbz-button bbz-button-primary" data-action="open-firm-form">+ Firma</button>
               </div>
               <div class="bbz-section-body">
@@ -1413,27 +1487,38 @@
                           const icon = active ? (filters.sortDir === "asc" ? " ↑" : " ↓") : "";
                           return `<th style="cursor:pointer;user-select:none;${active?"color:var(--blue);":""}" data-action="set-sort" data-col="${col}" data-scope="firms">${label}${icon}</th>`;
                         };
-                        return firmSortTh("Firma","title")
+                        return "<th></th>"
+                          + firmSortTh("Firma","title")
                           + "<th>Ort</th>"
                           + firmSortTh("Klassifizierung","klassifizierung")
                           + firmSortTh("VIP","vip")
                           + "<th>Kontakte</th>"
-                          + firmSortTh("Offene Tasks","openTasksCount")
-                          + "<th>Naechste Deadline</th>"
-                          + firmSortTh("Letzte Aktivitaet","latestActivity");
+                          + firmSortTh("Tasks","openTasksCount")
+                          + "<th>Nächste Deadline</th>"
+                          + firmSortTh("Letzte Aktivität","latestActivity");
                       })()}
                     </tr></thead>
                     <tbody>
-                      ${rows.length ? rows.map(firm => `
-                        <tr>
+                      ${rows.length ? rows.map(firm => {
+                        const signal = helpers.firmSignal(firm);
+                        const signalDot = signal === "overdue"
+                          ? `<span class="bbz-signal bbz-signal-red" title="Überfällige Tasks"></span>`
+                          : signal === "cold"
+                          ? `<span class="bbz-signal bbz-signal-amber" title="Kein Kontakt seit über 90 Tagen"></span>`
+                          : `<span class="bbz-signal bbz-signal-none"></span>`;
+                        const rowClass = signal === "overdue" ? "bbz-row-alert" : signal === "cold" ? "bbz-row-cold" : "";
+                        return `
+                        <tr class="${rowClass}">
+                          <td style="width:28px;padding-right:4px;">${signalDot}</td>
                           <td><a class="bbz-link" data-action="open-firm" data-id="${firm.id}">${helpers.escapeHtml(firm.title)}</a><div class="bbz-subtext">${helpers.escapeHtml(firm.hauptnummer || "—")}</div></td>
                           <td>${helpers.escapeHtml(helpers.joinNonEmpty([firm.plz, firm.ort], " ")) || '<span class="bbz-muted">—</span>'}</td>
                           <td>${firm.klassifizierung ? `<span class="${helpers.firmBadgeClass(firm.klassifizierung)}">${helpers.escapeHtml(firm.klassifizierung)}</span>` : '<span class="bbz-muted">—</span>'}</td>
                           <td>${firm.vip ? '<span class="bbz-pill bbz-pill-vip">VIP</span>' : '<span class="bbz-muted">—</span>'}</td>
                           <td>${firm.contactsCount}</td>
-                          <td>${firm.openTasksCount}</td>
-                          <td class="${firm.nextDeadline && helpers.isOverdue(firm.nextDeadline) ? "bbz-danger" : ""}">${helpers.formatDate(firm.nextDeadline) || '<span class="bbz-muted">—</span>'}</td>
-                        </tr>`).join("") : `<tr><td colspan="7">${ui.emptyBlock("Keine Firmen fuer die aktuelle Filterung gefunden.")}</td></tr>`}
+                          <td>${firm.openTasksCount > 0 ? `<span class="${overdueTasks.some(t => t.firmId === firm.id) ? "bbz-danger" : ""}">${firm.openTasksCount}</span>` : '<span class="bbz-muted">—</span>'}</td>
+                          <td class="${firm.nextDeadline && helpers.isOverdue(firm.nextDeadline) ? "bbz-danger" : ""}">${firm.nextDeadline ? helpers.relativeDate(firm.nextDeadline) : '<span class="bbz-muted">—</span>'}</td>
+                          <td>${firm.latestActivity ? `<span title="${helpers.formatDate(firm.latestActivity)}">${helpers.relativeDate(firm.latestActivity)}</span>` : '<span class="bbz-muted">—</span>'}</td>
+                        </tr>`; }).join("") : `<tr><td colspan="9">${ui.emptyBlock("Keine Firmen für die aktuelle Filterung gefunden.")}</td></tr>`}
                     </tbody>
                   </table>
                 </div>
@@ -1441,12 +1526,21 @@
             </section>
             <div class="bbz-cockpit-stack">
               <section class="bbz-section">
-                <div class="bbz-section-header"><div><div class="bbz-section-title">Dringend</div><div class="bbz-section-subtitle">Firmen mit offenen Tasks</div></div></div>
-                <div class="bbz-section-body">${urgentFirms.length ? `<div class="bbz-mini-list">${urgentFirms.map(f => this.miniItem(`<a class="bbz-link" data-action="open-firm" data-id="${f.id}">${helpers.escapeHtml(f.title)}</a>`, `${f.openTasksCount} offene Tasks · naechste Deadline ${helpers.formatDate(f.nextDeadline) || "—"}`)).join("")}</div>` : ui.emptyBlock("Keine dringenden Firmen.")}</div>
+                <div class="bbz-section-header">
+                  <div><div class="bbz-section-title">Dringend</div><div class="bbz-section-subtitle">Firmen mit offenen Tasks</div></div>
+                  ${urgentFirms.length > 0 ? `<a class="bbz-link" style="font-size:12px;" data-action="navigate-planning">Alle →</a>` : ""}
+                </div>
+                <div class="bbz-section-body">${urgentFirms.length ? `<div class="bbz-mini-list">${urgentFirms.map(f => {
+                  const hasOverdue = f.tasks.some(t => t.isOpen && t.isOverdue);
+                  return this.miniItem(
+                    `<a class="bbz-link" data-action="open-firm" data-id="${f.id}">${helpers.escapeHtml(f.title)}</a>`,
+                    `${f.openTasksCount} Task${f.openTasksCount !== 1 ? "s" : ""} · ${hasOverdue ? '<span style="color:var(--red);font-weight:600;">überfällig</span>' : "nächste: " + helpers.relativeDate(f.nextDeadline)}`
+                  );
+                }).join("")}</div>` : ui.emptyBlock("Keine dringenden Firmen.")}</div>
               </section>
               <section class="bbz-section">
-                <div class="bbz-section-header"><div><div class="bbz-section-title">Zuletzt aktiv</div><div class="bbz-section-subtitle">Firmen mit juengster History</div></div></div>
-                <div class="bbz-section-body">${latestFirms.length ? `<div class="bbz-mini-list">${latestFirms.map(f => this.miniItem(`<a class="bbz-link" data-action="open-firm" data-id="${f.id}">${helpers.escapeHtml(f.title)}</a>`, `Letzte Aktivitaet ${helpers.formatDateTime(f.latestActivity) || "—"}`)).join("")}</div>` : ui.emptyBlock("Noch keine Aktivitaeten vorhanden.")}</div>
+                <div class="bbz-section-header"><div><div class="bbz-section-title">Zuletzt aktiv</div><div class="bbz-section-subtitle">Jüngste Aktivitäten</div></div></div>
+                <div class="bbz-section-body">${latestFirms.length ? `<div class="bbz-mini-list">${latestFirms.map(f => this.miniItem(`<a class="bbz-link" data-action="open-firm" data-id="${f.id}">${helpers.escapeHtml(f.title)}</a>`, `${helpers.relativeDate(f.latestActivity)}`)).join("")}</div>` : ui.emptyBlock("Noch keine Aktivitäten vorhanden.")}</div>
               </section>
             </div>
           </div>
@@ -2514,7 +2608,14 @@
         ui.setLoading(true);
         ui.setMessage("");
         await api.patchItem(SCHEMA.tasks.listTitle, taskId, { Status: newStatus });
-        ui.setMessage(`Task-Status auf "${newStatus}" gesetzt.`, "success");
+        const isDone = !helpers.isOpenTask(newStatus);
+        if (isDone) {
+          ui.setMessage(`✓ Task als „${newStatus}" markiert.`, "success");
+          // Auto-dismiss nach 2.5s
+          setTimeout(() => { ui.setMessage(""); }, 2500);
+        } else {
+          ui.setMessage(`Status auf „${newStatus}" gesetzt.`, "success");
+        }
         await api.loadAll();
       } catch (error) {
         console.error("handleTaskStatusChange:", error);
