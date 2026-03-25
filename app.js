@@ -283,6 +283,30 @@
       return list.map(v => `<span class="bbz-chip">${helpers.escapeHtml(v)}</span>`).join("");
     },
 
+    // Avatar-Initialen: gibt fertiges HTML-Element zurück
+    // Farbe wird deterministisch aus dem Namen gehasht (0–5)
+    avatarHtml(contact) {
+      const first = String(contact.vorname || "").charAt(0).toUpperCase();
+      const last  = String(contact.nachname || "").charAt(0).toUpperCase();
+      const initials = (first + last) || "?";
+      // Einfacher Hash aus Zeichencodes
+      const seed = [...initials].reduce((s, c) => s + c.charCodeAt(0), 0);
+      const idx  = seed % 6;
+      return `<span class="bbz-avatar" data-idx="${idx}">${helpers.escapeHtml(initials)}</span>`;
+    },
+
+    // Status-Chip: gibt ein farbiges Pill-HTML zurück
+    // status: Taskstatus-String, deadline: ISO-Datum
+    statusChipHtml(status, deadline) {
+      if (!helpers.isOpenTask(status)) {
+        return `<span class="bbz-status-chip bbz-status-done">${helpers.escapeHtml(status || "Erledigt")}</span>`;
+      }
+      if (helpers.isOverdue(deadline)) {
+        return `<span class="bbz-status-chip bbz-status-overdue">${helpers.escapeHtml(status || "Überfällig")}</span>`;
+      }
+      return `<span class="bbz-status-chip bbz-status-open">${helpers.escapeHtml(status || "Offen")}</span>`;
+    },
+
     // Debounce: verhindert excessive DOM-Rebuilds beim Tippen in Suchfeldern
     debounce(fn, ms = 150) {
       let timer = null;
@@ -1483,7 +1507,7 @@
                     <tbody>
                       ${firm.contacts.length ? firm.contacts.map(c => `
                         <tr>
-                          <td><a class="bbz-link" data-action="open-contact" data-id="${c.id}">${helpers.escapeHtml(c.fullName || c.nachname)}</a></td>
+                          <td><span class="bbz-td-name">${helpers.avatarHtml(c)}<a class="bbz-link" data-action="open-contact" data-id="${c.id}">${helpers.escapeHtml(c.fullName || c.nachname)}</a></span></td>
                           <td>${helpers.escapeHtml(c.funktion) || '<span class="bbz-muted">—</span>'}</td>
                           <td>${helpers.escapeHtml(c.rolle) || '<span class="bbz-muted">—</span>'}</td>
                           <td>${c.email1 ? `<a class="bbz-link" href="mailto:${helpers.escapeHtml(c.email1)}">${helpers.escapeHtml(c.email1)}</a>` : '<span class="bbz-muted">—</span>'}</td>
@@ -1572,6 +1596,7 @@
           <div class="bbz-section-header">
             <div><div class="bbz-section-title">Kontakte</div><div class="bbz-section-subtitle">Operative Ansprechpartner ueber alle Firmen</div></div>
             <div class="flex items-center gap-2">
+              <button class="bbz-dense-toggle" onclick="window.bbzToggleDense && window.bbzToggleDense()" title="Kompakte Ansicht">⇕ Kompakt</button>
               <button class="bbz-button bbz-button-secondary" data-action="open-history-form">+ Aktivitaet</button>
               <button class="bbz-button bbz-button-primary" data-action="open-contact-form">+ Kontakt</button>
             </div>
@@ -1588,7 +1613,7 @@
                 <tbody>
                   ${rows.length ? rows.map(c => `
                     <tr>
-                      <td><a class="bbz-link" data-action="open-contact" data-id="${c.id}">${helpers.escapeHtml(c.fullName || c.nachname)}</a></td>
+                      <td><span class="bbz-td-name">${helpers.avatarHtml(c)}<a class="bbz-link" data-action="open-contact" data-id="${c.id}">${helpers.escapeHtml(c.fullName || c.nachname)}</a></span></td>
                       <td>${c.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${c.firmId}">${helpers.escapeHtml(c.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
                       <td>${helpers.escapeHtml(c.funktion) || '<span class="bbz-muted">—</span>'}</td>
                       <td>${helpers.escapeHtml(c.rolle) || '<span class="bbz-muted">—</span>'}</td>
@@ -1716,8 +1741,8 @@
                       ${contactTasks.length ? contactTasks.map(t => `
                         <tr>
                           <td>${helpers.escapeHtml(t.title) || '<span class="bbz-muted">—</span>'}</td>
-                          <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
-                          <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.escapeHtml(t.status) || '<span class="bbz-muted">—</span>'}</td>
+                          <td class="${helpers.isOverdue(t.deadline) && helpers.isOpenTask(t.status) ? "bbz-danger" : ""}">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
+                          <td>${helpers.statusChipHtml(t.status, t.deadline)}</td>
                           <td>${t.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${t.firmId}">${helpers.escapeHtml(t.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
                           <td style="white-space:nowrap;">
                             <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 8px;margin-right:3px;" data-action="edit-task" data-id="${t.id}">Bearbeiten</button>
@@ -1800,19 +1825,19 @@
 
       const renderTaskRow = (t) => {
         const statusCell = statusChoices.length
-          ? `<select class="bbz-select" style="height:32px;font-size:13px;" data-action="task-status-change" data-task-id="${t.id}">${statusChoices.map(s => `<option value="${helpers.escapeHtml(s)}" ${t.status === s ? "selected" : ""}>${helpers.escapeHtml(s)}</option>`).join("")}</select>`
-          : `<span class="${helpers.statusClass(t.status, t.deadline)}">${helpers.escapeHtml(t.status) || "—"}</span>`;
+          ? `<select class="bbz-select" style="height:30px;font-size:12px;" data-action="task-status-change" data-task-id="${t.id}">${statusChoices.map(s => `<option value="${helpers.escapeHtml(s)}" ${t.status === s ? "selected" : ""}>${helpers.escapeHtml(s)}</option>`).join("")}</select>`
+          : helpers.statusChipHtml(t.status, t.deadline);
         return `
           <tr>
             <td>${t.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${t.firmId}">${helpers.escapeHtml(t.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
             <td>${helpers.escapeHtml(t.title) || '<span class="bbz-muted">—</span>'}</td>
-            <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
+            <td class="${helpers.isOpenTask(t.status) && helpers.isOverdue(t.deadline) ? "bbz-danger" : ""}">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
             <td>${statusCell}</td>
             <td>${t.contactId ? `<a class="bbz-link" data-action="open-contact" data-id="${t.contactId}">${helpers.escapeHtml(t.contactName || "Kontakt")}</a>` : helpers.escapeHtml(t.contactName || "—")}</td>
             <td>${helpers.escapeHtml(t.leadbbz) || '<span class="bbz-muted">—</span>'}</td>
             <td style="white-space:nowrap;">
-              <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 9px;margin-right:4px;" data-action="edit-task" data-id="${t.id}">Bearbeiten</button>
-              <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 9px;color:var(--red);border-color:var(--red);" data-action="delete-task" data-id="${t.id}" data-title="${helpers.escapeHtml(t.title)}">Löschen</button>
+              <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;margin-right:4px;" data-action="edit-task" data-id="${t.id}">Bearbeiten</button>
+              <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;color:var(--red);border-color:var(--red);" data-action="delete-task" data-id="${t.id}" data-title="${helpers.escapeHtml(t.title)}">Löschen</button>
             </td>
           </tr>`;
       };
