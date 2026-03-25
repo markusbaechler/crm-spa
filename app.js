@@ -429,6 +429,13 @@
           return;
         }
 
+        // History-Eintrag löschen
+        const deleteHistory = event.target.closest("[data-action='delete-history']");
+        if (deleteHistory) {
+          controller.handleDeleteHistory(deleteHistory.dataset.id, deleteHistory.dataset.title);
+          return;
+        }
+
         // Task-Formular öffnen
         const openTaskForm = event.target.closest("[data-action='open-task-form']");
         if (openTaskForm) {
@@ -484,6 +491,16 @@
         // der vom submit-Listener unten abgefangen wird.
         // Ein zusätzlicher dispatchEvent hier würde double-submit verursachen.
       });
+
+      // isPrivat-Label: dynamisch aktualisieren wenn Firma im Kontaktformular wechselt
+      document.addEventListener("change", (event) => {
+        const firmSelect = event.target.closest("[data-modal-form='contact'] select[name='firmaLookupId']");
+        if (firmSelect && state.meta.privateFirmId !== null) {
+          const isPrivat = String(firmSelect.value) === String(state.meta.privateFirmId);
+          const label = firmSelect.closest(".bbz-modal")?.querySelector("label[data-kommentar-label]");
+          if (label) label.textContent = isPrivat ? "Adresse / Notizen (Privatperson — Adresse hier erfassen)" : "Kommentar";
+        }
+      }, true); // capture: true — vor dem bbz change-listener feuern
 
       // FIX 2c: Zentraler Form-Submit-Handler — Guard gegen Double-Submit
       document.addEventListener("submit", (event) => {
@@ -1114,7 +1131,7 @@
                   </div>
 
                   <div class="bbz-field bbz-span-2">
-                    <label>${isPrivat ? 'Adresse / Notizen <span class="bbz-field-hint">(Privatperson — Adresse hier erfassen)</span>' : 'Kommentar'}</label>
+                    <label data-kommentar-label>${isPrivat ? 'Adresse / Notizen (Privatperson — Adresse hier erfassen)' : 'Kommentar'}</label>
                     <textarea class="bbz-textarea" name="kommentar">${helpers.escapeHtml(contact?.kommentar || "")}</textarea>
                   </div>
 
@@ -1491,7 +1508,10 @@
                     <div>
                       <div class="bbz-timeline-title">${helpers.escapeHtml(h.typ || h.title || "Eintrag")} ${h.projektbezugBool ? '<span class="bbz-chip">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}</div>
                       <div class="bbz-timeline-text">${helpers.escapeHtml(h.notizen || "—")}</div>
-                      <div style="margin-top:6px;"><button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 10px;" data-action="edit-history" data-id="${h.id}">Bearbeiten</button></div>
+                      <div style="margin-top:6px;display:flex;gap:6px;">
+                        <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 10px;" data-action="edit-history" data-id="${h.id}">Bearbeiten</button>
+                        <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 10px;color:var(--red);border-color:var(--red);" data-action="delete-history" data-id="${h.id}" data-title="${helpers.escapeHtml(h.typ || h.title || 'Eintrag')}">Löschen</button>
+                      </div>
                     </div>
                   </div>`).join("")}</div>` : ui.emptyBlock("Keine History-Eintraege vorhanden.")}
               </div>
@@ -1676,7 +1696,10 @@
                     <div>
                       <div class="bbz-timeline-title">${helpers.escapeHtml(h.typ || h.title || "Eintrag")} ${h.projektbezugBool ? '<span class="bbz-chip">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}</div>
                       <div class="bbz-timeline-text">${helpers.escapeHtml(h.notizen || "—")}</div>
-                      <div style="margin-top:6px;"><button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 10px;" data-action="edit-history" data-id="${h.id}">Bearbeiten</button></div>
+                      <div style="margin-top:6px;display:flex;gap:6px;">
+                        <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 10px;" data-action="edit-history" data-id="${h.id}">Bearbeiten</button>
+                        <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 10px;color:var(--red);border-color:var(--red);" data-action="delete-history" data-id="${h.id}" data-title="${helpers.escapeHtml(h.typ || h.title || 'Eintrag')}">Löschen</button>
+                      </div>
                     </div>
                   </div>`).join("")}</div>` : ui.emptyBlock("Keine Historie vorhanden.")}
               </div>
@@ -1907,8 +1930,9 @@
                       ${h.leadbbz ? `<span class="bbz-chip">${helpers.escapeHtml(h.leadbbz)}</span>` : ""}
                     </div>
                     <div class="bbz-timeline-text">${helpers.escapeHtml(h.notizen || "—")}</div>
-                    <div style="margin-top:6px;">
+                    <div style="margin-top:6px;display:flex;gap:6px;">
                       <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 10px;" data-action="edit-history" data-id="${h.id}">Bearbeiten</button>
+                      <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 10px;color:var(--red);border-color:var(--red);" data-action="delete-history" data-id="${h.id}" data-title="${helpers.escapeHtml(h.typ || h.title || 'Eintrag')}">Löschen</button>
                     </div>
                   </div>
                 </div>`).join("")}</div>`
@@ -2093,7 +2117,7 @@
       if (fd.get("hauptnummer")?.trim())  fields.Hauptnummer  = fd.get("hauptnummer").trim();
       if (fd.get("klassifizierung"))      fields.Klassifizierung = fd.get("klassifizierung");
 
-      console.log("handleFirmModalSubmit fields →", JSON.stringify(fields, null, 2));
+
       ui.setLoading(true);
       ui.setMessage("");
 
@@ -2235,8 +2259,7 @@
       fields["Eventhistory@odata.type"] = "Collection(Edm.String)";
       fields["Eventhistory"]            = raw.eventhistory;
 
-      // Debug-Log (kann nach stabilem Betrieb entfernt werden)
-      console.log("handleModalSubmit fields →", JSON.stringify(fields, null, 2));
+
 
       ui.setLoading(true);
       ui.setMessage("");
@@ -2317,6 +2340,22 @@
       const mode = itemId ? "edit" : "create";
       state.modal = { type: "task", payload: { prefillContactId, mode, itemId } };
       this.render();
+    },
+
+    async handleDeleteHistory(id, title) {
+      if (!confirm(`Aktivitaet "${title}" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`)) return;
+      try {
+        ui.setLoading(true);
+        await api.deleteItem(SCHEMA.history.listTitle, Number(id));
+        ui.setMessage(`Aktivitaet "${title}" wurde gelöscht.`, "success");
+        await api.loadAll();
+      } catch (error) {
+        console.error("handleDeleteHistory:", error);
+        ui.setMessage(`Fehler beim Löschen: ${error.message}`, "error");
+      } finally {
+        ui.setLoading(false);
+        this.render();
+      }
     },
 
     async handleDeleteTask(id, title) {
