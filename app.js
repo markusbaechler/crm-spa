@@ -692,7 +692,10 @@
       return `<section class="bbz-section"><div class="bbz-section-body"><div class="flex items-center gap-3"><div class="bbz-loader"></div><div class="text-sm text-slate-500">${helpers.escapeHtml(text)}</div></div></div></section>`;
     },
 
-    emptyBlock(text = "Keine Daten vorhanden.") {
+    emptyBlock(text = "Keine Daten vorhanden.", action = null, actionLabel = null) {
+      if (action && actionLabel) {
+        return `<div class="bbz-empty">${helpers.escapeHtml(text)}<br><button class="bbz-button bbz-button-secondary" style="margin-top:10px;height:32px;font-size:13px;" data-action="${helpers.escapeHtml(action)}">${helpers.escapeHtml(actionLabel)}</button></div>`;
+      }
       return `<div class="bbz-empty">${helpers.escapeHtml(text)}</div>`;
     },
 
@@ -1089,8 +1092,13 @@
   };
 
   const views = {
-    kpiBlock(label, value, meta = "") {
-      return `<div class="bbz-kpi"><div class="bbz-kpi-label">${helpers.escapeHtml(label)}</div><div class="bbz-kpi-value">${helpers.escapeHtml(String(value))}</div>${meta ? `<div class="bbz-kpi-meta">${helpers.escapeHtml(meta)}</div>` : ""}</div>`;
+    // metaType: "" | "alert" | "warn" | "ok"
+    kpiBlock(label, value, meta = "", metaType = "") {
+      const metaClass = metaType === "alert" ? "bbz-kpi-meta-alert"
+        : metaType === "warn" ? "bbz-kpi-meta-warn"
+        : metaType === "ok"   ? "bbz-kpi-meta-ok"
+        : "bbz-kpi-meta";
+      return `<div class="bbz-kpi"><div class="bbz-kpi-label">${helpers.escapeHtml(label)}</div><div class="bbz-kpi-value">${helpers.escapeHtml(String(value))}</div>${meta ? `<div class="${metaClass}">${helpers.escapeHtml(meta)}</div>` : ""}</div>`;
     },
 
     miniItem(title, meta) {
@@ -1478,8 +1486,8 @@
           <div class="bbz-kpis">
             ${this.kpiBlock("Firmen", state.enriched.firms.length, `${aCount}× A · ${bCount}× B · ${cCount}× C`)}
             ${this.kpiBlock("Kontakte", state.enriched.contacts.filter(c => !c.archiviert).length, `${state.enriched.contacts.filter(c => c.archiviert).length} archiviert`)}
-            ${this.kpiBlock("Offene Tasks", allOpenTasks.length, overdueTasks.length > 0 ? `${overdueTasks.length} überfällig` : "keine überfällig")}
-            ${this.kpiBlock("Diese Woche", thisWeek.length, thisWeek.length === 0 ? "keine Deadlines" : `bis ${helpers.formatDate(in7)}`)}
+            ${this.kpiBlock("Offene Tasks", allOpenTasks.length, overdueTasks.length > 0 ? `${overdueTasks.length} überfällig` : "keine überfällig", overdueTasks.length > 0 ? "alert" : "ok")}
+            ${this.kpiBlock("Diese Woche", thisWeek.length, thisWeek.length === 0 ? "keine Deadlines" : `bis ${helpers.formatDate(in7)}`, thisWeek.length > 3 ? "warn" : "")}
           </div>
           <div class="bbz-grid bbz-grid-70-30">
             <section class="bbz-section">
@@ -1599,9 +1607,9 @@
           </div>
           <div class="bbz-kpis" style="margin-top:10px;">
             ${this.kpiBlock("Kontakte", firm.contactsCount)}
-            ${this.kpiBlock("Offene Tasks", firm.openTasksCount, firm.tasks.some(t => t.isOpen && t.isOverdue) ? "überfällig" : "")}
-            ${this.kpiBlock("Nächste Deadline", firm.nextDeadline ? helpers.relativeDate(firm.nextDeadline) : "—")}
-            ${this.kpiBlock("Aktivitäten", firm.history.length, firm.latestActivity ? helpers.relativeDate(firm.latestActivity) : "")}
+            ${this.kpiBlock("Offene Tasks", firm.openTasksCount, firm.tasks.some(t => t.isOpen && t.isOverdue) ? "überfällig" : firm.openTasksCount > 0 ? "offen" : "keine offen", firm.tasks.some(t => t.isOpen && t.isOverdue) ? "alert" : "")}
+            ${this.kpiBlock("Nächste Deadline", firm.nextDeadline ? helpers.relativeDate(firm.nextDeadline) : "—", firm.nextDeadline && helpers.isOverdue(firm.nextDeadline) ? "überfällig" : "", firm.nextDeadline && helpers.isOverdue(firm.nextDeadline) ? "alert" : "")}
+            ${this.kpiBlock("Aktivitäten", firm.history.length, firm.latestActivity ? helpers.relativeDate(firm.latestActivity) : "noch keine")}
           </div>
           <div class="bbz-grid bbz-grid-3">
             <section class="bbz-section">
@@ -1630,7 +1638,7 @@
                           <td>${helpers.escapeHtml(c.rolle) || '<span class="bbz-muted">—</span>'}</td>
                           <td>${c.email1 ? `<a class="bbz-link" href="mailto:${helpers.escapeHtml(c.email1)}">${helpers.escapeHtml(c.email1)}</a>` : '<span class="bbz-muted">—</span>'}</td>
                           <td>${helpers.escapeHtml(helpers.joinNonEmpty([c.direktwahl, c.mobile], " / ")) || '<span class="bbz-muted">—</span>'}</td>
-                        </tr>`).join("") : `<tr><td colspan="6">${ui.emptyBlock("Keine Kontakte vorhanden.")}</td></tr>`}
+                        </tr>`).join("") : `<tr><td colspan="6">${ui.emptyBlock("Keine Kontakte vorhanden.", "open-contact-form", "+ Ersten Kontakt hinzufügen")}</td></tr>`}
                     </tbody>
                   </table>
                 </div>
@@ -1654,7 +1662,7 @@
                         <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;color:var(--red);border-color:var(--red);" data-action="delete-history" data-id="${h.id}" data-title="${helpers.escapeHtml(h.typ || h.title || 'Eintrag')}">Löschen</button>
                       </div>
                     </div>
-                  </div>`).join("")}</div>` : ui.emptyBlock("Keine Aktivitäten vorhanden.")}
+                  </div>`).join("")}</div>` : ui.emptyBlock("Noch keine Aktivitäten erfasst.", "open-history-form", "+ Erste Aktivität erfassen")}
               </div>
             </section>
             <section class="bbz-section">
@@ -1753,14 +1761,16 @@
       const contactHistory = state.enriched.history.filter(h => h.contactId === contact.id).sort((a, b) => helpers.compareDateDesc(a.datum, b.datum));
       const contactTasks = state.enriched.tasks.filter(t => t.contactId === contact.id).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
       const isPrivat = state.meta.privateFirmId !== null && contact.firmId === state.meta.privateFirmId;
-      // Avatar-Seed für grossen Avatar
+      // Band-Farbe von der Firma erben
+      const firm = contact.firmId ? dataModel.getFirmById(contact.firmId) : null;
+      const bandClass = firm ? helpers.detailBandClass(firm) : "bbz-detail-band bbz-detail-band-default";
       const seed = [...(contact.vorname.charAt(0) + contact.nachname.charAt(0))].reduce((s, c) => s + c.charCodeAt(0), 0);
       const avatarIdx = seed % 6;
       const initials = (contact.vorname.charAt(0) + contact.nachname.charAt(0)).toUpperCase() || "?";
 
       return `
         <div>
-          <div class="bbz-detail-band bbz-detail-band-default" style="margin-bottom:10px;">
+          <div class="${bandClass}" style="margin-bottom:10px;">
             <button class="bbz-button bbz-button-secondary mb-3" style="background:rgba(255,255,255,0.7);" data-action="back-to-contacts">← Kontaktliste</button>
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
               <div style="display:flex;align-items:center;gap:14px;">
@@ -1794,9 +1804,9 @@
           </div>
           <div class="bbz-kpis">
             ${this.kpiBlock("Tasks", contactTasks.length)}
-            ${this.kpiBlock("Offen", contactTasks.filter(t => t.isOpen).length, contactTasks.some(t => t.isOpen && t.isOverdue) ? "überfällig" : "")}
+            ${this.kpiBlock("Offen", contactTasks.filter(t => t.isOpen).length, contactTasks.some(t => t.isOpen && t.isOverdue) ? "überfällig" : contactTasks.filter(t => t.isOpen).length > 0 ? "offen" : "keine offen", contactTasks.some(t => t.isOpen && t.isOverdue) ? "alert" : "")}
             ${this.kpiBlock("Aktivitäten", contactHistory.length)}
-            ${this.kpiBlock("Letzter Kontakt", contactHistory[0]?.datum ? helpers.relativeDate(contactHistory[0].datum) : "—")}
+            ${this.kpiBlock("Letzter Kontakt", contactHistory[0]?.datum ? helpers.relativeDate(contactHistory[0].datum) : "—", contactHistory.length === 0 ? "noch kein Kontakt" : "", contactHistory.length === 0 ? "warn" : "")}
           </div>
           <div class="bbz-grid bbz-grid-3">
             <section class="bbz-section">
@@ -1840,7 +1850,7 @@
                       <div style="font-size:12px;color:var(--muted);margin-top:2px;">${t.deadline ? helpers.relativeDate(t.deadline) : "Keine Deadline"}</div>
                     </div>
                     ${helpers.statusChipHtml(t.status, t.deadline)}
-                  </div>`).join("") : ui.emptyBlock("Keine Tasks vorhanden.")}
+                  </div>`).join("") : ui.emptyBlock("Noch kein Task erfasst.", "open-task-form", "+ Ersten Task erstellen")}
               </div>
             </section>
           </div>
@@ -1963,7 +1973,7 @@
       </tr></thead>`;
 
       const tableBody = groups.map(g => `
-        ${g.label ? `<tr><td colspan="7" style="background:#f1f5fb;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:7px 12px;">${helpers.escapeHtml(g.label)} <span style="font-weight:400;">(${g.rows.length})</span></td></tr>` : ""}
+        ${g.label ? `<tr><td colspan="7" style="background:#f1f5fb;font-size:12px;font-weight:700;color:var(--text);padding:7px 12px;">${helpers.escapeHtml(g.label)} <span style="font-weight:400;color:var(--muted);">(${g.rows.length})</span></td></tr>` : ""}
         ${g.rows.length ? g.rows.map(renderTaskRow).join("") : `<tr><td colspan="7">${ui.emptyBlock("Keine Tasks.")}</td></tr>`}
       `).join("");
 
@@ -1971,13 +1981,13 @@
         <div>
           <div class="bbz-kpis">
             ${this.kpiBlock("Tasks gesamt", state.enriched.tasks.length)}
-            ${this.kpiBlock("Offen", openTasks)}
-            ${this.kpiBlock("Ueberfaellig", overdueTasks)}
-            ${this.kpiBlock("Naechste 7 Tage", nextWeekTasks)}
+            ${this.kpiBlock("Offen", openTasks, overdueTasks > 0 ? `${overdueTasks} überfällig` : "keine überfällig", overdueTasks > 0 ? "alert" : "ok")}
+            ${this.kpiBlock("Überfällig", overdueTasks, overdueTasks > 0 ? "sofort prüfen" : "—", overdueTasks > 0 ? "alert" : "")}
+            ${this.kpiBlock("Diese Woche", nextWeekTasks, nextWeekTasks > 0 ? "fällig in 7 Tagen" : "keine", nextWeekTasks > 2 ? "warn" : "")}
           </div>
           <section class="bbz-section">
             <div class="bbz-section-header">
-              <div><div class="bbz-section-title">Planung</div><div class="bbz-section-subtitle">Aufgabenuebersicht mit Fokus auf offen und ueberfaellig</div></div>
+              <div><div class="bbz-section-title">Planung</div><div class="bbz-section-subtitle">Aufgaben mit Fokus auf offen und überfällig</div></div>
               <button class="bbz-button bbz-button-primary" data-action="open-task-form">+ Task</button>
             </div>
             <div class="bbz-section-body">
@@ -1989,7 +1999,7 @@
                   <option value="leadbbz" ${filters.groupBy === "leadbbz" ? "selected" : ""}>Gruppe: Leadbbz</option>
                 </select>
                 <label class="bbz-checkbox"><input type="checkbox" data-filter="planning-open"    ${filters.onlyOpen    ? "checked" : ""} /> Nur offene Tasks</label>
-                <label class="bbz-checkbox"><input type="checkbox" data-filter="planning-overdue" ${filters.onlyOverdue ? "checked" : ""} /> Nur ueberfaellige</label>
+                <label class="bbz-checkbox"><input type="checkbox" data-filter="planning-overdue" ${filters.onlyOverdue ? "checked" : ""} /> Nur überfällige</label>
               </div>
               <div class="bbz-table-wrap">
                 <table class="bbz-table" style="min-width:1060px;">
@@ -2028,15 +2038,15 @@
       return `
         <div>
           <div class="bbz-kpis">
-            ${this.kpiBlock("Aktivitaeten", totalEntries, "gesamt")}
-            ${this.kpiBlock("Mit Projektbezug", mitProjekt)}
-            ${this.kpiBlock("Letzte 7 Tage", letzteWoche)}
-            ${this.kpiBlock("Sichtbar", rows.length, "nach Filter")}
+            ${this.kpiBlock("Aktivitäten", totalEntries, "gesamt")}
+            ${this.kpiBlock("Mit Projektbezug", mitProjekt, mitProjekt > 0 ? `${Math.round(mitProjekt/totalEntries*100)}%` : "—")}
+            ${this.kpiBlock("Letzte 7 Tage", letzteWoche, letzteWoche === 0 ? "keine Aktivität" : "Einträge", letzteWoche === 0 ? "warn" : "ok")}
+            ${this.kpiBlock("Sichtbar", rows.length, rows.length < totalEntries ? "gefiltert" : "alle")}
           </div>
           <section class="bbz-section">
             <div class="bbz-section-header">
-              <div><div class="bbz-section-title">Aktivitaeten</div><div class="bbz-section-subtitle">Globale History-Timeline — alle Kontakte</div></div>
-              <button class="bbz-button bbz-button-primary" data-action="open-history-form">+ Aktivitaet</button>
+              <div><div class="bbz-section-title">Aktivitäten</div><div class="bbz-section-subtitle">Globale Timeline — alle Kontakte</div></div>
+              <button class="bbz-button bbz-button-primary" data-action="open-history-form">+ Aktivität</button>
             </div>
             <div class="bbz-section-body">
               <div class="bbz-filters-4">
@@ -2046,7 +2056,7 @@
                   ${allKontaktart.map(k => `<option value="${helpers.escapeHtml(k)}" ${filters.kontaktart === k ? "selected" : ""}>${helpers.escapeHtml(k)}</option>`).join("")}
                 </select>
                 <select class="bbz-select" data-filter="history-leadbbz">
-                  <option value="">Alle Leadbbz</option>
+                  <option value="">Alle Lead BBZ</option>
                   ${allLeadbbz.map(l => `<option value="${helpers.escapeHtml(l)}" ${filters.leadbbz === l ? "selected" : ""}>${helpers.escapeHtml(l)}</option>`).join("")}
                 </select>
                 <div></div>
@@ -2054,24 +2064,25 @@
               ${rows.length ? `<div class="bbz-timeline">${rows.map(h => `
                 <div class="bbz-timeline-item">
                   <div class="bbz-timeline-date">
-                    ${helpers.formatDateTime(h.datum) || "—"}
+                    ${helpers.relativeDate(h.datum) || "—"}
+                    <br><span class="bbz-muted" style="font-size:11px;">${helpers.formatDate(h.datum)}</span>
                     <br><span class="bbz-muted">${h.contactId ? `<a class="bbz-link" data-action="open-contact" data-id="${h.contactId}">${helpers.escapeHtml(h.contactName || "")}</a>` : helpers.escapeHtml(h.contactName || "")}</span>
                     ${h.firmTitle ? `<br><span class="bbz-muted" style="font-size:11px;">${helpers.escapeHtml(h.firmTitle)}</span>` : ""}
                   </div>
                   <div>
                     <div class="bbz-timeline-title">
                       ${helpers.escapeHtml(h.typ || "Eintrag")}
-                      ${h.projektbezugBool ? '<span class="bbz-chip">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}
-                      ${h.leadbbz ? `<span class="bbz-chip">${helpers.escapeHtml(h.leadbbz)}</span>` : ""}
+                      ${h.projektbezugBool ? '<span class="bbz-chip" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}
+                      ${h.leadbbz ? helpers.leadbbzBadgeHtml(h.leadbbz) : ""}
                     </div>
                     <div class="bbz-timeline-text">${helpers.escapeHtml(h.notizen || "—")}</div>
                     <div style="margin-top:6px;display:flex;gap:6px;">
-                      <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 10px;" data-action="edit-history" data-id="${h.id}">Bearbeiten</button>
-                      <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 10px;color:var(--red);border-color:var(--red);" data-action="delete-history" data-id="${h.id}" data-title="${helpers.escapeHtml(h.typ || h.title || 'Eintrag')}">Löschen</button>
+                      <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;" data-action="edit-history" data-id="${h.id}">Bearbeiten</button>
+                      <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;color:var(--red);border-color:var(--red);" data-action="delete-history" data-id="${h.id}" data-title="${helpers.escapeHtml(h.typ || h.title || 'Eintrag')}">Löschen</button>
                     </div>
                   </div>
                 </div>`).join("")}</div>`
-              : ui.emptyBlock("Keine Aktivitaeten fuer die aktuelle Filterung gefunden.")}
+              : ui.emptyBlock("Keine Aktivitäten für die aktuelle Filterung gefunden.", "open-history-form", "+ Erste Aktivität erfassen")}
             </div>
           </section>
         </div>
@@ -2104,11 +2115,11 @@
           <div class="bbz-kpis">
             ${this.kpiBlock("Event-Kategorien", totalGroups)}
             ${this.kpiBlock("Kontakt-Zuordnungen", totalContacts)}
-            ${this.kpiBlock("Offene Tasks", totalOpenTasks)}
-            ${this.kpiBlock("Sichtbare Kategorien", groups.length)}
+            ${this.kpiBlock("Offene Tasks", totalOpenTasks, totalOpenTasks > 0 ? "über alle Events" : "keine offen", totalOpenTasks > 0 ? "warn" : "ok")}
+            ${this.kpiBlock("Sichtbar", groups.length, groups.length < totalGroups ? "gefiltert" : "alle Kategorien")}
           </div>
           <section class="bbz-section">
-            <div class="bbz-section-header"><div><div class="bbz-section-title">Events</div><div class="bbz-section-subtitle">Separate Event-Sicht nach Kategorie</div></div></div>
+            <div class="bbz-section-header"><div><div class="bbz-section-title">Events</div><div class="bbz-section-subtitle">Kontakte nach Event-Kategorie</div></div></div>
             <div class="bbz-section-body">
               <div class="bbz-filters-3">
                 <input class="bbz-input" data-filter="events-search" type="text" placeholder="Suche nach Kategorie, Kontakt, Firma, Rolle ..." value="${helpers.escapeHtml(filters.search)}" />
@@ -2120,26 +2131,33 @@
               </div>
               ${groups.length ? `<div class="bbz-cockpit-stack">${groups.map(group => `
                 <section class="bbz-section" style="box-shadow:none;">
-                  <div class="bbz-section-header"><div><div class="bbz-section-title">${helpers.escapeHtml(group.name)}</div><div class="bbz-section-subtitle">${group.contacts.length} Kontakte · ${group.contacts.reduce((sum, c) => sum + c.openTasksCount, 0)} offene Tasks</div></div></div>
+                  <div class="bbz-section-header">
+                    <div>
+                      <div class="bbz-section-title">${helpers.escapeHtml(group.name)}</div>
+                      <div class="bbz-section-subtitle">${group.contacts.length} Kontakte · ${group.contacts.reduce((sum, c) => sum + c.openTasksCount, 0)} offene Tasks</div>
+                    </div>
+                  </div>
                   <div class="bbz-section-body">
                     <div class="bbz-table-wrap">
                       <table class="bbz-table">
-                        <thead><tr><th>Kontakt</th><th>Firma</th><th>Funktion / Rolle</th><th>Eventhistory</th><th>Letzte Aktivitaet</th><th>Offene Tasks</th></tr></thead>
+                        <thead><tr><th></th><th>Kontakt</th><th>Firma</th><th>Funktion / Rolle</th><th>Eventhistory</th><th>Letzte Aktivität</th><th>Tasks</th></tr></thead>
                         <tbody>
                           ${group.contacts.map(item => `
                             <tr>
+                              <td style="width:36px;">${helpers.avatarHtml({ vorname: (item.contactName||"").split(" ")[0] || "", nachname: (item.contactName||"").split(" ").slice(-1)[0] || "" })}</td>
                               <td><a class="bbz-link" data-action="open-contact" data-id="${item.contactId}">${helpers.escapeHtml(item.contactName)}</a><div class="bbz-subtext">${item.email1 ? helpers.escapeHtml(item.email1) : "—"}</div></td>
                               <td>${item.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${item.firmId}">${helpers.escapeHtml(item.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
                               <td>${helpers.escapeHtml(helpers.joinNonEmpty([item.funktion, item.rolle], " · ")) || '<span class="bbz-muted">—</span>'}</td>
-                              <td>${helpers.escapeHtml(item.eventhistory) || '<span class="bbz-muted">—</span>'}</td>
-                              <td>${helpers.formatDateTime(item.latestHistoryDate) || '<span class="bbz-muted">—</span>'}${item.latestHistoryType ? `<div class="bbz-subtext">${helpers.escapeHtml(item.latestHistoryType)}</div>` : ""}</td>
-                              <td class="${item.openTasksCount > 0 ? "bbz-warning" : "bbz-muted"}">${item.openTasksCount}</td>
+                              <td>${Array.isArray(item.eventhistory) ? helpers.multiChoiceHtml(item.eventhistory) : (helpers.escapeHtml(item.eventhistory) || '<span class="bbz-muted">—</span>')}</td>
+                              <td>${item.latestHistoryDate ? `<span title="${helpers.formatDate(item.latestHistoryDate)}">${helpers.relativeDate(item.latestHistoryDate)}</span>${item.latestHistoryType ? `<div class="bbz-subtext">${helpers.escapeHtml(item.latestHistoryType)}</div>` : ""}` : '<span class="bbz-muted">—</span>'}</td>
+                              <td>${item.openTasksCount > 0 ? `<span class="bbz-status-chip bbz-status-open">${item.openTasksCount} offen</span>` : '<span class="bbz-muted">—</span>'}</td>
                             </tr>`).join("")}
                         </tbody>
                       </table>
                     </div>
                   </div>
-                </section>`).join("")}</div>` : ui.emptyBlock("Keine Event-Daten fuer die aktuelle Filterung gefunden.")}
+                </section>`).join("")}</div>`
+              : ui.emptyBlock("Keine Event-Daten für die aktuelle Filterung gefunden.")}
             </div>
           </section>
         </div>
