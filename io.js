@@ -623,7 +623,18 @@
         { row: "Rolle",      sp: "Rolle",      contact: "rolle" },
         { row: "Lead BBZ",   sp: "Leadbbz0",   contact: "leadbbz0" },
         { row: "Kommentar",  sp: "Kommentar",  contact: "kommentar" }
+        // Multi-Choice (SGF, Event, Eventhistory) bewusst weggelassen:
+        // Merge-Semantik unklar (ergänzen vs. ersetzen) → Datenrisiko zu hoch.
       ];
+
+      // Geburtstag separat: braucht Datumskonvertierung
+      function _mergeGeburtstag(row, existingContact) {
+        const importVal = String(row["Geburtstag"] || "").trim();
+        const existingVal = String(existingContact.geburtstag || "").trim();
+        if (!importVal || existingVal) return null; // nichts zu tun
+        const parsed = _parseDate(importVal);
+        return parsed ? parsed + "T00:00:00Z" : null;
+      }
 
       let totalMerged = 0;
 
@@ -658,6 +669,10 @@
                 patch[fd.sp] = importVal;
               }
             }
+
+            // Geburtstag prüfen und ggf. ergänzen
+            const gebVal = _mergeGeburtstag(row, existing.contact);
+            if (gebVal) patch["Geburtstag"] = gebVal;
 
             if (Object.keys(patch).length > 0) {
               try {
