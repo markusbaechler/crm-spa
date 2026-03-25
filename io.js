@@ -478,13 +478,51 @@
     return isNaN(d.getTime()) ? null : d.toISOString().split("T")[0];
   }
 
+  // In-memory Log-Buffer — wird bei jedem Import neu befüllt
+  let _logBuffer = [];
+
   function _log(msg, type = "info") {
+    // UI
     const el = document.getElementById("io-import-log");
-    if (!el) return;
-    el.style.display = "block";
-    const color = { ok: "#15803d", warn: "#b45309", error: "#b91c1c", info: "#475569" }[type] || "#475569";
-    el.innerHTML += `<div style="color:${color}">${escHtml(msg)}</div>`;
-    el.scrollTop = el.scrollHeight;
+    if (el) {
+      el.style.display = "block";
+      const color = { ok: "#15803d", warn: "#b45309", error: "#b91c1c", info: "#475569" }[type] || "#475569";
+      el.innerHTML += `<div style="color:${color}">${escHtml(msg)}</div>`;
+      el.scrollTop = el.scrollHeight;
+    }
+    // Buffer
+    const prefix = { ok: "[OK]  ", warn: "[WARN]", error: "[ERR] ", info: "[INFO]" }[type] || "[INFO]";
+    _logBuffer.push(`${prefix}  ${msg}`);
+  }
+
+  function _downloadLog(filename, totalCreated, totalSkipped, hadCriticalError) {
+    const ts = new Date().toLocaleString("de-CH", {
+      day: "2-digit", month: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit", second: "2-digit"
+    });
+
+    const header = [
+      "=======================================================",
+      "  bbz CRM -- Import-Protokoll",
+      `  Datum/Zeit  : ${ts}`,
+      `  Datei       : ${window._bbzImportFilename || "unbekannt"}`,
+      `  Ergebnis    : ${hadCriticalError ? "FEHLER" : "OK"}`,
+      `  Angelegt    : ${totalCreated}`,
+      `  Uebersprungen: ${totalSkipped}`,
+      "=======================================================",
+      ""
+    ].join("\n");
+
+    const body = _logBuffer.join("\n");
+    const content = header + body + "\n";
+
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   async function _doImport() {
@@ -501,8 +539,12 @@
     const log = document.getElementById("io-import-log");
     if (log) { log.innerHTML = ""; log.style.display = "block"; }
 
+    _logBuffer = []; // Buffer leeren fuer neuen Import
+    window._bbzImportFilename = document.getElementById("io-import-file")?.files?.[0]?.name || "unbekannt";
+
     let totalCreated = 0;
     let totalSkipped = 0;
+    let hadCriticalError = false;
 
     try {
       // Schritt 1: Firma-Lookup aufbauen (bestehende SP-Firmen + Import-Firmen)
@@ -668,16 +710,21 @@
         totalCreated += created; totalSkipped += skipped;
       }
 
-      _log(`\n🏁 Import abgeschlossen: ${totalCreated} Items erstellt, ${totalSkipped} übersprungen.`, "ok");
+      _log(`\n Import abgeschlossen: ${totalCreated} Items erstellt, ${totalSkipped} uebersprungen.`, "ok");
       await api.loadAll();
-      showBanner(`Import erfolgreich: ${totalCreated} neue Einträge angelegt, ${totalSkipped} übersprungen.`, "success");
-      importBtn.textContent = "✅ Abgeschlossen";
+      const logFilename = `bbzCRM_Import_Log_${new Date().toISOString().slice(0,10).replace(/-/g,"")}.txt`;
+      _downloadLog(logFilename, totalCreated, totalSkipped, false);
+      showBanner(`Import erfolgreich: ${totalCreated} neue Eintraege angelegt, ${totalSkipped} uebersprungen. Logfile wurde heruntergeladen.`, "success");
+      importBtn.textContent = "Abgeschlossen";
 
     } catch (err) {
-      _log(`\n❌ Kritischer Fehler: ${err.message}`, "error");
-      showBanner(`Importfehler: ${err.message}`, "error");
+      hadCriticalError = true;
+      _log(`\n Kritischer Fehler: ${err.message}`, "error");
+      const errLogFilename = `bbzCRM_Import_Log_${new Date().toISOString().slice(0,10).replace(/-/g,"")}_FEHLER.txt`;
+      _downloadLog(errLogFilename, totalCreated, totalSkipped, true);
+      showBanner(`Importfehler: ${err.message} — Logfile wurde heruntergeladen.`, "error");
       importBtn.disabled = false;
-      importBtn.textContent = "▶ Import starten";
+      importBtn.textContent = "Import starten";
     }
   }
 
