@@ -1366,14 +1366,21 @@
                 <div class="bbz-table-wrap">
                   <table class="bbz-table">
                     <thead><tr>
-                      ${["title","klassifizierung","vip","openTasksCount","latestActivity"].reduce((acc,col,i) => {
-                        const labels = ["Firma","Klassifizierung","VIP","Offene Tasks","Letzte Aktivitaet"];
-                        const active = filters.sortBy === col;
-                        const icon = active ? (filters.sortDir === "asc" ? " ↑" : " ↓") : "";
-                        const sortTh = `<th style="cursor:pointer;user-select:none;${active?"color:var(--blue);":""}" data-action="set-sort" data-col="${col}" data-scope="firms">${labels[i]}${icon}</th>`;
-                        return acc + sortTh;
-                      }, "")}
-                      <th>Ort</th><th>Kontakte</th><th>Naechste Deadline</th>
+                      ${(()=>{
+                        const firmSortTh = (label, col) => {
+                          const active = filters.sortBy === col;
+                          const icon = active ? (filters.sortDir === "asc" ? " ↑" : " ↓") : "";
+                          return `<th style="cursor:pointer;user-select:none;${active?"color:var(--blue);":""}" data-action="set-sort" data-col="${col}" data-scope="firms">${label}${icon}</th>`;
+                        };
+                        return firmSortTh("Firma","title")
+                          + "<th>Ort</th>"
+                          + firmSortTh("Klassifizierung","klassifizierung")
+                          + firmSortTh("VIP","vip")
+                          + "<th>Kontakte</th>"
+                          + firmSortTh("Offene Tasks","openTasksCount")
+                          + "<th>Naechste Deadline</th>"
+                          + firmSortTh("Letzte Aktivitaet","latestActivity");
+                      })()}
                     </tr></thead>
                     <tbody>
                       ${rows.length ? rows.map(firm => `
