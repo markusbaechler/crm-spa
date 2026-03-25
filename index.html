@@ -245,10 +245,37 @@
     .bbz-detail-title { font-size: 28px; font-weight: 800; line-height: 1.02; letter-spacing: -0.04em; }
     .bbz-detail-subtitle { margin-top: 5px; font-size: 14px; color: var(--muted); line-height: 1.4; }
 
-    .bbz-meta-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-    .bbz-kv { min-height: 62px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); }
-    .bbz-kv-label { font-size: 11px; color: var(--muted); font-weight: 600; margin-bottom: 5px; }
-    .bbz-kv-value { font-size: 13px; color: var(--text); line-height: 1.4; word-break: break-word; }
+    /* ===================== KV-ROWS ===================== */
+    .bbz-meta-grid { display: block; }
+    .bbz-kv { display: flex; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--line-2); min-height: unset; background: none; border-radius: 0; border-left: none; border-right: none; border-top: none; }
+    .bbz-kv:last-child { border-bottom: none; }
+    .bbz-kv-label { flex: 0 0 130px; font-size: 11px; color: var(--muted); font-weight: 600; padding-right: 10px; line-height: 1.4; text-transform: none; letter-spacing: 0; margin-bottom: 0; }
+    .bbz-kv-value { flex: 1; font-size: 13px; color: var(--text); line-height: 1.4; word-break: break-word; }
+
+    /* ===================== SEGMENT-BADGES ===================== */
+    .bbz-pill-a { background: #dbeafe; color: #1d4ed8; border-color: #93c5fd; border-left: 3px solid #2563eb; }
+    .bbz-pill-b { background: #fef3c7; color: #92400e; border-color: #fcd34d; border-left: 3px solid #d97706; }
+    .bbz-pill-c { background: #f1f5f9; color: #334155; border-color: #cbd5e1; border-left: 3px solid #64748b; }
+    .bbz-pill-vip { background: #fef9c3; color: #78350f; border-color: #fbbf24; }
+    .bbz-pill-vip::before { content: "♛ "; font-size: 11px; }
+    .bbz-pill-lead { background: #f0fdf4; color: #15803d; border-color: #86efac; font-weight: 700; }
+
+    /* ===================== FARBIGE DETAIL-HEADER-BAND ===================== */
+    .bbz-detail-band { border-radius: 16px 16px 0 0; padding: 20px 20px 16px; margin-bottom: 0; }
+    .bbz-detail-band-a { background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border: 1px solid #bfdbfe; border-bottom: none; }
+    .bbz-detail-band-b { background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); border: 1px solid #fde68a; border-bottom: none; }
+    .bbz-detail-band-c { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border: 1px solid #e2e8f0; border-bottom: none; }
+    .bbz-detail-band-vip { background: linear-gradient(135deg, #fefce8 0%, #fef9c3 100%); border: 1px solid #fde68a; border-bottom: none; }
+    .bbz-detail-band-default { background: var(--panel-2); border: 1px solid var(--line); border-bottom: none; border-radius: 16px 16px 0 0; padding: 20px 20px 16px; }
+
+    /* ===================== GROSSER AVATAR (Kontakt-Detail) ===================== */
+    .bbz-avatar-lg { width: 52px; height: 52px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; }
+    .bbz-avatar-lg[data-idx="0"] { background: #dbeafe; color: #1d4ed8; }
+    .bbz-avatar-lg[data-idx="1"] { background: #dcfce7; color: #15803d; }
+    .bbz-avatar-lg[data-idx="2"] { background: #ffedd5; color: #c2410c; }
+    .bbz-avatar-lg[data-idx="3"] { background: #f3e8ff; color: #7e22ce; }
+    .bbz-avatar-lg[data-idx="4"] { background: #ffe4e6; color: #be123c; }
+    .bbz-avatar-lg[data-idx="5"] { background: #ccfbf1; color: #0f766e; }
 
     .bbz-timeline { display: grid; gap: 7px; }
     .bbz-timeline-item { display: grid; grid-template-columns: 140px 1fr; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); }
