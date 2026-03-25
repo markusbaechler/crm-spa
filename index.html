@@ -6,6 +6,7 @@
   <title>bbz CRM</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
 
   <style>
@@ -189,6 +190,9 @@
         <div class="bbz-toolbar">
           <button id="btn-login" class="bbz-button bbz-button-primary">Anmelden</button>
           <button id="btn-refresh" class="bbz-button bbz-button-secondary">Neu laden</button>
+          <button class="bbz-button bbz-button-secondary" onclick="window.bbzIO.openExportModal('contacts')">📤 Kontakte</button>
+          <button class="bbz-button bbz-button-secondary" onclick="window.bbzIO.openExportModal('event')">🎟 Event</button>
+          <button class="bbz-button bbz-button-secondary" onclick="window.bbzIO.openImportModal()">📥 Import</button>
           <div id="auth-status" class="bbz-auth">
             <span class="bbz-auth-dot"></span>
             <span>Authentifizierung wird initialisiert ...</span>
@@ -209,5 +213,6 @@
     </main>
   </div>
   <script src="./app.js"></script>
+  <script src="./io.js"></script>
 </body>
 </html>
