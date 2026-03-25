@@ -2430,6 +2430,8 @@
     }
   };
 
+window._bbzApp = { state, api, helpers, SCHEMA, CONFIG, dataModel, controller };
+
   function startApp() { controller.init(); }
 
   if (document.readyState === "loading") {
