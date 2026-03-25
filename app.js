@@ -140,7 +140,7 @@
       route: CONFIG.defaults.route,
       firms: { search: "", klassifizierung: "", vip: "" },
       contacts: { search: "", archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden },
-      planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, onlyOverdue: false, groupBy: "none", sortDir: "asc" },
+      planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, onlyOverdue: false, groupBy: "none", sortBy: "deadline", sortDir: "asc" },
       history: { search: "", kontaktart: "", leadbbz: "" },
       events: { search: "", onlyWithOpenTasks: false }
     },
@@ -452,10 +452,16 @@
           return;
         }
 
-        // Deadline-Sortierung umschalten
-        const toggleSort = event.target.closest("[data-action='toggle-sort']");
-        if (toggleSort) {
-          state.filters.planning.sortDir = state.filters.planning.sortDir === "asc" ? "desc" : "asc";
+        // Spalten-Sortierung (Planung)
+        const setSort = event.target.closest("[data-action='set-sort']");
+        if (setSort) {
+          const col = setSort.dataset.col;
+          if (state.filters.planning.sortBy === col) {
+            state.filters.planning.sortDir = state.filters.planning.sortDir === "asc" ? "desc" : "asc";
+          } else {
+            state.filters.planning.sortBy = col;
+            state.filters.planning.sortDir = "asc";
+          }
           controller.render();
           return;
         }
@@ -1660,12 +1666,24 @@
         return searchMatch && (!filters.onlyOpen || t.isOpen) && (!filters.onlyOverdue || t.isOverdue);
       });
 
-      // Deadline-Sortierung
-      const sorted = [...baseRows].sort((a, b) =>
-        filters.sortDir === "desc"
-          ? helpers.compareDateDesc(a.deadline, b.deadline)
-          : helpers.compareDateAsc(a.deadline, b.deadline)
-      );
+      // Multi-column sort
+      const dir = filters.sortDir === "asc" ? 1 : -1;
+      const sorted = [...baseRows].sort((a, b) => {
+        if (filters.sortBy === "deadline") {
+          const ad = helpers.toDate(a.deadline), bd = helpers.toDate(b.deadline);
+          if (!ad && !bd) return 0;
+          if (!ad) return 1;
+          if (!bd) return -1;
+          return (ad - bd) * dir;
+        }
+        if (filters.sortBy === "leadbbz") {
+          return String(a.leadbbz || "").localeCompare(String(b.leadbbz || ""), "de") * dir;
+        }
+        if (filters.sortBy === "firma") {
+          return String(a.firmTitle || "").localeCompare(String(b.firmTitle || ""), "de") * dir;
+        }
+        return 0;
+      });
 
       // Gruppierung
       const groupBy = filters.groupBy;
@@ -1684,7 +1702,7 @@
           .map(([key, rows]) => ({ key, label: key, rows }));
       }
 
-      const openTasks   = state.enriched.tasks.filter(t => t.isOpen).length;
+      const openTasks    = state.enriched.tasks.filter(t => t.isOpen).length;
       const overdueTasks = state.enriched.tasks.filter(t => t.isOpen && t.isOverdue).length;
       const nextWeekTasks = state.enriched.tasks.filter(t => {
         if (!t.isOpen) return false;
@@ -1695,7 +1713,12 @@
         return d >= today && d <= in7;
       }).length;
 
-      const sortIcon = filters.sortDir === "asc" ? " ↑" : " ↓";
+      // Sort-Header helper
+      const th = (label, col) => {
+        const active = filters.sortBy === col;
+        const icon = active ? (filters.sortDir === "asc" ? " ↑" : " ↓") : "";
+        return `<th style="cursor:pointer;user-select:none;${active ? "color:var(--blue);" : ""}" data-action="set-sort" data-col="${col}">${label}${icon}</th>`;
+      };
 
       const renderTaskRow = (t) => {
         const statusCell = statusChoices.length
@@ -1703,11 +1726,12 @@
           : `<span class="${helpers.statusClass(t.status, t.deadline)}">${helpers.escapeHtml(t.status) || "—"}</span>`;
         return `
           <tr>
+            <td>${t.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${t.firmId}">${helpers.escapeHtml(t.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
             <td>${helpers.escapeHtml(t.title) || '<span class="bbz-muted">—</span>'}</td>
-            <td class="${helpers.statusClass(t.status, t.deadline)}" style="cursor:pointer;white-space:nowrap;" data-action="toggle-sort">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
+            <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
             <td>${statusCell}</td>
             <td>${t.contactId ? `<a class="bbz-link" data-action="open-contact" data-id="${t.contactId}">${helpers.escapeHtml(t.contactName || "Kontakt")}</a>` : helpers.escapeHtml(t.contactName || "—")}</td>
-            <td>${t.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${t.firmId}">${helpers.escapeHtml(t.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
+            <td>${helpers.escapeHtml(t.leadbbz) || '<span class="bbz-muted">—</span>'}</td>
             <td style="white-space:nowrap;">
               <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 9px;margin-right:4px;" data-action="edit-task" data-id="${t.id}">Bearbeiten</button>
               <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 9px;color:var(--red);border-color:var(--red);" data-action="delete-task" data-id="${t.id}" data-title="${helpers.escapeHtml(t.title)}">Löschen</button>
@@ -1716,14 +1740,18 @@
       };
 
       const tableHead = `<thead><tr>
+        ${th("Firma", "firma")}
         <th>Titel</th>
-        <th style="cursor:pointer;user-select:none;" data-action="toggle-sort">Deadline${sortIcon}</th>
-        <th>Status</th><th>Kontaktperson</th><th>Firma</th><th>Aktionen</th>
+        ${th("Deadline", "deadline")}
+        <th>Status</th>
+        <th>Kontaktperson</th>
+        ${th("Leadbbz", "leadbbz")}
+        <th>Aktionen</th>
       </tr></thead>`;
 
       const tableBody = groups.map(g => `
-        ${g.label ? `<tr><td colspan="6" style="background:#f1f5fb;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:7px 12px;">${helpers.escapeHtml(g.label)} <span style="font-weight:400;">(${g.rows.length})</span></td></tr>` : ""}
-        ${g.rows.length ? g.rows.map(renderTaskRow).join("") : `<tr><td colspan="6">${ui.emptyBlock("Keine Tasks.")}</td></tr>`}
+        ${g.label ? `<tr><td colspan="7" style="background:#f1f5fb;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:7px 12px;">${helpers.escapeHtml(g.label)} <span style="font-weight:400;">(${g.rows.length})</span></td></tr>` : ""}
+        ${g.rows.length ? g.rows.map(renderTaskRow).join("") : `<tr><td colspan="7">${ui.emptyBlock("Keine Tasks.")}</td></tr>`}
       `).join("");
 
       return `
@@ -1743,17 +1771,17 @@
               <div class="bbz-filters-4" style="grid-template-columns:2fr 1fr 1fr 1fr;">
                 <input class="bbz-input" data-filter="planning-search" type="text" placeholder="Suche nach Titel, Firma, Kontakt, Status ..." value="${helpers.escapeHtml(filters.search)}" />
                 <select class="bbz-select" data-filter="planning-groupby">
-                  <option value="none" ${filters.groupBy === "none" ? "selected" : ""}>Kein Gruppierung</option>
-                  <option value="status" ${filters.groupBy === "status" ? "selected" : ""}>Gruppe: Status</option>
+                  <option value="none"    ${filters.groupBy === "none"    ? "selected" : ""}>Keine Gruppierung</option>
+                  <option value="status"  ${filters.groupBy === "status"  ? "selected" : ""}>Gruppe: Status</option>
                   <option value="leadbbz" ${filters.groupBy === "leadbbz" ? "selected" : ""}>Gruppe: Leadbbz</option>
                 </select>
-                <label class="bbz-checkbox"><input type="checkbox" data-filter="planning-open" ${filters.onlyOpen ? "checked" : ""} /> Nur offene Tasks</label>
+                <label class="bbz-checkbox"><input type="checkbox" data-filter="planning-open"    ${filters.onlyOpen    ? "checked" : ""} /> Nur offene Tasks</label>
                 <label class="bbz-checkbox"><input type="checkbox" data-filter="planning-overdue" ${filters.onlyOverdue ? "checked" : ""} /> Nur ueberfaellige</label>
               </div>
               <div class="bbz-table-wrap">
-                <table class="bbz-table" style="min-width:1000px;">
+                <table class="bbz-table" style="min-width:1060px;">
                   ${tableHead}
-                  <tbody>${baseRows.length ? tableBody : `<tr><td colspan="6">${ui.emptyBlock("Keine Tasks fuer die aktuelle Filterung gefunden.")}</td></tr>`}</tbody>
+                  <tbody>${baseRows.length ? tableBody : `<tr><td colspan="7">${ui.emptyBlock("Keine Tasks fuer die aktuelle Filterung gefunden.")}</td></tr>`}</tbody>
                 </table>
               </div>
             </div>
