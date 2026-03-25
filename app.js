@@ -140,7 +140,7 @@
       route: CONFIG.defaults.route,
       firms: { search: "", klassifizierung: "", vip: "" },
       contacts: { search: "", archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden },
-      planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, onlyOverdue: false },
+      planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, onlyOverdue: false, groupBy: "none", sortDir: "asc" },
       history: { search: "", kontaktart: "", leadbbz: "" },
       events: { search: "", onlyWithOpenTasks: false }
     },
@@ -434,7 +434,29 @@
         if (openTaskForm) {
           const contactId = openTaskForm.dataset.contactId || null;
           const firmId = openTaskForm.dataset.firmId || null;
-          controller.openTaskForm(contactId ? Number(contactId) : null, firmId ? Number(firmId) : null);
+          controller.openTaskForm(contactId ? Number(contactId) : null, firmId ? Number(firmId) : null, null);
+          return;
+        }
+
+        // Task bearbeiten
+        const editTask = event.target.closest("[data-action='edit-task']");
+        if (editTask) {
+          controller.openTaskForm(null, null, Number(editTask.dataset.id));
+          return;
+        }
+
+        // Task löschen
+        const deleteTask = event.target.closest("[data-action='delete-task']");
+        if (deleteTask) {
+          controller.handleDeleteTask(deleteTask.dataset.id, deleteTask.dataset.title);
+          return;
+        }
+
+        // Deadline-Sortierung umschalten
+        const toggleSort = event.target.closest("[data-action='toggle-sort']");
+        if (toggleSort) {
+          state.filters.planning.sortDir = state.filters.planning.sortDir === "asc" ? "desc" : "asc";
+          controller.render();
           return;
         }
 
@@ -492,6 +514,8 @@
         if (el.matches("[data-filter='contacts-archiviert']")) { state.filters.contacts.archiviertAusblenden = el.checked; controller.render(); }
         if (el.matches("[data-filter='planning-open']")) { state.filters.planning.onlyOpen = el.checked; controller.render(); }
         if (el.matches("[data-filter='planning-overdue']")) { state.filters.planning.onlyOverdue = el.checked; controller.render(); }
+        if (el.matches("[data-filter='planning-groupby']")) { state.filters.planning.groupBy = el.value; controller.render(); }
+        if (el.matches("[data-filter='planning-sortdir']")) { state.filters.planning.sortDir = el.value; controller.render(); }
         if (el.matches("[data-filter='history-kontaktart']")) { state.filters.history.kontaktart = el.value; controller.render(); }
         if (el.matches("[data-filter='history-leadbbz']")) { state.filters.history.leadbbz = el.value; controller.render(); }
         if (el.matches("[data-filter='events-open']")) { state.filters.events.onlyWithOpenTasks = el.checked; controller.render(); }
@@ -1207,40 +1231,46 @@
     },
 
     renderTaskForm(payload = {}) {
-      const prefillContactId = Number(payload.prefillContactId || 0) || "";
+      const mode = payload.mode || "create";
+      const itemId = Number(payload.itemId || 0) || null;
+      const task = mode === "edit" ? state.enriched.tasks.find(t => t.id === itemId) || null : null;
+      const prefillContactId = Number(payload.prefillContactId || task?.contactId || 0) || "";
       const LT = CONFIG.lists.tasks;
+      const title = mode === "edit" ? "Aufgabe bearbeiten" : "Aufgabe erfassen";
+
       return `
         <div class="bbz-modal-backdrop show">
           <div class="bbz-modal">
             <div class="bbz-modal-header">
-              <div class="bbz-modal-title">Aufgabe erfassen</div>
+              <div class="bbz-modal-title">${title}</div>
               <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
             </div>
-            <form data-modal-form="task" data-mode="create">
+            <form data-modal-form="task" data-mode="${mode}" data-item-id="${itemId || ""}">
               <div class="bbz-modal-body">
                 <div class="bbz-form-grid">
                   <div class="bbz-field bbz-span-2">
                     <label>Titel *</label>
-                    <input class="bbz-input" name="title" required placeholder="Was ist zu tun?" />
+                    <input class="bbz-input" name="title" required value="${helpers.escapeHtml(task?.title || "")}" placeholder="Was ist zu tun?" />
                   </div>
                   <div class="bbz-field">
                     <label>Kontakt *</label>
-                    <select class="bbz-select" name="kontaktLookupId" required>
+                    <select class="bbz-select" name="kontaktLookupId" required ${mode === "edit" ? "disabled" : ""}>
                       <option value="">— bitte waehlen —</option>
-                      ${state.enriched.contacts.filter(c => !c.archiviert).map(c => `<option value="${c.id}" ${String(prefillContactId) === String(c.id) ? "selected" : ""}>${helpers.escapeHtml(c.fullName || c.nachname)}${c.firmTitle ? " — " + helpers.escapeHtml(c.firmTitle) : ""}</option>`).join("")}
+                      ${state.enriched.contacts.filter(c => !c.archiviert || (task && c.id === task.contactId)).map(c => `<option value="${c.id}" ${String(prefillContactId) === String(c.id) ? "selected" : ""}>${helpers.escapeHtml(c.fullName || c.nachname)}${c.firmTitle ? " — " + helpers.escapeHtml(c.firmTitle) : ""}</option>`).join("")}
                     </select>
+                    ${mode === "edit" ? `<input type="hidden" name="kontaktLookupId" value="${prefillContactId}" />` : ""}
                   </div>
                   <div class="bbz-field">
                     <label>Deadline</label>
-                    <input type="date" class="bbz-input" name="deadline" />
+                    <input type="date" class="bbz-input" name="deadline" value="${helpers.toDateInput(task?.deadline || "")}" />
                   </div>
                   <div class="bbz-field">
                     <label>Status</label>
-                    ${helpers.choiceSelectHtml("status", LT, "Status", "")}
+                    ${helpers.choiceSelectHtml("status", LT, "Status", task?.status || "")}
                   </div>
                   <div class="bbz-field">
                     <label>Leadbbz</label>
-                    ${helpers.choiceSelectHtml("leadbbz", LT, "Leadbbz", "")}
+                    ${helpers.choiceSelectHtml("leadbbz", LT, "Leadbbz", task?.leadbbz || "")}
                   </div>
                 </div>
               </div>
@@ -1420,11 +1450,13 @@
               </div>
             </section>
             <section class="bbz-section">
-              <div class="bbz-section-header"><div><div class="bbz-section-title">Aufgaben</div><div class="bbz-section-subtitle">Alle Tasks der Firma</div></div></div>
+              <div class="bbz-section-header"><div><div class="bbz-section-title">Aufgaben</div><div class="bbz-section-subtitle">Alle Tasks der Firma</div></div>
+                <button class="bbz-button bbz-button-secondary" style="height:32px;font-size:13px;" data-action="open-task-form" data-firm-id="${firm.id}">+ Task</button>
+              </div>
               <div class="bbz-section-body">
                 <div class="bbz-table-wrap">
                   <table class="bbz-table">
-                    <thead><tr><th>Titel</th><th>Deadline</th><th>Status</th><th>Kontaktperson</th></tr></thead>
+                    <thead><tr><th>Titel</th><th>Deadline</th><th>Status</th><th>Kontaktperson</th><th>Aktionen</th></tr></thead>
                     <tbody>
                       ${firm.tasks.length ? firm.tasks.map(t => `
                         <tr>
@@ -1432,7 +1464,11 @@
                           <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
                           <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.escapeHtml(t.status) || '<span class="bbz-muted">—</span>'}</td>
                           <td>${t.contactId ? `<a class="bbz-link" data-action="open-contact" data-id="${t.contactId}">${helpers.escapeHtml(t.contactName || "Kontakt")}</a>` : helpers.escapeHtml(t.contactName || "—")}</td>
-                        </tr>`).join("") : `<tr><td colspan="4">${ui.emptyBlock("Keine Aufgaben vorhanden.")}</td></tr>`}
+                          <td style="white-space:nowrap;">
+                            <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 8px;margin-right:3px;" data-action="edit-task" data-id="${t.id}">Bearbeiten</button>
+                            <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 8px;color:var(--red);border-color:var(--red);" data-action="delete-task" data-id="${t.id}" data-title="${helpers.escapeHtml(t.title)}">Löschen</button>
+                          </td>
+                        </tr>`).join("") : `<tr><td colspan="5">${ui.emptyBlock("Keine Aufgaben vorhanden.")}</td></tr>`}
                     </tbody>
                   </table>
                 </div>
@@ -1585,11 +1621,13 @@
               </div>
             </section>
             <section class="bbz-section">
-              <div class="bbz-section-header"><div><div class="bbz-section-title">Tasks</div><div class="bbz-section-subtitle">Aufgaben dieser Person</div></div></div>
+              <div class="bbz-section-header"><div><div class="bbz-section-title">Tasks</div><div class="bbz-section-subtitle">Aufgaben dieser Person</div></div>
+                <button class="bbz-button bbz-button-primary" style="height:32px;font-size:13px;" data-action="open-task-form" data-contact-id="${contact.id}">+ Task</button>
+              </div>
               <div class="bbz-section-body">
                 <div class="bbz-table-wrap">
                   <table class="bbz-table">
-                    <thead><tr><th>Titel</th><th>Deadline</th><th>Status</th><th>Firma</th></tr></thead>
+                    <thead><tr><th>Titel</th><th>Deadline</th><th>Status</th><th>Firma</th><th>Aktionen</th></tr></thead>
                     <tbody>
                       ${contactTasks.length ? contactTasks.map(t => `
                         <tr>
@@ -1597,7 +1635,11 @@
                           <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
                           <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.escapeHtml(t.status) || '<span class="bbz-muted">—</span>'}</td>
                           <td>${t.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${t.firmId}">${helpers.escapeHtml(t.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
-                        </tr>`).join("") : `<tr><td colspan="4">${ui.emptyBlock("Keine Tasks vorhanden.")}</td></tr>`}
+                          <td style="white-space:nowrap;">
+                            <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 8px;margin-right:3px;" data-action="edit-task" data-id="${t.id}">Bearbeiten</button>
+                            <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 8px;color:var(--red);border-color:var(--red);" data-action="delete-task" data-id="${t.id}" data-title="${helpers.escapeHtml(t.title)}">Löschen</button>
+                          </td>
+                        </tr>`).join("") : `<tr><td colspan="5">${ui.emptyBlock("Keine Tasks vorhanden.")}</td></tr>`}
                     </tbody>
                   </table>
                 </div>
@@ -1610,23 +1652,79 @@
 
     planning() {
       const filters = state.filters.planning;
-      const rows = state.enriched.tasks.filter(t => {
+      const statusChoices = state.meta.choices?.[CONFIG.lists.tasks]?.["Status"] || [];
+
+      const baseRows = state.enriched.tasks.filter(t => {
         const search = filters.search.trim().toLowerCase();
         const searchMatch = !search || [t.title, t.status, t.contactName, t.firmTitle, t.leadbbz].some(v => helpers.textIncludes(v, search));
         return searchMatch && (!filters.onlyOpen || t.isOpen) && (!filters.onlyOverdue || t.isOverdue);
       });
 
-      const openTasks = state.enriched.tasks.filter(t => t.isOpen).length;
+      // Deadline-Sortierung
+      const sorted = [...baseRows].sort((a, b) =>
+        filters.sortDir === "desc"
+          ? helpers.compareDateDesc(a.deadline, b.deadline)
+          : helpers.compareDateAsc(a.deadline, b.deadline)
+      );
+
+      // Gruppierung
+      const groupBy = filters.groupBy;
+      let groups = [];
+      if (groupBy === "none") {
+        groups = [{ key: null, label: null, rows: sorted }];
+      } else {
+        const map = new Map();
+        sorted.forEach(t => {
+          const key = (groupBy === "status" ? t.status : t.leadbbz) || "—";
+          if (!map.has(key)) map.set(key, []);
+          map.get(key).push(t);
+        });
+        groups = [...map.entries()]
+          .sort((a, b) => a[0].localeCompare(b[0], "de"))
+          .map(([key, rows]) => ({ key, label: key, rows }));
+      }
+
+      const openTasks   = state.enriched.tasks.filter(t => t.isOpen).length;
       const overdueTasks = state.enriched.tasks.filter(t => t.isOpen && t.isOverdue).length;
       const nextWeekTasks = state.enriched.tasks.filter(t => {
         if (!t.isOpen) return false;
         const d = helpers.toDate(t.deadline);
         if (!d) return false;
         const today = helpers.todayStart();
-        const in7 = new Date(today);
-        in7.setDate(in7.getDate() + 7);
+        const in7 = new Date(today); in7.setDate(in7.getDate() + 7);
         return d >= today && d <= in7;
       }).length;
+
+      const sortIcon = filters.sortDir === "asc" ? " ↑" : " ↓";
+
+      const renderTaskRow = (t) => {
+        const statusCell = statusChoices.length
+          ? `<select class="bbz-select" style="height:32px;font-size:13px;" data-action="task-status-change" data-task-id="${t.id}">${statusChoices.map(s => `<option value="${helpers.escapeHtml(s)}" ${t.status === s ? "selected" : ""}>${helpers.escapeHtml(s)}</option>`).join("")}</select>`
+          : `<span class="${helpers.statusClass(t.status, t.deadline)}">${helpers.escapeHtml(t.status) || "—"}</span>`;
+        return `
+          <tr>
+            <td>${helpers.escapeHtml(t.title) || '<span class="bbz-muted">—</span>'}</td>
+            <td class="${helpers.statusClass(t.status, t.deadline)}" style="cursor:pointer;white-space:nowrap;" data-action="toggle-sort">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
+            <td>${statusCell}</td>
+            <td>${t.contactId ? `<a class="bbz-link" data-action="open-contact" data-id="${t.contactId}">${helpers.escapeHtml(t.contactName || "Kontakt")}</a>` : helpers.escapeHtml(t.contactName || "—")}</td>
+            <td>${t.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${t.firmId}">${helpers.escapeHtml(t.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
+            <td style="white-space:nowrap;">
+              <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 9px;margin-right:4px;" data-action="edit-task" data-id="${t.id}">Bearbeiten</button>
+              <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 9px;color:var(--red);border-color:var(--red);" data-action="delete-task" data-id="${t.id}" data-title="${helpers.escapeHtml(t.title)}">Löschen</button>
+            </td>
+          </tr>`;
+      };
+
+      const tableHead = `<thead><tr>
+        <th>Titel</th>
+        <th style="cursor:pointer;user-select:none;" data-action="toggle-sort">Deadline${sortIcon}</th>
+        <th>Status</th><th>Kontaktperson</th><th>Firma</th><th>Aktionen</th>
+      </tr></thead>`;
+
+      const tableBody = groups.map(g => `
+        ${g.label ? `<tr><td colspan="6" style="background:#f1f5fb;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:7px 12px;">${helpers.escapeHtml(g.label)} <span style="font-weight:400;">(${g.rows.length})</span></td></tr>` : ""}
+        ${g.rows.length ? g.rows.map(renderTaskRow).join("") : `<tr><td colspan="6">${ui.emptyBlock("Keine Tasks.")}</td></tr>`}
+      `).join("");
 
       return `
         <div>
@@ -1637,33 +1735,25 @@
             ${this.kpiBlock("Naechste 7 Tage", nextWeekTasks)}
           </div>
           <section class="bbz-section">
-            <div class="bbz-section-header"><div><div class="bbz-section-title">Planung</div><div class="bbz-section-subtitle">Aufgabenuebersicht mit Fokus auf offen und ueberfaellig</div></div>
+            <div class="bbz-section-header">
+              <div><div class="bbz-section-title">Planung</div><div class="bbz-section-subtitle">Aufgabenuebersicht mit Fokus auf offen und ueberfaellig</div></div>
               <button class="bbz-button bbz-button-primary" data-action="open-task-form">+ Task</button>
             </div>
             <div class="bbz-section-body">
-              <div class="bbz-filters-3">
+              <div class="bbz-filters-4" style="grid-template-columns:2fr 1fr 1fr 1fr;">
                 <input class="bbz-input" data-filter="planning-search" type="text" placeholder="Suche nach Titel, Firma, Kontakt, Status ..." value="${helpers.escapeHtml(filters.search)}" />
+                <select class="bbz-select" data-filter="planning-groupby">
+                  <option value="none" ${filters.groupBy === "none" ? "selected" : ""}>Kein Gruppierung</option>
+                  <option value="status" ${filters.groupBy === "status" ? "selected" : ""}>Gruppe: Status</option>
+                  <option value="leadbbz" ${filters.groupBy === "leadbbz" ? "selected" : ""}>Gruppe: Leadbbz</option>
+                </select>
                 <label class="bbz-checkbox"><input type="checkbox" data-filter="planning-open" ${filters.onlyOpen ? "checked" : ""} /> Nur offene Tasks</label>
-                <label class="bbz-checkbox"><input type="checkbox" data-filter="planning-overdue" ${filters.onlyOverdue ? "checked" : ""} /> Nur ueberfaellige Tasks</label>
+                <label class="bbz-checkbox"><input type="checkbox" data-filter="planning-overdue" ${filters.onlyOverdue ? "checked" : ""} /> Nur ueberfaellige</label>
               </div>
               <div class="bbz-table-wrap">
-                <table class="bbz-table">
-                  <thead><tr><th>Titel</th><th>Deadline</th><th>Status</th><th>Kontaktperson</th><th>Firma</th></tr></thead>
-                  <tbody>
-                    ${rows.length ? rows.map(t => {
-                      const statusChoices = state.meta.choices?.[CONFIG.lists.tasks]?.["Status"] || [];
-                      const statusCell = statusChoices.length
-                        ? `<select class="bbz-select" style="height:32px;font-size:13px;" data-action="task-status-change" data-task-id="${t.id}">${statusChoices.map(s => `<option value="${helpers.escapeHtml(s)}" ${t.status === s ? "selected" : ""}>${helpers.escapeHtml(s)}</option>`).join("")}</select>`
-                        : `<span class="${helpers.statusClass(t.status, t.deadline)}">${helpers.escapeHtml(t.status) || "—"}</span>`;
-                      return `
-                      <tr>
-                        <td>${helpers.escapeHtml(t.title) || '<span class="bbz-muted">—</span>'}</td>
-                        <td class="${helpers.statusClass(t.status, t.deadline)}">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
-                        <td>${statusCell}</td>
-                        <td>${t.contactId ? `<a class="bbz-link" data-action="open-contact" data-id="${t.contactId}">${helpers.escapeHtml(t.contactName || "Kontakt")}</a>` : helpers.escapeHtml(t.contactName || "—")}</td>
-                        <td>${t.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${t.firmId}">${helpers.escapeHtml(t.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
-                      </tr>`;}).join("") : `<tr><td colspan="5">${ui.emptyBlock("Keine Tasks fuer die aktuelle Filterung gefunden.")}</td></tr>`}
-                  </tbody>
+                <table class="bbz-table" style="min-width:1000px;">
+                  ${tableHead}
+                  <tbody>${baseRows.length ? tableBody : `<tr><td colspan="6">${ui.emptyBlock("Keine Tasks fuer die aktuelle Filterung gefunden.")}</td></tr>`}</tbody>
                 </table>
               </div>
             </div>
@@ -2126,14 +2216,31 @@
       this.render();
     },
 
-    openTaskForm(contactId = null, firmId = null) {
+    openTaskForm(contactId = null, firmId = null, itemId = null) {
       let prefillContactId = contactId;
       if (!prefillContactId && firmId) {
         const firm = dataModel.getFirmById(firmId);
         prefillContactId = firm?.contacts?.[0]?.id || null;
       }
-      state.modal = { type: "task", payload: { prefillContactId } };
+      const mode = itemId ? "edit" : "create";
+      state.modal = { type: "task", payload: { prefillContactId, mode, itemId } };
       this.render();
+    },
+
+    async handleDeleteTask(id, title) {
+      if (!confirm(`Aufgabe "${title}" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`)) return;
+      try {
+        ui.setLoading(true);
+        await api.deleteItem(SCHEMA.tasks.listTitle, Number(id));
+        ui.setMessage(`Aufgabe "${title}" wurde gelöscht.`, "success");
+        await api.loadAll();
+      } catch (error) {
+        console.error("handleDeleteTask:", error);
+        ui.setMessage(`Fehler beim Löschen: ${error.message}`, "error");
+      } finally {
+        ui.setLoading(false);
+        this.render();
+      }
     },
 
     async handleHistoryModalSubmit(form) {
@@ -2194,36 +2301,43 @@
 
     async handleTaskModalSubmit(form) {
       const fd = new FormData(form);
+      const mode = form.dataset.mode || "create";
+      const itemId = Number(form.dataset.itemId || 0) || null;
       const title = fd.get("title") || "";
       const kontaktLookupId = fd.get("kontaktLookupId") || "";
 
       if (!title.trim()) { ui.setMessage("Titel ist ein Pflichtfeld.", "error"); return; }
       if (!kontaktLookupId) { ui.setMessage("Bitte einen Kontakt waehlen.", "error"); return; }
 
-      const createFields = {
-        Title: title.trim(),
-        NameLookupId: Number(kontaktLookupId)
-      };
-
-      const patchFields = {};
       const deadline = fd.get("deadline") || "";
       const status = fd.get("status") || "";
       const leadbbz = fd.get("leadbbz") || "";
 
-      if (deadline) patchFields.Deadline = deadline + "T00:00:00Z";
-      if (status) patchFields.Status = status;
-      if (leadbbz) patchFields.Leadbbz = leadbbz;
-
       ui.setLoading(true);
       ui.setMessage("");
       try {
-        const created = await api.postItem(SCHEMA.tasks.listTitle, createFields);
-        const newId = created?.id || created?.fields?.id;
-        if (!newId) throw new Error("Neue Item-ID fehlt im POST-Response.");
-        if (Object.keys(patchFields).length > 0) {
-          await api.patchItem(SCHEMA.tasks.listTitle, Number(newId), patchFields);
+        if (mode === "edit") {
+          if (!itemId) throw new Error("itemId fehlt fuer PATCH.");
+          const patchFields = { Title: title.trim() };
+          if (deadline) patchFields.Deadline = deadline + "T00:00:00Z";
+          if (status) patchFields.Status = status;
+          if (leadbbz) patchFields.Leadbbz = leadbbz;
+          await api.patchItem(SCHEMA.tasks.listTitle, itemId, patchFields);
+          ui.setMessage("Aufgabe wurde gespeichert.", "success");
+        } else {
+          const createFields = { Title: title.trim(), NameLookupId: Number(kontaktLookupId) };
+          const patchFields = {};
+          if (deadline) patchFields.Deadline = deadline + "T00:00:00Z";
+          if (status) patchFields.Status = status;
+          if (leadbbz) patchFields.Leadbbz = leadbbz;
+          const created = await api.postItem(SCHEMA.tasks.listTitle, createFields);
+          const newId = created?.id || created?.fields?.id;
+          if (!newId) throw new Error("Neue Item-ID fehlt im POST-Response.");
+          if (Object.keys(patchFields).length > 0) {
+            await api.patchItem(SCHEMA.tasks.listTitle, Number(newId), patchFields);
+          }
+          ui.setMessage("Aufgabe wurde erstellt.", "success");
         }
-        ui.setMessage("Aufgabe wurde erfolgreich erstellt.", "success");
         await api.loadAll();
         this.closeModal();
       } catch (error) {
