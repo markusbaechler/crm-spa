@@ -1476,8 +1476,6 @@
       const cCount = state.enriched.firms.filter(f => String(f.klassifizierung).toUpperCase().includes("C")).length;
       const allOpenTasks   = state.enriched.tasks.filter(t => t.isOpen);
       const overdueTasks   = allOpenTasks.filter(t => t.isOverdue);
-      const urgentFirms    = [...state.enriched.firms].filter(f => f.openTasksCount > 0).sort((a, b) => helpers.compareDateAsc(a.nextDeadline, b.nextDeadline)).slice(0, 6);
-      const latestFirms    = [...state.enriched.firms].filter(f => f.latestActivity).sort((a, b) => helpers.compareDateDesc(a.latestActivity, b.latestActivity)).slice(0, 6);
 
       // Fokus-Bar: überfällige + diese Woche fällig
       const today   = helpers.todayStart();
@@ -1617,20 +1615,68 @@
             <div class="bbz-cockpit-stack">
               <section class="bbz-section">
                 <div class="bbz-section-header">
-                  <div><div class="bbz-section-title">Dringend</div><div class="bbz-section-subtitle">Firmen mit offenen Tasks</div></div>
-                  ${urgentFirms.length > 0 ? `<a class="bbz-link" style="font-size:12px;" data-action="navigate-planning">Alle →</a>` : ""}
+                  <div><div class="bbz-section-title">Aktivitäten</div><div class="bbz-section-subtitle">Firmen mit offenen Tasks nach Fälligkeit</div></div>
+                  <a class="bbz-link" style="font-size:12px;" data-action="navigate-planning">Alle →</a>
                 </div>
-                <div class="bbz-section-body">${urgentFirms.length ? `<div class="bbz-mini-list">${urgentFirms.map(f => {
-                  const hasOverdue = f.tasks.some(t => t.isOpen && t.isOverdue);
-                  return this.miniItem(
-                    `<a class="bbz-link" data-action="open-firm" data-id="${f.id}">${helpers.escapeHtml(f.title)}</a>`,
-                    `${f.openTasksCount} Task${f.openTasksCount !== 1 ? "s" : ""} · ${hasOverdue ? '<span style="color:var(--red);font-weight:600;">überfällig</span>' : "nächste: " + helpers.relativeDate(f.nextDeadline)}`
-                  );
-                }).join("")}</div>` : ui.emptyBlock("Keine dringenden Firmen.")}</div>
-              </section>
-              <section class="bbz-section">
-                <div class="bbz-section-header"><div><div class="bbz-section-title">Zuletzt aktiv</div><div class="bbz-section-subtitle">Jüngste Aktivitäten</div></div></div>
-                <div class="bbz-section-body">${latestFirms.length ? `<div class="bbz-mini-list">${latestFirms.map(f => this.miniItem(`<a class="bbz-link" data-action="open-firm" data-id="${f.id}">${helpers.escapeHtml(f.title)}</a>`, `${helpers.relativeDate(f.latestActivity)}`)).join("")}</div>` : ui.emptyBlock("Noch keine Aktivitäten vorhanden.")}</div>
+                <div class="bbz-section-body">
+                  ${(() => {
+                    const today = helpers.todayStart();
+                    const in30  = new Date(today); in30.setDate(in30.getDate() + 30);
+
+                    // Alle Firmen mit offenen Tasks, nach nächster Deadline sortiert
+                    const firmsWithTasks = [...state.enriched.firms]
+                      .filter(f => f.openTasksCount > 0)
+                      .sort((a, b) => helpers.compareDateAsc(a.nextDeadline, b.nextDeadline));
+
+                    // Zone 1: Fällig — Deadline ≤ heute (inkl. keine Deadline wenn überfällige Tasks)
+                    const zoneFaellig = firmsWithTasks.filter(f => {
+                      const d = helpers.toDate(f.nextDeadline);
+                      return d ? d <= today : f.tasks.some(t => t.isOpen && t.isOverdue);
+                    });
+
+                    // Zone 2: Dieser Monat — Deadline 1–30 Tage
+                    const zoneMonat = firmsWithTasks.filter(f => {
+                      const d = helpers.toDate(f.nextDeadline);
+                      return d && d > today && d <= in30;
+                    });
+
+                    // Zone 3: Übrige — Deadline > 30 Tage oder keine Deadline
+                    const zoneUebrige = firmsWithTasks.filter(f => {
+                      const d = helpers.toDate(f.nextDeadline);
+                      return !d ? !f.tasks.some(t => t.isOpen && t.isOverdue) : d > in30;
+                    });
+
+                    const zoneHtml = (label, color, firms, emptyText) => {
+                      if (firms.length === 0 && emptyText === null) return "";
+                      return `
+                        <div class="bbz-zone" style="margin-bottom:12px;">
+                          <div class="bbz-zone-label" style="color:${color};font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin-bottom:6px;">
+                            ${label} <span style="font-weight:400;opacity:.7;">(${firms.length})</span>
+                          </div>
+                          ${firms.length ? `<div class="bbz-mini-list">${firms.slice(0, 6).map(f => {
+                            const d = helpers.toDate(f.nextDeadline);
+                            const meta = d
+                              ? (d <= today
+                                  ? `<span style="color:var(--red);font-weight:600;">${helpers.relativeDate(f.nextDeadline)}</span>`
+                                  : helpers.relativeDate(f.nextDeadline))
+                              : `${f.openTasksCount} Task${f.openTasksCount !== 1 ? "s" : ""}`;
+                            return `<div class="bbz-mini-item" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                              <a class="bbz-link bbz-mini-title" data-action="navigate-planning">${helpers.escapeHtml(f.title)}</a>
+                              <span class="bbz-mini-meta" style="white-space:nowrap;flex-shrink:0;">${meta}</span>
+                            </div>`;
+                          }).join("")}${firms.length > 6 ? `<div style="font-size:12px;color:var(--muted);padding:4px 0;">+${firms.length - 6} weitere</div>` : ""}</div>`
+                          : `<div style="font-size:12px;color:var(--muted);font-style:italic;">—</div>`}
+                        </div>`;
+                    };
+
+                    const hasAny = zoneFaellig.length + zoneMonat.length + zoneUebrige.length > 0;
+                    if (!hasAny) return ui.emptyBlock("Keine offenen Tasks vorhanden.");
+
+                    return zoneHtml("Fällig", "var(--red)", zoneFaellig, "")
+                         + zoneHtml("Dieser Monat", "var(--amber)", zoneMonat, "")
+                         + zoneHtml("Übrige", "var(--muted)", zoneUebrige, "");
+                  })()}
+                </div>
               </section>
             </div>
           </div>
