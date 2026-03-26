@@ -1417,8 +1417,8 @@
               <div class="bbz-modal-title">${title}</div>
               <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
             </div>
-            <form data-modal-form="contact" data-mode="${mode}" data-item-id="${itemId || ""}">
-              <div class="bbz-modal-body">
+            <form data-modal-form="contact" data-mode="${mode}" data-item-id="${itemId || ""}" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;">
+              <div class="bbz-modal-body" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;">
                 <div class="bbz-form-grid">
 
                   <div class="bbz-field">
@@ -1527,8 +1527,8 @@
               <div class="bbz-modal-title">${title}</div>
               <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
             </div>
-            <form data-modal-form="firm" data-mode="${mode}" data-item-id="${firmId || ""}">
-              <div class="bbz-modal-body">
+            <form data-modal-form="firm" data-mode="${mode}" data-item-id="${firmId || ""}" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;">
+              <div class="bbz-modal-body" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;">
                 <div class="bbz-form-grid">
                   <div class="bbz-field bbz-span-2">
                     <label>Firmenname *</label>
@@ -1591,8 +1591,8 @@
               <div class="bbz-modal-title">${title}</div>
               <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
             </div>
-            <form data-modal-form="history" data-mode="${mode}" data-item-id="${itemId || ""}">
-              <div class="bbz-modal-body">
+            <form data-modal-form="history" data-mode="${mode}" data-item-id="${itemId || ""}" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;">
+              <div class="bbz-modal-body" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;">
                 <div class="bbz-form-grid">
                   <div class="bbz-field">
                     <label>Kontakt *</label>
@@ -1655,8 +1655,8 @@
               <div class="bbz-modal-title">${title}</div>
               <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
             </div>
-            <form data-modal-form="task" data-mode="${mode}" data-item-id="${itemId || ""}">
-              <div class="bbz-modal-body">
+            <form data-modal-form="task" data-mode="${mode}" data-item-id="${itemId || ""}" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;">
+              <div class="bbz-modal-body" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;">
                 <div class="bbz-form-grid">
                   <div class="bbz-field bbz-span-2">
                     <label>Titel *</label>
@@ -1756,8 +1756,8 @@
               <div class="bbz-modal-title">${isEventhistory ? "Eventhistory setzen" : `${helpers.escapeHtml(activeCategory)} — Event setzen`}</div>
               <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
             </div>
-            <form data-modal-form="batch-event" data-event-name="${helpers.escapeHtml(activeCategory)}" data-mode="${mode}">
-              <div class="bbz-modal-body">
+            <form data-modal-form="batch-event" data-event-name="${helpers.escapeHtml(activeCategory)}" data-mode="${mode}" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;">
+              <div class="bbz-modal-body" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;">
 
                 ${isEventhistory ? `
                 <!-- Schritt 1: Kategorie wählen -->
@@ -2042,9 +2042,9 @@
                   <div class="bbz-section-title">${filters.radarMode ? "Pflege A/B" : "Firmen-Cockpit"}</div>
                   <div class="bbz-section-subtitle">${filters.radarMode ? `${radarRows.filter(f => helpers.firmSignal(f) !== "ok").length} mit Handlungsbedarf · ${onTrackCount} On Track ✓` : "Segment, Tasks und Fristen auf einen Blick"}</div>
                 </div>
-                <div style="display:flex;gap:8px;align-items:center;">
-                  <!-- Tab-Bar -->
-                  <div style="display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--panel-2);">
+                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                  <!-- Tab-Bar: nur Desktop -->
+                  <div class="bbz-desktop-only" style="display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--panel-2);">
                     <button class="bbz-button" style="height:32px;font-size:12px;border:none;border-radius:0;${!filters.radarMode ? "background:var(--panel);color:var(--text);font-weight:700;" : "background:none;color:var(--muted);"}"
                       data-action="kpi-filter" data-scope="firms-radar" ${!filters.radarMode ? "disabled" : ""}>
                       Alle Firmen
@@ -3270,9 +3270,9 @@
                   <div class="bbz-section-title">${filters.radarMode ? "Pflege A/B" : "Aktivitäten"}</div>
                   <div class="bbz-section-subtitle">${filters.radarMode ? `${radarNever.length + radarCold.length + radarOverdue.length} mit Handlungsbedarf · ${radarOk.length} On Track ✓` : filters.groupBy === "firm" ? "Gruppiert nach Firma" : "Chronologische Timeline"}</div>
                 </div>
-                <div style="display:flex;gap:6px;align-items:center;">
-                  <!-- Tab-Bar -->
-                  <div style="display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--panel-2);">
+                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                  <!-- Tab-Bar: nur Desktop (Mobile nutzt bbz-history-tab-bar) -->
+                  <div class="bbz-desktop-only" style="display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--panel-2);">
                     <button class="bbz-button" style="height:32px;font-size:12px;border:none;border-radius:0;padding:0 10px;${!filters.radarMode ? "background:var(--panel);color:var(--text);font-weight:700;" : "background:none;color:var(--muted);"}"
                       data-action="kpi-filter" data-scope="history-radar" ${!filters.radarMode ? "disabled" : ""}>
                       Aktivitäten
@@ -3287,7 +3287,7 @@
                     <option value="date" ${filters.groupBy === "date" ? "selected" : ""}>📅 Nach Datum</option>
                     <option value="firm" ${filters.groupBy === "firm" ? "selected" : ""}>🏢 Nach Firma</option>
                   </select>
-                  <button class="bbz-button bbz-button-primary" style="height:32px;font-size:12px;"
+                  <button class="bbz-button bbz-button-primary" style="height:32px;font-size:12px;flex-shrink:0;"
                     ${activeFirmHasNoContacts
                       ? `disabled title="Zuerst einen Kontakt bei ${helpers.escapeHtml(activeFirm.title)} erfassen"`
                       : `data-action="open-history-form"`}>+ Aktivität</button>` : ""}
@@ -3517,11 +3517,11 @@
             <div class="bbz-kpi bbz-kpi-blue" style="display:flex;flex-direction:column;justify-content:space-between;">
               <div>
                 <div class="bbz-kpi-label">Event Nachbearbeitung</div>
-                <div class="bbz-kpi-value" style="font-size:22px;margin-top:4px;letter-spacing:-0.03em;">Vergangene<br>Teilnahmen</div>
+                <div style="font-size:15px;font-weight:700;margin-top:4px;letter-spacing:-0.02em;line-height:1.3;">Vergangene Teilnahmen</div>
               </div>
-              <button class="bbz-button bbz-button-primary" style="margin-top:10px;height:34px;font-size:12px;width:100%;"
+              <button class="bbz-button bbz-button-primary" style="margin-top:10px;"
                 data-action="open-batch-event" data-event-name="" data-mode="eventhistory">
-                Vergangene Eventteilnahmen pflegen
+                Teilnahmen pflegen
               </button>
             </div>
 
