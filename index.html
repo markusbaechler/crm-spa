@@ -393,9 +393,9 @@
       }
       .bbz-modal {
         max-width: 100%;
-        /* Höhe: voller Viewport minus Header (54px) minus etwas Luft */
-        height: calc(100dvh - 54px);
-        max-height: calc(100dvh - 54px);
+        /* 85vh ist zuverlässiger als dvh auf Chrome Android mit sichtbarer Browser-Chrome */
+        height: 85vh;
+        max-height: 85vh;
         border-radius: var(--r-xl) var(--r-xl) 0 0;
         border-bottom: none;
         display: flex;
@@ -410,16 +410,16 @@
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
         padding: 14px 16px;
-        /* Verhindert dass Content hinter Footer verschwindet */
-        padding-bottom: 8px;
       }
       .bbz-modal-footer {
         flex-shrink: 0;
-        padding: 10px 16px;
-        /* Sicherstellen dass Footer über Bottom-Nav liegt */
-        padding-bottom: max(10px, env(safe-area-inset-bottom));
+        padding: 12px 16px;
+        padding-bottom: max(12px, env(safe-area-inset-bottom));
         background: var(--panel-2);
         border-top: 1px solid var(--line-2);
+        /* Sicherstellen dass Footer über Bottom-Nav liegt */
+        position: relative;
+        z-index: 1;
       }
       /* Speichern-Button im Footer: volle Breite auf Mobile */
       .bbz-modal-footer .bbz-button-primary {
@@ -434,7 +434,7 @@
       /* Batch-Event-Modal: Liste scrollbar halten */
       .bbz-modal-body .bbz-table-wrap {
         display: block !important;
-        max-height: 45vh;
+        max-height: 40vh;
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
       }
