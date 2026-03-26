@@ -1547,7 +1547,7 @@
               <div style="border-top:1px solid var(--line-2);margin:6px 0 5px;"></div>
               <!-- Reihe 2: Zusatzfilter (additiv, orthogonal) -->
               <div class="bbz-kpi-chips" style="display:flex;gap:4px;flex-wrap:wrap;">
-                <button class="bbz-kpi-chip ${filters.vip === "yes" ? "bbz-kpi-chip-active-gold" : ""}" data-action="kpi-filter" data-scope="firms-vip" data-value="yes">♛ VIP <span>${state.enriched.firms.filter(f=>f.vip).length}</span></button>
+                <button class="bbz-kpi-chip ${filters.vip === "yes" ? "bbz-kpi-chip-active-gold" : ""}" data-action="kpi-filter" data-scope="firms-vip" data-value="yes">♛ <span>${state.enriched.firms.filter(f=>f.vip).length}</span></button>
                 ${state.meta.privateFirmId ? `<button class="bbz-kpi-chip ${filters.onlyPrivat ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-privat" data-value="yes">👤 Privat <span>${state.enriched.contacts.filter(c => c.firmId === state.meta.privateFirmId && !c.archiviert).length}</span></button>` : ""}
               </div>
             </div>
@@ -1637,7 +1637,7 @@
                           <td><a class="bbz-link" data-action="open-firm" data-id="${firm.id}">${helpers.escapeHtml(firm.title)}</a><div class="bbz-subtext">${helpers.escapeHtml(firm.hauptnummer || "—")}</div></td>
                           <td>${helpers.escapeHtml(helpers.joinNonEmpty([firm.plz, firm.ort], " ")) || '<span class="bbz-muted">—</span>'}</td>
                           <td>${firm.klassifizierung ? `<span class="${helpers.firmBadgeClass(firm.klassifizierung)}">${helpers.escapeHtml(firm.klassifizierung)}</span>` : '<span class="bbz-muted">—</span>'}</td>
-                          <td>${firm.vip ? '<span class="bbz-pill bbz-pill-vip">VIP</span>' : '<span class="bbz-muted">—</span>'}</td>
+                          <td>${firm.vip ? '<span class="bbz-pill bbz-pill-vip">♛</span>' : '<span class="bbz-muted">—</span>'}</td>
                           <td>${firm.contactsCount}</td>
                           <td>${firm.openTasksCount > 0 ? `<span class="${overdueTasks.some(t => t.firmId === firm.id) ? "bbz-danger" : ""}">${firm.openTasksCount}</span>` : '<span class="bbz-muted">—</span>'}</td>
                           <td class="${firm.nextDeadline && helpers.isOverdue(firm.nextDeadline) ? "bbz-danger" : ""}">${firm.nextDeadline ? helpers.relativeDate(firm.nextDeadline) : '<span class="bbz-muted">—</span>'}</td>
@@ -1735,7 +1735,7 @@
                 <div class="bbz-detail-subtitle">${helpers.escapeHtml(helpers.joinNonEmpty([firm.adresse, helpers.joinNonEmpty([firm.plz, firm.ort], " "), firm.land], " · ")) || "Keine Adresse erfasst"}</div>
                 <div class="flex items-center gap-2 flex-wrap mt-3">
                   ${firm.klassifizierung ? `<span class="${helpers.firmBadgeClass(firm.klassifizierung)}">${helpers.escapeHtml(firm.klassifizierung)}</span>` : ""}
-                  ${firm.vip ? `<span class="bbz-pill bbz-pill-vip">VIP</span>` : ""}
+                  ${firm.vip ? `<span class="bbz-pill bbz-pill-vip">♛</span>` : ""}
                 </div>
               </div>
               <div class="flex items-center gap-2 flex-wrap">
@@ -1758,7 +1758,7 @@
               <div class="bbz-section-header"><div class="bbz-section-title">Stammdaten</div></div>
               <div class="bbz-section-body">
                 ${ui.kv("Klassifizierung", firm.klassifizierung ? `<span class="${helpers.firmBadgeClass(firm.klassifizierung)}">${helpers.escapeHtml(firm.klassifizierung)}</span>` : '<span class="bbz-muted">—</span>')}
-                ${ui.kv("VIP", firm.vip ? '<span class="bbz-pill bbz-pill-vip">VIP</span>' : '<span class="bbz-muted">Nein</span>')}
+                ${ui.kv("VIP", firm.vip ? '<span class="bbz-pill bbz-pill-vip">♛</span>' : '<span class="bbz-muted">Nein</span>')}
                 ${ui.kv("Adresse", helpers.escapeHtml(firm.adresse) || '<span class="bbz-muted">—</span>')}
                 ${ui.kv("PLZ / Ort", helpers.escapeHtml(helpers.joinNonEmpty([firm.plz, firm.ort], " ")) || '<span class="bbz-muted">—</span>')}
                 ${ui.kv("Land", helpers.escapeHtml(firm.land) || '<span class="bbz-muted">—</span>')}
