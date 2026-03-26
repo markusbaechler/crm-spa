@@ -974,7 +974,6 @@
         if (redirectResponse?.account) {
           state.auth.account = redirectResponse.account;
           state.auth.isAuthenticated = true;
-          // MSAL-Hash aus der URL entfernen und durch saubere Route ersetzen
           history.replaceState(
             { route: CONFIG.defaults.route, firmId: null, contactId: null },
             "",
@@ -984,17 +983,32 @@
       } catch (error) {
         console.warn("handleRedirectPromise Fehler:", error);
         state.meta.lastError = error;
-        // Nicht fatal — App kann trotzdem mit Cache-Account weitermachen
       }
 
-      // Accounts aus Cache nachladen falls kein Redirect-Response
+      // Accounts aus Cache nachladen — auch wenn handleRedirectPromise null zurückgab
+      // (passiert bei Third-Party-Storage-Beschränkungen in Chrome Android)
       if (!state.auth.account) {
         const accounts = state.auth.msal.getAllAccounts();
         if (accounts.length > 0) {
-          // Tenant-Match bevorzugen — verhindert falschen Account bei Multi-Tenant-Umgebungen
           state.auth.account = accounts.find(a => a.tenantId === CONFIG.graph.tenantId) || accounts[0];
           state.auth.isAuthenticated = true;
         }
+      }
+
+      // Letzter Fallback: Token aus localStorage direkt lesen (MSAL v2 Key-Pattern)
+      if (!state.auth.account) {
+        try {
+          const keys = Object.keys(localStorage).filter(k => k.includes(CONFIG.graph.clientId) && k.includes("homeAccountId"));
+          if (keys.length > 0) {
+            // MSAL hat Account-Daten — nochmals getAllAccounts versuchen nach kurzer Pause
+            await new Promise(r => setTimeout(r, 200));
+            const retryAccounts = state.auth.msal.getAllAccounts();
+            if (retryAccounts.length > 0) {
+              state.auth.account = retryAccounts.find(a => a.tenantId === CONFIG.graph.tenantId) || retryAccounts[0];
+              state.auth.isAuthenticated = true;
+            }
+          }
+        } catch (_) { /* ignore */ }
       }
 
       state.auth.isReady = true;
