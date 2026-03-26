@@ -138,7 +138,7 @@
 
     filters: {
       route: CONFIG.defaults.route,
-      firms: { search: "", klassifizierung: "", vip: "", onlyPrivat: false, sortBy: "title", sortDir: "asc" },
+      firms: { search: "", klassifizierung: "", vip: "", onlyPrivat: false, sortBy: "title", sortDir: "asc", radarMode: false },
       contacts: { search: "", archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden, sortBy: "fullName", sortDir: "asc" },
       planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, onlyOverdue: false, groupBy: "none", sortBy: "deadline", sortDir: "asc" },
       history: { search: "", kontaktart: "", leadbbz: "", groupBy: "date", zeitfenster: "" },
@@ -474,7 +474,17 @@
             state.filters.firms.search = "";
             state.filters.route = "firms";
             state.selection.firmId = null;
-          } else if (scope === "firms-vip") {
+          } else if (scope === "firms-radar") {
+            state.filters.firms.radarMode = !state.filters.firms.radarMode;
+            // Radar-Modus: Filter zurücksetzen für saubere Ansicht
+            if (state.filters.firms.radarMode) {
+              state.filters.firms.search = "";
+              state.filters.firms.klassifizierung = "";
+              state.filters.firms.vip = "";
+              state.filters.firms.onlyPrivat = false;
+            }
+            state.filters.route = "firms";
+            state.selection.firmId = null;
             // VIP ist additiver Toggle — unabhängig von Segment
             state.filters.firms.vip = state.filters.firms.vip === "yes" ? "" : "yes";
             state.filters.firms.onlyPrivat = false;
@@ -493,7 +503,7 @@
             state.filters.route = "contacts";
             state.selection.contactId = null;
             state.modal = null;
-          } else if (scope === "history-zeitfenster") {
+          } else if (scope === "firms-vip") {
             state.filters.history.zeitfenster = state.filters.history.zeitfenster === value ? "" : value;
           } else if (scope === "history-kontaktart") {
             state.filters.history.kontaktart = state.filters.history.kontaktart === value ? "" : value;
@@ -1552,8 +1562,28 @@
       const allOpenTasks   = state.enriched.tasks.filter(t => t.isOpen);
       const overdueTasks   = allOpenTasks.filter(t => t.isOverdue);
 
+      // Radar-Modus: A/B-Kunden mit Signal, priorisiert sortiert
+      const signalPriority = { overdue: 0, never: 1, cold: 2 };
+      const today = helpers.todayStart();
+      const radarRows = state.enriched.firms.filter(f => {
+        const kl = String(f.klassifizierung || "").toUpperCase();
+        if (!kl.includes("A") && !kl.includes("B")) return false;
+        const sig = helpers.firmSignal(f);
+        if (!sig) return false;
+        const search = filters.search.trim().toLowerCase();
+        return !search || helpers.textIncludes(f.title, search);
+      }).sort((a, b) => {
+        const pa = signalPriority[helpers.firmSignal(a)] ?? 9;
+        const pb = signalPriority[helpers.firmSignal(b)] ?? 9;
+        if (pa !== pb) return pa - pb;
+        return helpers.compareDateAsc(a.latestActivity, b.latestActivity);
+      });
+
+      const radarNeverCount   = radarRows.filter(f => helpers.firmSignal(f) === "never").length;
+      const radarColdCount    = radarRows.filter(f => helpers.firmSignal(f) === "cold").length;
+      const radarOverdueCount = radarRows.filter(f => helpers.firmSignal(f) === "overdue").length;
+
       // Fokus-Bar: überfällige + diese Woche fällig
-      const today   = helpers.todayStart();
       const in7     = new Date(today); in7.setDate(in7.getDate() + 7);
       const thisWeek = allOpenTasks.filter(t => { const d = helpers.toDate(t.deadline); return d && d >= today && d <= in7; });      const focusTasks = [...overdueTasks, ...thisWeek.filter(t => !t.isOverdue)]
         .sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline))
@@ -1587,6 +1617,29 @@
         <div>
           ${focusBarHtml}
           <div class="bbz-kpis">
+            ${filters.radarMode ? `
+            <!-- Radar-Modus KPIs -->
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">Pflege-Fälle</div>
+              <div class="bbz-kpi-value">${radarRows.length}</div>
+              <div style="margin-top:6px;font-size:12px;color:var(--muted);">A/B-Kunden mit Handlungsbedarf</div>
+            </div>
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">Nie kontaktiert</div>
+              <div class="bbz-kpi-value" style="color:var(--red);">${radarNeverCount}</div>
+              <div style="margin-top:6px;font-size:12px;color:var(--muted);">A-Kunden ohne History</div>
+            </div>
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">Eingeschlafen</div>
+              <div class="bbz-kpi-value" style="color:var(--amber);">${radarColdCount}</div>
+              <div style="margin-top:6px;font-size:12px;color:var(--muted);">>360 Tage kein Kontakt</div>
+            </div>
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">Überfällige Tasks</div>
+              <div class="bbz-kpi-value" style="color:var(--muted);">${radarOverdueCount}</div>
+              <div style="margin-top:6px;font-size:12px;color:var(--muted);">A/B-Kunden betroffen</div>
+            </div>
+            ` : `
             <!-- Firmen-Kachel: Segment-Filter + orthogonale Zusatzfilter -->
             <div class="bbz-kpi">
               <div class="bbz-kpi-label">Firmen</div>
@@ -1624,7 +1677,6 @@
               <div class="bbz-kpi-value">${allOpenTasks.length}</div>
               <div class="bbz-kpi-chips" style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;pointer-events:none;">
                 ${(() => {
-                  const today = helpers.todayStart();
                   const in30  = new Date(today); in30.setDate(in30.getDate() + 30);
                   const faellig = allOpenTasks.filter(t => { const d = helpers.toDate(t.deadline); return d ? d <= today : t.isOverdue; }).length;
                   const monat   = allOpenTasks.filter(t => { const d = helpers.toDate(t.deadline); return d && d > today && d <= in30; }).length;
@@ -1634,8 +1686,8 @@
                        + `<span class="bbz-kpi-chip">Übrige <span>${uebrige}</span></span>`;
                 })()}
               </div>
-            </div>
-            <!-- Events-Kachel -->
+            </div>`}
+            <!-- Events-Kachel — immer sichtbar -->
             <div class="bbz-kpi bbz-kpi-clickable" data-action="kpi-filter" data-scope="navigate" data-value="events" style="cursor:pointer;">
               <div class="bbz-kpi-label">Events</div>
               <div class="bbz-kpi-value">${state.enriched.events.length}</div>
@@ -1652,13 +1704,73 @@
           <div class="bbz-grid bbz-grid-70-30">
             <section class="bbz-section">
               <div class="bbz-section-header">
-                <div><div class="bbz-section-title">Firmen-Cockpit</div><div class="bbz-section-subtitle">Segment, Tasks und Fristen auf einen Blick</div></div>
-                <button class="bbz-button bbz-button-primary" data-action="open-firm-form">+ Firma</button>
+                <div>
+                  <div class="bbz-section-title">${filters.radarMode ? "Pflege A/B" : "Firmen-Cockpit"}</div>
+                  <div class="bbz-section-subtitle">${filters.radarMode ? `${radarRows.length} A/B-Kunden mit Handlungsbedarf` : "Segment, Tasks und Fristen auf einen Blick"}</div>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                  <!-- Tab-Bar -->
+                  <div style="display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--panel-2);">
+                    <button class="bbz-button" style="height:32px;font-size:12px;border:none;border-radius:0;${!filters.radarMode ? "background:var(--panel);color:var(--text);font-weight:700;" : "background:none;color:var(--muted);"}"
+                      data-action="kpi-filter" data-scope="firms-radar" ${!filters.radarMode ? "disabled" : ""}>
+                      Alle Firmen
+                    </button>
+                    <button class="bbz-button" style="height:32px;font-size:12px;border:none;border-radius:0;${filters.radarMode ? "background:var(--panel);color:var(--text);font-weight:700;" : "background:none;color:var(--muted);"}"
+                      data-action="kpi-filter" data-scope="firms-radar" ${filters.radarMode ? "disabled" : ""}>
+                      Pflege A/B ${radarRows.length > 0 ? `<span style="background:#fee2e2;color:var(--red);border-radius:999px;padding:1px 6px;font-size:11px;margin-left:4px;">${radarRows.length}</span>` : ""}
+                    </button>
+                  </div>
+                  ${!filters.radarMode ? `<button class="bbz-button bbz-button-primary" data-action="open-firm-form">+ Firma</button>` : ""}
+                </div>
               </div>
               <div class="bbz-section-body">
                 <div style="margin-bottom:10px;">
-                  <input class="bbz-input" style="width:100%;height:40px;font-size:14px;" data-filter="firms-search" type="text" placeholder="Suche nach Firma, Ort, Ansprechpartner ..." value="${helpers.escapeHtml(filters.search)}" />
+                  <input class="bbz-input" style="width:100%;height:40px;font-size:14px;" data-filter="firms-search" type="text"
+                    placeholder="${filters.radarMode ? "Suche nach Firma ..." : "Suche nach Firma, Ort, Ansprechpartner ..."}"
+                    value="${helpers.escapeHtml(filters.search)}" />
                 </div>
+                ${filters.radarMode ? `
+                <div class="bbz-table-wrap">
+                  <table class="bbz-table">
+                    <thead><tr>
+                      <th></th>
+                      <th>Firma</th>
+                      <th>Klassifizierung</th>
+                      <th>Pflege-Grund</th>
+                      <th>Letzte Aktivität</th>
+                      <th>Nächste Deadline</th>
+                      <th>Kontakte</th>
+                    </tr></thead>
+                    <tbody>
+                      ${radarRows.length ? radarRows.map(firm => {
+                        const sig = helpers.firmSignal(firm);
+                        const signalDot = sig === "overdue"
+                          ? `<span class="bbz-signal bbz-signal-red" title="Überfällige Tasks"></span>`
+                          : `<span class="bbz-signal bbz-signal-amber"></span>`;
+                        const rowClass = sig === "overdue" ? "bbz-row-alert" : "bbz-row-cold";
+                        const lastDate = helpers.toDate(firm.latestActivity);
+                        const months = lastDate
+                          ? (today.getFullYear() - lastDate.getFullYear()) * 12 + (today.getMonth() - lastDate.getMonth())
+                          : null;
+                        const grundHtml = sig === "never"
+                          ? `<span style="color:var(--red);font-weight:600;">🔴 Nie kontaktiert</span>`
+                          : sig === "cold"
+                          ? `<span style="color:var(--amber);font-weight:600;">🟡 Seit ${months} Monat${months !== 1 ? "en" : ""} still</span>`
+                          : `<span style="color:var(--muted);font-weight:600;">⚠️ ${firm.tasks.filter(t => t.isOpen && t.isOverdue).length} Task${firm.tasks.filter(t => t.isOpen && t.isOverdue).length !== 1 ? "s" : ""} überfällig</span>`;
+                        return `
+                          <tr class="${rowClass}">
+                            <td style="width:28px;padding-right:4px;">${signalDot}</td>
+                            <td><a class="bbz-link" data-action="open-firm" data-id="${firm.id}">${helpers.escapeHtml(firm.title)}</a></td>
+                            <td>${firm.klassifizierung ? `<span class="${helpers.firmBadgeClass(firm.klassifizierung)}">${helpers.escapeHtml(firm.klassifizierung)}</span>` : '<span class="bbz-muted">—</span>'}</td>
+                            <td>${grundHtml}</td>
+                            <td>${firm.latestActivity ? `<span title="${helpers.formatDate(firm.latestActivity)}">${helpers.relativeDate(firm.latestActivity)}</span>` : '<span class="bbz-muted">—</span>'}</td>
+                            <td class="${firm.nextDeadline && helpers.isOverdue(firm.nextDeadline) ? "bbz-danger" : ""}">${firm.nextDeadline ? helpers.relativeDate(firm.nextDeadline) : '<span class="bbz-muted">—</span>'}</td>
+                            <td>${firm.contactsCount > 0 ? firm.contactsCount : `<span style="color:var(--red);">${firm.contactsCount}</span>`}</td>
+                          </tr>`;
+                      }).join("") : `<tr><td colspan="7">${ui.emptyBlock("Keine Pflege-Fälle gefunden.")}</td></tr>`}
+                    </tbody>
+                  </table>
+                </div>` : `
                 <div class="bbz-table-wrap">
                   <table class="bbz-table">
                     <thead><tr>
@@ -1704,7 +1816,7 @@
                         </tr>`; }).join("") : `<tr><td colspan="9">${ui.emptyBlock("Keine Firmen für die aktuelle Filterung gefunden.")}</td></tr>`}
                     </tbody>
                   </table>
-                </div>
+                </div>`}
               </div>
             </section>
             <div class="bbz-cockpit-stack">
@@ -2532,8 +2644,9 @@
           radarNever.map(f => radarItem(f, "noch kein Kontakt", "A-Kunde — noch kein Kontakt erfasst", "var(--red)", true))) +
         radarZoneHtml("Eingeschlafen (>360 Tage)", "var(--amber)",
           radarCold.map(f => {
-            const diff = Math.floor((today - helpers.toDate(f.latestActivity)) / 86400000);
-            const months = Math.floor(diff / 30);
+            const lastDate = helpers.toDate(f.latestActivity);
+            const months = (today.getFullYear() - lastDate.getFullYear()) * 12
+                         + (today.getMonth() - lastDate.getMonth());
             return radarItem(f, `seit ${months} Monat${months !== 1 ? "en" : ""}`,
               `Letzter Kontakt: ${helpers.formatDate(f.latestActivity)} (vor ${months} Monaten)`, "var(--amber)");
           })) +
@@ -2592,7 +2705,23 @@
             ${this.kpiBlock("Sichtbar", rows.length, rows.length < totalEntries ? `von ${totalEntries} gefiltert` : "alle", rows.length < totalEntries ? "warn" : "")}
           </div>
 
-          <div class="bbz-grid bbz-grid-70-30">
+          <!-- Mobile Tab-Bar: nur sichtbar unter 920px -->
+          <div class="bbz-history-tab-bar" id="history-tab-bar">
+            <button class="bbz-history-tab-btn active" id="history-tab-timeline"
+              onclick="document.getElementById('history-split').classList.remove('show-radar');
+                       document.getElementById('history-tab-timeline').classList.add('active');
+                       document.getElementById('history-tab-radar').classList.remove('active');">
+              📅 Aktivitäten
+            </button>
+            <button class="bbz-history-tab-btn" id="history-tab-radar"
+              onclick="document.getElementById('history-split').classList.add('show-radar');
+                       document.getElementById('history-tab-radar').classList.add('active');
+                       document.getElementById('history-tab-timeline').classList.remove('active');">
+              🔍 Pflege-Radar
+            </button>
+          </div>
+
+          <div class="bbz-grid bbz-grid-70-30 bbz-history-split" id="history-split">
             <!-- Links: Timeline -->
             <section class="bbz-section">
               <div class="bbz-section-header">
