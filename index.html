@@ -9,7 +9,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
-  <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
 
@@ -1315,32 +1314,13 @@
       document.body.classList.toggle('bbz-dense');
     };
 
-    // ── Bottom Nav: sync active state with desktop nav ───────
-    // app.js calls ui.renderShell() which updates .bbz-nav-btn.active
-    // We mirror that to the bottom nav via MutationObserver
-    const syncBottomNav = () => {
-      const activeBtn = document.querySelector('.bbz-nav-btn.active');
-      if (!activeBtn) return;
-      const route = activeBtn.dataset.route;
-      document.querySelectorAll('.bbz-bottom-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.route === route);
-      });
-    };
-
-    // Observe header nav for class changes
-    const navEl = document.querySelector('.bbz-nav');
-    if (navEl) {
-      new MutationObserver(syncBottomNav).observe(navEl, {
-        subtree: true, attributes: true, attributeFilter: ['class']
-      });
-    }
-
-    // Bottom nav clicks mirror desktop nav clicks
+    // ── Bottom Nav ───────────────────────────────────────────
+    // Klicks auf Bottom-Nav triggern denselben Handler wie Desktop-Nav.
+    // renderShell() in app.js synchronisiert beide Navs bei jedem Render.
     document.querySelectorAll('.bbz-bottom-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const target = document.querySelector(`.bbz-nav-btn[data-route="${btn.dataset.route}"]`);
         if (target) target.click();
-        // Scroll to top on mobile navigation
         window.scrollTo({ top: 0, behavior: 'smooth' });
       });
     });
