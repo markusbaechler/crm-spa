@@ -493,6 +493,12 @@
             state.filters.route = "contacts";
             state.selection.contactId = null;
             state.modal = null;
+          } else if (scope === "history-zeitfenster") {
+            state.filters.history.zeitfenster = state.filters.history.zeitfenster === value ? "" : value;
+          } else if (scope === "history-kontaktart") {
+            state.filters.history.kontaktart = state.filters.history.kontaktart === value ? "" : value;
+          } else if (scope === "history-leadbbz") {
+            state.filters.history.leadbbz = state.filters.history.leadbbz === value ? "" : value;
           } else if (scope === "navigate") {
             controller.navigate(value);
             return;
@@ -609,6 +615,27 @@
             return;
           }
           controller.handleDeleteFirm(deleteFirm.dataset.id, deleteFirm.dataset.name);
+          return;
+        }
+
+        // History: Notizen aufklappen/zuklappen (kein Re-Render)
+        const expandBtn = event.target.closest("[data-action='toggle-expand']");
+        if (expandBtn) {
+          const card = expandBtn.closest(".bbz-timeline-item");
+          if (card) {
+            card.classList.toggle("bbz-expanded");
+            expandBtn.textContent = card.classList.contains("bbz-expanded") ? "weniger" : "mehr";
+          }
+          return;
+        }
+
+        // History Pflege-Radar: Firma-Filter setzen
+        const radarFirm = event.target.closest("[data-action='history-firma-filter']");
+        if (radarFirm) {
+          const firmTitle = radarFirm.dataset.firmTitle || "";
+          // Toggle: nochmals klicken = Filter aufheben
+          state.filters.history.search = state.filters.history.search === firmTitle ? "" : firmTitle;
+          controller.render();
           return;
         }
 
@@ -1416,6 +1443,9 @@
                 </div>
               </div>
               <div class="bbz-modal-footer">
+                <div style="flex:1;">
+                  ${mode === "edit" ? `<button type="button" class="bbz-button bbz-button-secondary" style="color:var(--red);border-color:var(--red);" data-action="delete-history" data-id="${itemId}" data-title="${helpers.escapeHtml(entry?.typ || entry?.title || 'Eintrag')}">Löschen</button>` : ""}
+                </div>
                 <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Abbrechen</button>
                 <button type="submit" class="bbz-button bbz-button-primary" ${state.meta.loading ? "disabled" : ""}>Speichern</button>
               </div>
@@ -2219,76 +2249,324 @@
 
     historyView() {
       const filters = state.filters.history;
-      const allKontaktart = [...new Set(state.enriched.history.map(h => h.typ).filter(Boolean))].sort();
-      const allLeadbbz   = [...new Set(state.enriched.history.map(h => h.leadbbz).filter(Boolean))].sort();
+      const today   = helpers.todayStart();
 
-      const rows = state.enriched.history.filter(h => {
+      // ── Filterfunktion ──────────────────────────────────────────────────────
+      const applyFilters = (h) => {
         const search = filters.search.trim().toLowerCase();
         const searchMatch = !search || [h.contactName, h.firmTitle, h.typ, h.notizen, h.leadbbz].some(v => helpers.textIncludes(v, search));
-        const artMatch = !filters.kontaktart || h.typ === filters.kontaktart;
-        const leadMatch = !filters.leadbbz || h.leadbbz === filters.leadbbz;
-        return searchMatch && artMatch && leadMatch;
+        const artMatch    = !filters.kontaktart || h.typ === filters.kontaktart;
+        const leadMatch   = !filters.leadbbz    || h.leadbbz === filters.leadbbz;
+        if (!searchMatch || !artMatch || !leadMatch) return false;
+        if (filters.zeitfenster === "today") {
+          const d = helpers.toDate(h.datum);
+          return d && d >= today;
+        }
+        if (filters.zeitfenster === "week") {
+          const d = helpers.toDate(h.datum);
+          const vor7 = new Date(today); vor7.setDate(vor7.getDate() - 7);
+          return d && d >= vor7;
+        }
+        if (filters.zeitfenster === "month") {
+          const d = helpers.toDate(h.datum);
+          const vor30 = new Date(today); vor30.setDate(vor30.getDate() - 30);
+          return d && d >= vor30;
+        }
+        return true;
+      };
+
+      const rows = state.enriched.history.filter(applyFilters);
+
+      // ── KPI-Zahlen ──────────────────────────────────────────────────────────
+      const totalEntries = state.enriched.history.length;
+      const mitProjekt   = state.enriched.history.filter(h => h.projektbezugBool).length;
+      const cntToday     = state.enriched.history.filter(h => { const d = helpers.toDate(h.datum); return d && d >= today; }).length;
+      const vor7         = new Date(today); vor7.setDate(vor7.getDate() - 7);
+      const cntWeek      = state.enriched.history.filter(h => { const d = helpers.toDate(h.datum); return d && d >= vor7; }).length;
+      const vor30        = new Date(today); vor30.setDate(vor30.getDate() - 30);
+      const cntMonth     = state.enriched.history.filter(h => { const d = helpers.toDate(h.datum); return d && d >= vor30; }).length;
+
+      // Vorwoche-Vergleich für Trend
+      const vor14 = new Date(today); vor14.setDate(vor14.getDate() - 14);
+      const cntVorwoche = state.enriched.history.filter(h => { const d = helpers.toDate(h.datum); return d && d >= vor14 && d < vor7; }).length;
+      const trendDiff   = cntWeek - cntVorwoche;
+      const trendHtml   = trendDiff > 0
+        ? `<span style="color:var(--green);font-weight:700;">↑ +${trendDiff} vs. Vorwoche</span>`
+        : trendDiff < 0
+        ? `<span style="color:var(--red);font-weight:700;">↓ ${trendDiff} vs. Vorwoche</span>`
+        : `<span style="color:var(--muted);">= Vorwoche</span>`;
+
+      // ── KPI-Kacheln ─────────────────────────────────────────────────────────
+      const chipZeit = (label, value, count) => {
+        const active = filters.zeitfenster === value;
+        return `<button class="bbz-kpi-chip ${active ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="history-zeitfenster" data-value="${value}">${label} <span>${count}</span></button>`;
+      };
+      const chipKontaktart = (k) => {
+        const cnt   = state.enriched.history.filter(h => h.typ === k).length;
+        const active = filters.kontaktart === k;
+        return `<button class="bbz-kpi-chip ${active ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="history-kontaktart" data-value="${helpers.escapeHtml(k)}">${helpers.escapeHtml(k)} <span>${cnt}</span></button>`;
+      };
+      const chipLead = (l) => {
+        const cnt   = state.enriched.history.filter(h => h.leadbbz === l).length;
+        const active = filters.leadbbz === l;
+        return `<button class="bbz-kpi-chip ${active ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="history-leadbbz" data-value="${helpers.escapeHtml(l)}">${helpers.escapeHtml(l)} <span>${cnt}</span></button>`;
+      };
+
+      const allKontaktart = [...new Set(state.enriched.history.map(h => h.typ).filter(Boolean))].sort();
+      const allLeadbbz    = [...new Set(state.enriched.history.map(h => h.leadbbz).filter(Boolean))].sort();
+
+      // Aktive Filter-Badges für Filterleiste
+      const activeFilterBadges = [
+        filters.kontaktart ? `<span class="bbz-chip" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;cursor:pointer;" data-action="kpi-filter" data-scope="history-kontaktart" data-value="">${helpers.escapeHtml(filters.kontaktart)} ×</span>` : "",
+        filters.leadbbz    ? `<span class="bbz-chip" style="background:#f0fdf4;color:#15803d;border-color:#86efac;cursor:pointer;" data-action="kpi-filter" data-scope="history-leadbbz" data-value="">${helpers.escapeHtml(filters.leadbbz)} ×</span>` : "",
+        filters.zeitfenster ? `<span class="bbz-chip" style="cursor:pointer;" data-action="kpi-filter" data-scope="history-zeitfenster" data-value="">${filters.zeitfenster === "today" ? "Heute" : filters.zeitfenster === "week" ? "Diese Woche" : "Dieser Monat"} ×</span>` : ""
+      ].filter(Boolean).join("");
+
+      // ── Timeline-Gruppierung ─────────────────────────────────────────────────
+      const renderCard = (h) => {
+        const hasLongText = (h.notizen || "").length > 120;
+        return `
+          <div class="bbz-timeline-item">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+              ${helpers.avatarHtml({ vorname: (h.contactName||"").split(" ")[0]||"", nachname: (h.contactName||"").split(" ").slice(-1)[0]||"" })}
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:13px;font-weight:700;line-height:1.25;">
+                  ${h.contactId ? `<a class="bbz-link" data-action="open-contact" data-id="${h.contactId}">${helpers.escapeHtml(h.contactName || "")}</a>` : helpers.escapeHtml(h.contactName || "—")}
+                </div>
+                <div style="font-size:12px;color:var(--muted);margin-top:1px;">
+                  ${h.firmId ? `<a class="bbz-link" style="font-weight:500;" data-action="open-firm" data-id="${h.firmId}">${helpers.escapeHtml(h.firmTitle)}</a>` : (h.firmTitle ? helpers.escapeHtml(h.firmTitle) : '<span class="bbz-muted">—</span>')}
+                </div>
+              </div>
+              <div style="text-align:right;flex-shrink:0;">
+                <div style="font-size:12px;font-weight:600;color:var(--text);" title="${helpers.formatDate(h.datum)}">${helpers.relativeDate(h.datum) || "—"}</div>
+                <div style="font-size:11px;color:var(--muted);">${helpers.formatDate(h.datum)}</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+              <span style="font-size:13px;font-weight:600;">${helpers.escapeHtml(h.typ || "Eintrag")}</span>
+              ${h.projektbezugBool ? '<span class="bbz-chip" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}
+              ${h.leadbbz ? helpers.leadbbzBadgeHtml(h.leadbbz) : ""}
+            </div>
+            <div class="bbz-timeline-text bbz-timeline-clamp">${helpers.escapeHtml(h.notizen || "—")}</div>
+            ${hasLongText ? `<button class="bbz-button bbz-button-secondary" style="height:22px;font-size:11px;padding:0 8px;margin-top:4px;" data-action="toggle-expand">mehr</button>` : ""}
+            <div style="margin-top:8px;display:flex;gap:6px;align-items:center;">
+              <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;" data-action="edit-history" data-id="${h.id}">Bearbeiten</button>
+              <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;" data-action="open-task-form" data-contact-id="${h.contactId || ""}" title="Task für ${helpers.escapeHtml(h.contactName || "")} erstellen">+ Task</button>
+            </div>
+          </div>`;
+      };
+
+      // Datum-Gruppen
+      const makeDateGroups = (items) => {
+        const vor7d  = new Date(today); vor7d.setDate(vor7d.getDate() - 7);
+        const vor30d = new Date(today); vor30d.setDate(vor30d.getDate() - 30);
+        const groups = [
+          { key: "today",  label: "Heute",          items: [] },
+          { key: "week",   label: "Diese Woche",     items: [] },
+          { key: "month",  label: "Dieser Monat",    items: [] },
+          { key: "older",  label: "Älter",           items: [] }
+        ];
+        items.forEach(h => {
+          const d = helpers.toDate(h.datum);
+          if (!d) { groups[3].items.push(h); return; }
+          if (d >= today)   groups[0].items.push(h);
+          else if (d >= vor7d)  groups[1].items.push(h);
+          else if (d >= vor30d) groups[2].items.push(h);
+          else                  groups[3].items.push(h);
+        });
+        return groups.filter(g => g.items.length > 0);
+      };
+
+      // Firma-Gruppen
+      const makeFirmGroups = (items) => {
+        const map = new Map();
+        items.forEach(h => {
+          const key = h.firmTitle || "Ohne Firma";
+          if (!map.has(key)) map.set(key, { firmId: h.firmId, items: [] });
+          map.get(key).items.push(h);
+        });
+        return [...map.entries()]
+          .sort((a, b) => a[0].localeCompare(b[0], "de"))
+          .map(([label, val]) => ({
+            key: label,
+            label,
+            firmId: val.firmId,
+            latestDatum: val.items[0]?.datum || "",
+            items: val.items
+          }));
+      };
+
+      const groups = filters.groupBy === "firm" ? makeFirmGroups(rows) : makeDateGroups(rows);
+
+      const timelineHtml = groups.length ? groups.map(g => `
+        <div class="bbz-history-group">
+          <div class="bbz-history-group-header">
+            <span class="bbz-history-group-label">${helpers.escapeHtml(g.label)}</span>
+            <span class="bbz-history-group-count">${g.items.length} Eintrag${g.items.length !== 1 ? "e" : ""}</span>
+            ${filters.groupBy === "firm" && g.latestDatum ? `<span class="bbz-history-group-meta">zuletzt ${helpers.relativeDate(g.latestDatum)}</span>` : ""}
+          </div>
+          <div class="bbz-timeline">${g.items.map(renderCard).join("")}</div>
+        </div>`).join("")
+        : ui.emptyBlock("Keine Aktivitäten für die aktuelle Filterung gefunden.", "open-history-form", "+ Erste Aktivität erfassen");
+
+      // ── Pflege-Radar Panel ───────────────────────────────────────────────────
+      const abFirmen = state.enriched.firms.filter(f => {
+        const kl = String(f.klassifizierung || "").toUpperCase();
+        return kl.includes("A") || kl.includes("B");
       });
 
-      const totalEntries = state.enriched.history.length;
-      const mitProjekt = state.enriched.history.filter(h => h.projektbezugBool).length;
-      const letzteWoche = state.enriched.history.filter(h => {
-        const d = helpers.toDate(h.datum);
-        if (!d) return false;
-        const vor7 = new Date(); vor7.setDate(vor7.getDate() - 7);
-        return d >= vor7;
-      }).length;
+      const radarNever = abFirmen.filter(f => {
+        const kl = String(f.klassifizierung || "").toUpperCase();
+        return kl.includes("A") && f.history.length === 0;
+      }).sort((a, b) => a.title.localeCompare(b.title, "de"));
+
+      const radarCold = abFirmen.filter(f => {
+        if (f.history.length === 0) return false;
+        const last = helpers.toDate(f.latestActivity);
+        if (!last) return false;
+        const diff = Math.floor((today - last) / 86400000);
+        return diff > 360;
+      }).sort((a, b) => helpers.compareDateAsc(a.latestActivity, b.latestActivity));
+
+      const radarOverdue = abFirmen.filter(f =>
+        f.tasks.some(t => t.isOpen && t.isOverdue)
+      ).sort((a, b) => helpers.compareDateAsc(a.nextDeadline, b.nextDeadline));
+
+      const activeRadarFirm = filters.search;
+
+      const radarItem = (f, meta, tooltip) => {
+        const kl = String(f.klassifizierung || "").toUpperCase();
+        const isA = kl.includes("A");
+        const isActive = activeRadarFirm === f.title;
+        return `
+          <div class="bbz-mini-item bbz-radar-item ${isActive ? "bbz-radar-item-active" : ""}"
+               style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;"
+               data-action="history-firma-filter"
+               data-firm-title="${helpers.escapeHtml(f.title)}"
+               title="${helpers.escapeHtml(tooltip)}">
+            <div style="display:flex;align-items:center;gap:6px;min-width:0;">
+              <span class="bbz-mini-title" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${helpers.escapeHtml(f.title)}</span>
+              <span class="${helpers.firmBadgeClass(f.klassifizierung)}" style="flex-shrink:0;">${isA ? "A" : "B"}</span>
+            </div>
+            <span class="bbz-mini-meta" style="white-space:nowrap;flex-shrink:0;">${meta}</span>
+          </div>`;
+      };
+
+      const radarZoneHtml = (label, color, items, emptyNull = true) => {
+        if (items.length === 0 && emptyNull) return "";
+        return `
+          <div style="margin-bottom:12px;">
+            <div style="color:${color};font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin-bottom:6px;">
+              ${label} <span style="font-weight:400;opacity:.7;">(${items.length})</span>
+            </div>
+            ${items.length ? `<div class="bbz-mini-list">${items.join("")}</div>` : ""}
+          </div>`;
+      };
+
+      const hasRadarItems = radarNever.length + radarCold.length + radarOverdue.length > 0;
+
+      const radarHtml = hasRadarItems ? (
+        radarZoneHtml("Nie kontaktiert", "var(--red)",
+          radarNever.map(f => radarItem(f, "0 Einträge", "A-Kunde — noch kein Kontakt erfasst"))) +
+        radarZoneHtml("Eingeschlafen (>360 Tage)", "var(--amber)",
+          radarCold.map(f => {
+            const diff = Math.floor((today - helpers.toDate(f.latestActivity)) / 86400000);
+            const months = Math.floor(diff / 30);
+            return radarItem(f, `seit ${months} Monat${months !== 1 ? "en" : ""}`,
+              `Letzter Kontakt: ${helpers.formatDate(f.latestActivity)} (vor ${months} Monaten)`);
+          })) +
+        radarZoneHtml("Überfällige Tasks", "var(--muted)",
+          radarOverdue.map(f => radarItem(f,
+            `${f.tasks.filter(t => t.isOpen && t.isOverdue).length} Task${f.tasks.filter(t => t.isOpen && t.isOverdue).length !== 1 ? "s" : ""} überfällig`,
+            `${f.tasks.filter(t => t.isOpen && t.isOverdue).length} überfällige Task(s)`)))
+      ) : `<div class="bbz-focus-bar bbz-focus-clear" style="border-radius:10px;">
+              <span class="bbz-focus-icon">✓</span>
+              <span class="bbz-focus-clear-text">Alle A/B-Kunden aktuell</span>
+           </div>`;
+
+      // Aktiver Firma-Filter: Reset-Banner
+      const firmaFilterBanner = activeRadarFirm
+        ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:7px 11px;font-size:12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">
+             <span>Gefiltert: <strong>${helpers.escapeHtml(activeRadarFirm)}</strong></span>
+             <button class="bbz-link" style="font-size:12px;" data-action="history-firma-filter" data-firm-title="${helpers.escapeHtml(activeRadarFirm)}">× aufheben</button>
+           </div>` : "";
 
       return `
         <div>
           <div class="bbz-kpis">
-            ${this.kpiBlock("Aktivitäten", totalEntries, "gesamt")}
-            ${this.kpiBlock("Mit Projektbezug", mitProjekt, mitProjekt > 0 ? `${Math.round(mitProjekt/totalEntries*100)}%` : "—")}
-            ${this.kpiBlock("Letzte 7 Tage", letzteWoche, letzteWoche === 0 ? "keine Aktivität" : "Einträge", letzteWoche === 0 ? "warn" : "ok")}
-            ${this.kpiBlock("Sichtbar", rows.length, rows.length < totalEntries ? "gefiltert" : "alle")}
-          </div>
-          <section class="bbz-section">
-            <div class="bbz-section-header">
-              <div><div class="bbz-section-title">Aktivitäten</div><div class="bbz-section-subtitle">Globale Timeline — alle Kontakte</div></div>
-              <button class="bbz-button bbz-button-primary" data-action="open-history-form">+ Aktivität</button>
-            </div>
-            <div class="bbz-section-body">
-              <div class="bbz-filters-4">
-                <input class="bbz-input" data-filter="history-search" type="text" placeholder="Suche nach Kontakt, Firma, Notizen ..." value="${helpers.escapeHtml(filters.search)}" />
-                <select class="bbz-select" data-filter="history-kontaktart">
-                  <option value="">Alle Kontaktarten</option>
-                  ${allKontaktart.map(k => `<option value="${helpers.escapeHtml(k)}" ${filters.kontaktart === k ? "selected" : ""}>${helpers.escapeHtml(k)}</option>`).join("")}
-                </select>
-                <select class="bbz-select" data-filter="history-leadbbz">
-                  <option value="">Alle Lead BBZ</option>
-                  ${allLeadbbz.map(l => `<option value="${helpers.escapeHtml(l)}" ${filters.leadbbz === l ? "selected" : ""}>${helpers.escapeHtml(l)}</option>`).join("")}
-                </select>
-                <div></div>
+            <!-- Aktivitäten mit Zeitfenster-Chips -->
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">Aktivitäten</div>
+              <div class="bbz-kpi-value">${totalEntries}</div>
+              <div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
+                ${chipZeit("Heute", "today", cntToday)}
+                ${chipZeit("Woche", "week", cntWeek)}
+                ${chipZeit("Monat", "month", cntMonth)}
+                <button class="bbz-kpi-chip ${!filters.zeitfenster ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="history-zeitfenster" data-value="">Alle</button>
               </div>
-              ${rows.length ? `<div class="bbz-timeline">${rows.map(h => `
-                <div class="bbz-timeline-item">
-                  <div class="bbz-timeline-date">
-                    ${helpers.relativeDate(h.datum) || "—"}
-                    <br><span class="bbz-muted" style="font-size:11px;">${helpers.formatDate(h.datum)}</span>
-                    <br><span class="bbz-muted">${h.contactId ? `<a class="bbz-link" data-action="open-contact" data-id="${h.contactId}">${helpers.escapeHtml(h.contactName || "")}</a>` : helpers.escapeHtml(h.contactName || "")}</span>
-                    ${h.firmTitle ? `<br><span class="bbz-muted" style="font-size:11px;">${helpers.escapeHtml(h.firmTitle)}</span>` : ""}
-                  </div>
-                  <div>
-                    <div class="bbz-timeline-title">
-                      ${helpers.escapeHtml(h.typ || "Eintrag")}
-                      ${h.projektbezugBool ? '<span class="bbz-chip" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}
-                      ${h.leadbbz ? helpers.leadbbzBadgeHtml(h.leadbbz) : ""}
-                    </div>
-                    <div class="bbz-timeline-text">${helpers.escapeHtml(h.notizen || "—")}</div>
-                    <div style="margin-top:6px;display:flex;gap:6px;">
-                      <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;" data-action="edit-history" data-id="${h.id}">Bearbeiten</button>
-                      <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;color:var(--red);border-color:var(--red);" data-action="delete-history" data-id="${h.id}" data-title="${helpers.escapeHtml(h.typ || h.title || 'Eintrag')}">Löschen</button>
-                    </div>
-                  </div>
-                </div>`).join("")}</div>`
-              : ui.emptyBlock("Keine Aktivitäten für die aktuelle Filterung gefunden.", "open-history-form", "+ Erste Aktivität erfassen")}
+              <div style="margin-top:6px;font-size:12px;">${trendHtml}</div>
             </div>
-          </section>
+            <!-- Kontaktart-Chips -->
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">Kontaktart</div>
+              <div class="bbz-kpi-value" style="font-size:18px;margin-top:3px;">${filters.kontaktart ? helpers.escapeHtml(filters.kontaktart) : "—"}</div>
+              <div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
+                ${allKontaktart.map(chipKontaktart).join("")}
+                ${filters.kontaktart ? `<button class="bbz-kpi-chip" data-action="kpi-filter" data-scope="history-kontaktart" data-value="">Alle</button>` : ""}
+              </div>
+            </div>
+            <!-- Lead BBZ-Chips -->
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">Lead BBZ</div>
+              <div class="bbz-kpi-value" style="font-size:18px;margin-top:3px;">${filters.leadbbz ? helpers.escapeHtml(filters.leadbbz) : "—"}</div>
+              <div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
+                ${allLeadbbz.map(chipLead).join("")}
+                ${filters.leadbbz ? `<button class="bbz-kpi-chip" data-action="kpi-filter" data-scope="history-leadbbz" data-value="">Alle</button>` : ""}
+              </div>
+            </div>
+            <!-- Sichtbar -->
+            ${this.kpiBlock("Sichtbar", rows.length, rows.length < totalEntries ? `von ${totalEntries} gefiltert` : "alle", rows.length < totalEntries ? "warn" : "")}
+          </div>
+
+          <div class="bbz-grid bbz-grid-70-30">
+            <!-- Links: Timeline -->
+            <section class="bbz-section">
+              <div class="bbz-section-header">
+                <div>
+                  <div class="bbz-section-title">Aktivitäten</div>
+                  <div class="bbz-section-subtitle">${filters.groupBy === "firm" ? "Gruppiert nach Firma" : "Chronologische Timeline"}</div>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                  <select class="bbz-select" style="height:32px;font-size:12px;" data-filter="history-groupby">
+                    <option value="date" ${filters.groupBy === "date" ? "selected" : ""}>📅 Nach Datum</option>
+                    <option value="firm" ${filters.groupBy === "firm" ? "selected" : ""}>🏢 Nach Firma</option>
+                  </select>
+                  <button class="bbz-button bbz-button-primary" style="height:32px;font-size:12px;" data-action="open-history-form">+ Aktivität</button>
+                </div>
+              </div>
+              <div class="bbz-section-body">
+                <div class="bbz-filters-2" style="display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:10px;align-items:center;">
+                  <input class="bbz-input" data-filter="history-search" type="text" placeholder="Suche nach Kontakt, Firma, Notizen ..." value="${helpers.escapeHtml(filters.search)}" />
+                  ${activeFilterBadges ? `<div style="display:flex;gap:4px;flex-wrap:wrap;">${activeFilterBadges}</div>` : "<div></div>"}
+                </div>
+                ${firmaFilterBanner}
+                ${timelineHtml}
+              </div>
+            </section>
+
+            <!-- Rechts: Pflege-Radar -->
+            <section class="bbz-section">
+              <div class="bbz-section-header">
+                <div>
+                  <div class="bbz-section-title">Pflege-Radar</div>
+                  <div class="bbz-section-subtitle">Kontaktfrequenz A/B-Kunden</div>
+                </div>
+              </div>
+              <div class="bbz-section-body">
+                ${radarHtml}
+              </div>
+            </section>
+          </div>
         </div>
       `;
     },
