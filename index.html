@@ -381,6 +381,247 @@
       .bbz-section-body { padding: 10px 12px 12px; }
     }
 
+    /* =====================================================
+       MOBILE OVERHAUL — vollständige Responsive-Erweiterung
+       ===================================================== */
+
+    /* --- MODAL: Bottom-Sheet mit echtem Scroll und sichtbarem Footer --- */
+    @media (max-width: 640px) {
+      .bbz-modal-backdrop {
+        align-items: flex-end;
+        padding: 0;
+      }
+      .bbz-modal {
+        max-width: 100%;
+        /* Höhe: voller Viewport minus Header (54px) minus etwas Luft */
+        height: calc(100dvh - 54px);
+        max-height: calc(100dvh - 54px);
+        border-radius: var(--r-xl) var(--r-xl) 0 0;
+        border-bottom: none;
+        display: flex;
+        flex-direction: column;
+      }
+      .bbz-modal-header {
+        flex-shrink: 0;
+        padding: 14px 16px;
+      }
+      .bbz-modal-body {
+        flex: 1 1 auto;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        padding: 14px 16px;
+        /* Verhindert dass Content hinter Footer verschwindet */
+        padding-bottom: 8px;
+      }
+      .bbz-modal-footer {
+        flex-shrink: 0;
+        padding: 10px 16px;
+        /* Sicherstellen dass Footer über Bottom-Nav liegt */
+        padding-bottom: max(10px, env(safe-area-inset-bottom));
+        background: var(--panel-2);
+        border-top: 1px solid var(--line-2);
+      }
+      /* Speichern-Button im Footer: volle Breite auf Mobile */
+      .bbz-modal-footer .bbz-button-primary {
+        flex: 1;
+      }
+      /* Formular-Felder: volle Breite auf Mobile */
+      .bbz-modal-body .bbz-input,
+      .bbz-modal-body .bbz-select,
+      .bbz-modal-body .bbz-textarea {
+        width: 100%;
+      }
+      /* Batch-Event-Modal: Liste scrollbar halten */
+      .bbz-modal-body .bbz-table-wrap {
+        display: block !important;
+        max-height: 45vh;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .bbz-modal-body .bbz-table {
+        min-width: 0;
+        width: 100%;
+      }
+      /* Batch-Tabelle: unwichtige Spalten ausblenden */
+      .bbz-modal-body .bbz-table th:nth-child(3),
+      .bbz-modal-body .bbz-table td:nth-child(3),
+      .bbz-modal-body .bbz-table th:nth-child(4),
+      .bbz-modal-body .bbz-table td:nth-child(4),
+      .bbz-modal-body .bbz-table th:nth-child(5),
+      .bbz-modal-body .bbz-table td:nth-child(5) { display: none; }
+    }
+
+    /* --- TABELLEN: Generelle Mobile-Sichtbarkeit --- */
+    @media (max-width: 640px) {
+      /* Standard-Tabellen bleiben versteckt (Card-List ersetzt sie) */
+      .bbz-table-wrap { display: none; }
+
+      /* Ausnahme: Tabellen innerhalb von Modals (Batch-Event) bleiben sichtbar */
+      .bbz-modal-body .bbz-table-wrap { display: block !important; }
+    }
+
+    /* --- CARD-VARIANTEN für Tasks, Events, Radar --- */
+    @media (max-width: 640px) {
+      /* Tasks: Card-List */
+      .bbz-task-card {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        padding: 11px 14px;
+        border-bottom: 1px solid var(--line-2);
+        cursor: pointer;
+        background: var(--panel);
+      }
+      .bbz-task-card:last-child { border-bottom: none; }
+      .bbz-task-card:hover { background: var(--blue-soft); }
+      .bbz-task-card-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .bbz-task-card-title {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--text);
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .bbz-task-card-meta {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 2px;
+        font-size: 11px;
+        color: var(--subtle);
+        flex-wrap: wrap;
+      }
+
+      /* Events: kompakte Card-Darstellung */
+      .bbz-event-group-card {
+        border: 1px solid var(--line);
+        border-radius: var(--r-lg);
+        background: var(--panel);
+        margin-bottom: 10px;
+        overflow: hidden;
+      }
+      .bbz-event-group-header-mobile {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 12px 14px;
+        background: var(--panel-2);
+        border-bottom: 1px solid var(--line-2);
+      }
+      .bbz-event-group-title-mobile {
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--text);
+        flex: 1;
+        min-width: 0;
+      }
+      .bbz-event-contact-card {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--line-2);
+        cursor: pointer;
+      }
+      .bbz-event-contact-card:last-child { border-bottom: none; }
+      .bbz-event-contact-card:hover { background: var(--blue-soft); }
+      .bbz-event-contact-body { flex: 1; min-width: 0; }
+      .bbz-event-contact-name { font-size: 13px; font-weight: 700; color: var(--text); }
+      .bbz-event-contact-meta { font-size: 11px; color: var(--subtle); margin-top: 2px; }
+
+      /* Radar: Card-List statt Tabelle */
+      .bbz-radar-card {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--line-2);
+        cursor: pointer;
+        background: var(--panel);
+      }
+      .bbz-radar-card:last-child { border-bottom: none; }
+      .bbz-radar-card:hover { background: var(--blue-soft); }
+      .bbz-radar-card-body { flex: 1; min-width: 0; }
+      .bbz-radar-card-title { font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .bbz-radar-card-meta  { font-size: 11px; color: var(--subtle); margin-top: 2px; }
+      .bbz-radar-card-right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
+
+      /* Radar-Kacheln auf Mobile: 2 Spalten statt 4 */
+      .bbz-radar-kpis { grid-template-columns: 1fr 1fr !important; }
+    }
+
+    /* --- FILTER-ZEILEN: Stack auf Mobile --- */
+    @media (max-width: 640px) {
+      .bbz-filters-2 {
+        grid-template-columns: 1fr !important;
+      }
+      /* Suchfeld immer volle Breite */
+      .bbz-filters-3 > input:first-child,
+      .bbz-filters-4 > input:first-child {
+        grid-column: 1 / -1;
+      }
+      /* Cockpit-Stack: Gap verkleinern */
+      .bbz-cockpit-stack { gap: 8px; }
+
+      /* Section-Header: Buttons kleiner */
+      .bbz-section-header .bbz-button {
+        height: 30px;
+        font-size: 11px;
+        padding: 0 10px;
+      }
+
+      /* KPI-Chips: kleinere Schrift */
+      .bbz-kpi-chips { gap: 3px; }
+      .bbz-kpi-chip { font-size: 9px; height: 18px; padding: 0 6px; }
+    }
+
+    /* --- DETAIL-ANSICHT: Header kompakter --- */
+    @media (max-width: 640px) {
+      .bbz-detail-band,
+      .bbz-detail-band-a,
+      .bbz-detail-band-b,
+      .bbz-detail-band-c,
+      .bbz-detail-band-vip,
+      .bbz-detail-band-default {
+        padding: 14px 14px 12px;
+        border-radius: var(--r-lg) var(--r-lg) 0 0;
+      }
+      .bbz-detail-header { margin-bottom: 8px; }
+      .bbz-detail-header .bbz-button {
+        height: 30px;
+        font-size: 11px;
+        padding: 0 10px;
+      }
+    }
+
+    /* --- HISTORY-SPLIT: Tab-Navigation auf Mobile --- */
+    @media (max-width: 640px) {
+      .bbz-history-split {
+        display: block !important;
+      }
+      /* Pflege-Radar: Kacheln 2-spaltig */
+      .bbz-history-split .bbz-kpis {
+        grid-template-columns: 1fr 1fr !important;
+      }
+    }
+
+    /* --- SECTION-HEADER: Wrap auf sehr kleinen Screens --- */
+    @media (max-width: 400px) {
+      .bbz-section-header {
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+    }
+
     /* BOTTOM NAV */
     .bbz-bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; z-index: 40; background: var(--dark); border-top: 1px solid rgba(255,255,255,0.07); display: flex; height: 60px; box-shadow: 0 -4px 20px rgba(0,64,120,0.12); }
     .bbz-bottom-btn { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border: none; background: none; color: rgba(255,255,255,0.25); font-family: inherit; font-size: 9px; font-weight: 600; cursor: pointer; padding: 6px 2px; transition: color 0.15s; -webkit-tap-highlight-color: transparent; position: relative; }
@@ -481,7 +722,7 @@
   });
 </script>
 
-<script src="./app.js"></script>
-<script src="./io.js"></script>
+<script src="app.js"></script>
+<script src="io.js"></script>
 </body>
 </html>
