@@ -2323,29 +2323,33 @@
       ].filter(Boolean).join("");
 
       // ── Timeline-Gruppierung ─────────────────────────────────────────────────
-      const renderCard = (h) => {
+      const renderCard = (h, hideFirm = false) => {
         const hasLongText = (h.notizen || "").length > 120;
+        const tagsHtml = `
+          <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0;margin-left:8px;">
+            ${h.projektbezugBool ? '<span class="bbz-chip" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">Projektbezug</span>' : ""}
+            ${h.leadbbz ? helpers.leadbbzBadgeHtml(h.leadbbz) : ""}
+          </div>`;
         return `
           <div class="bbz-timeline-item">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px;">
               ${helpers.avatarHtml({ vorname: (h.contactName||"").split(" ")[0]||"", nachname: (h.contactName||"").split(" ").slice(-1)[0]||"" })}
               <div style="flex:1;min-width:0;">
                 <div style="font-size:13px;font-weight:700;line-height:1.25;">
                   ${h.contactId ? `<a class="bbz-link" data-action="open-contact" data-id="${h.contactId}">${helpers.escapeHtml(h.contactName || "")}</a>` : helpers.escapeHtml(h.contactName || "—")}
                 </div>
-                <div style="font-size:12px;color:var(--muted);margin-top:1px;">
-                  ${h.firmId ? `<a class="bbz-link" style="font-weight:500;" data-action="open-firm" data-id="${h.firmId}">${helpers.escapeHtml(h.firmTitle)}</a>` : (h.firmTitle ? helpers.escapeHtml(h.firmTitle) : '<span class="bbz-muted">—</span>')}
-                </div>
+                ${!hideFirm ? `<div style="font-size:12px;color:var(--muted);margin-top:1px;">
+                  ${h.firmId ? `<a class="bbz-link" style="font-weight:500;" data-action="open-firm" data-id="${h.firmId}">${helpers.escapeHtml(h.firmTitle)}</a>` : (h.firmTitle ? helpers.escapeHtml(h.firmTitle) : "")}
+                </div>` : ""}
               </div>
               <div style="text-align:right;flex-shrink:0;">
                 <div style="font-size:12px;font-weight:600;color:var(--text);" title="${helpers.formatDate(h.datum)}">${helpers.relativeDate(h.datum) || "—"}</div>
                 <div style="font-size:11px;color:var(--muted);">${helpers.formatDate(h.datum)}</div>
               </div>
             </div>
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
-              <span style="font-size:13px;font-weight:600;">${helpers.escapeHtml(h.typ || "Eintrag")}</span>
-              ${h.projektbezugBool ? '<span class="bbz-chip" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}
-              ${h.leadbbz ? helpers.leadbbzBadgeHtml(h.leadbbz) : ""}
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
+              <span style="font-size:13px;font-weight:600;color:var(--text);">${helpers.escapeHtml(h.typ || "Eintrag")}</span>
+              ${tagsHtml}
             </div>
             <div class="bbz-timeline-text bbz-timeline-clamp">${helpers.escapeHtml(h.notizen || "—")}</div>
             ${hasLongText ? `<button class="bbz-button bbz-button-secondary" style="height:22px;font-size:11px;padding:0 8px;margin-top:4px;" data-action="toggle-expand">mehr</button>` : ""}
@@ -2377,7 +2381,7 @@
         return groups.filter(g => g.items.length > 0);
       };
 
-      // Firma-Gruppen
+      // Firma-Gruppen — mit Segment-Farbe für den Header
       const makeFirmGroups = (items) => {
         const map = new Map();
         items.forEach(h => {
@@ -2387,25 +2391,45 @@
         });
         return [...map.entries()]
           .sort((a, b) => a[0].localeCompare(b[0], "de"))
-          .map(([label, val]) => ({
-            key: label,
-            label,
-            firmId: val.firmId,
-            latestDatum: val.items[0]?.datum || "",
-            items: val.items
-          }));
+          .map(([label, val]) => {
+            const firm = val.firmId ? state.enriched.firms.find(f => f.id === val.firmId) : null;
+            return { key: label, label, firmId: val.firmId, firm, latestDatum: val.items[0]?.datum || "", items: val.items };
+          });
       };
 
       const groups = filters.groupBy === "firm" ? makeFirmGroups(rows) : makeDateGroups(rows);
 
+      // Firma-Gruppen-Header: prominent mit Segment-Farbe und Aktions-Button
+      const firmGroupHeader = (g) => {
+        const firm = g.firm;
+        const kl   = String(firm?.klassifizierung || "").toUpperCase();
+        const borderColor = kl.includes("A") ? "#2563eb" : kl.includes("B") ? "#d97706" : "#64748b";
+        const bgColor     = kl.includes("A") ? "#f0f7ff" : kl.includes("B") ? "#fffdf0" : "#f8fafc";
+        return `
+          <div class="bbz-history-firm-header" style="border-left:4px solid ${borderColor};background:${bgColor};">
+            <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">
+              <span class="bbz-history-group-label" style="font-size:14px;">
+                ${g.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${g.firmId}">${helpers.escapeHtml(g.label)}</a>` : helpers.escapeHtml(g.label)}
+              </span>
+              ${firm?.klassifizierung ? `<span class="${helpers.firmBadgeClass(firm.klassifizierung)}">${helpers.escapeHtml(firm.klassifizierung)}</span>` : ""}
+              ${firm?.vip ? `<span class="bbz-pill bbz-pill-vip">♛</span>` : ""}
+              <span class="bbz-history-group-count">${g.items.length} Eintrag${g.items.length !== 1 ? "e" : ""}</span>
+              ${g.latestDatum ? `<span class="bbz-history-group-meta">zuletzt ${helpers.relativeDate(g.latestDatum)}</span>` : ""}
+            </div>
+            <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;flex-shrink:0;"
+              data-action="open-history-form" data-firm-id="${g.firmId || ""}">+ Aktivität</button>
+          </div>`;
+      };
+
       const timelineHtml = groups.length ? groups.map(g => `
         <div class="bbz-history-group">
-          <div class="bbz-history-group-header">
-            <span class="bbz-history-group-label">${helpers.escapeHtml(g.label)}</span>
-            <span class="bbz-history-group-count">${g.items.length} Eintrag${g.items.length !== 1 ? "e" : ""}</span>
-            ${filters.groupBy === "firm" && g.latestDatum ? `<span class="bbz-history-group-meta">zuletzt ${helpers.relativeDate(g.latestDatum)}</span>` : ""}
-          </div>
-          <div class="bbz-timeline">${g.items.map(renderCard).join("")}</div>
+          ${filters.groupBy === "firm"
+            ? firmGroupHeader(g)
+            : `<div class="bbz-history-group-header">
+                <span class="bbz-history-group-label">${helpers.escapeHtml(g.label)}</span>
+                <span class="bbz-history-group-count">${g.items.length} Eintrag${g.items.length !== 1 ? "e" : ""}</span>
+               </div>`}
+          <div class="bbz-timeline">${g.items.map(h => renderCard(h, filters.groupBy === "firm")).join("")}</div>
         </div>`).join("")
         : ui.emptyBlock("Keine Aktivitäten für die aktuelle Filterung gefunden.", "open-history-form", "+ Erste Aktivität erfassen");
 
@@ -2434,21 +2458,26 @@
 
       const activeRadarFirm = filters.search;
 
-      const radarItem = (f, meta, tooltip) => {
+      const radarItem = (f, meta, tooltip, accentColor = "var(--muted)", showTaskBtn = false) => {
         const kl = String(f.klassifizierung || "").toUpperCase();
         const isA = kl.includes("A");
         const isActive = activeRadarFirm === f.title;
         return `
           <div class="bbz-mini-item bbz-radar-item ${isActive ? "bbz-radar-item-active" : ""}"
-               style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;"
-               data-action="history-firma-filter"
-               data-firm-title="${helpers.escapeHtml(f.title)}"
+               style="cursor:pointer;border-left:3px solid ${accentColor};padding-left:9px;"
                title="${helpers.escapeHtml(tooltip)}">
-            <div style="display:flex;align-items:center;gap:6px;min-width:0;">
-              <span class="bbz-mini-title" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${helpers.escapeHtml(f.title)}</span>
-              <span class="${helpers.firmBadgeClass(f.klassifizierung)}" style="flex-shrink:0;">${isA ? "A" : "B"}</span>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+              <div style="display:flex;align-items:center;gap:6px;min-width:0;"
+                   data-action="history-firma-filter" data-firm-title="${helpers.escapeHtml(f.title)}">
+                <span class="bbz-mini-title" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${helpers.escapeHtml(f.title)}</span>
+                <span class="${helpers.firmBadgeClass(f.klassifizierung)}" style="flex-shrink:0;">${isA ? "A" : "B"}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+                <span class="bbz-mini-meta" style="white-space:nowrap;color:${accentColor};font-weight:600;">${meta}</span>
+                ${showTaskBtn ? `<button class="bbz-button bbz-button-secondary" style="height:22px;font-size:11px;padding:0 7px;"
+                  data-action="open-task-form" data-firm-id="${f.id}">+ Task</button>` : ""}
+              </div>
             </div>
-            <span class="bbz-mini-meta" style="white-space:nowrap;flex-shrink:0;">${meta}</span>
           </div>`;
       };
 
@@ -2467,18 +2496,20 @@
 
       const radarHtml = hasRadarItems ? (
         radarZoneHtml("Nie kontaktiert", "var(--red)",
-          radarNever.map(f => radarItem(f, "0 Einträge", "A-Kunde — noch kein Kontakt erfasst"))) +
+          radarNever.map(f => radarItem(f, "noch kein Kontakt", "A-Kunde — noch kein Kontakt erfasst", "var(--red)", true))) +
         radarZoneHtml("Eingeschlafen (>360 Tage)", "var(--amber)",
           radarCold.map(f => {
             const diff = Math.floor((today - helpers.toDate(f.latestActivity)) / 86400000);
             const months = Math.floor(diff / 30);
             return radarItem(f, `seit ${months} Monat${months !== 1 ? "en" : ""}`,
-              `Letzter Kontakt: ${helpers.formatDate(f.latestActivity)} (vor ${months} Monaten)`);
+              `Letzter Kontakt: ${helpers.formatDate(f.latestActivity)} (vor ${months} Monaten)`, "var(--amber)");
           })) +
         radarZoneHtml("Überfällige Tasks", "var(--muted)",
-          radarOverdue.map(f => radarItem(f,
-            `${f.tasks.filter(t => t.isOpen && t.isOverdue).length} Task${f.tasks.filter(t => t.isOpen && t.isOverdue).length !== 1 ? "s" : ""} überfällig`,
-            `${f.tasks.filter(t => t.isOpen && t.isOverdue).length} überfällige Task(s)`)))
+          radarOverdue.map(f => {
+            const cnt = f.tasks.filter(t => t.isOpen && t.isOverdue).length;
+            return radarItem(f, `${cnt} Task${cnt !== 1 ? "s" : ""} überfällig`,
+              `${cnt} überfällige Task(s)`, "var(--muted)");
+          }))
       ) : `<div class="bbz-focus-bar bbz-focus-clear" style="border-radius:10px;">
               <span class="bbz-focus-icon">✓</span>
               <span class="bbz-focus-clear-text">Alle A/B-Kunden aktuell</span>
@@ -2957,8 +2988,12 @@
 
     openHistoryForm(contactId = null, firmId = null, itemId = null) {
       let prefillContactId = contactId;
-      if (!prefillContactId && firmId) {
+      if (!prefillContactId && firmId && !itemId) {
         const firm = dataModel.getFirmById(firmId);
+        if (firm && firm.contacts.length === 0) {
+          ui.setMessage(`"${firm.title}" hat noch keine Kontakte. Bitte zuerst einen Kontakt bei dieser Firma erfassen.`, "error");
+          return;
+        }
         prefillContactId = firm?.contacts?.[0]?.id || null;
       }
       const mode = itemId ? "edit" : "create";
@@ -2968,8 +3003,12 @@
 
     openTaskForm(contactId = null, firmId = null, itemId = null) {
       let prefillContactId = contactId;
-      if (!prefillContactId && firmId) {
+      if (!prefillContactId && firmId && !itemId) {
         const firm = dataModel.getFirmById(firmId);
+        if (firm && firm.contacts.length === 0) {
+          ui.setMessage(`"${firm.title}" hat noch keine Kontakte. Bitte zuerst einen Kontakt bei dieser Firma erfassen.`, "error");
+          return;
+        }
         prefillContactId = firm?.contacts?.[0]?.id || null;
       }
       const mode = itemId ? "edit" : "create";
