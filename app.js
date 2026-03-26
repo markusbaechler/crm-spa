@@ -1480,8 +1480,7 @@
       // Fokus-Bar: überfällige + diese Woche fällig
       const today   = helpers.todayStart();
       const in7     = new Date(today); in7.setDate(in7.getDate() + 7);
-      const thisWeek = allOpenTasks.filter(t => { const d = helpers.toDate(t.deadline); return d && d >= today && d <= in7; });
-      const focusTasks = [...overdueTasks, ...thisWeek.filter(t => !t.isOverdue)]
+      const thisWeek = allOpenTasks.filter(t => { const d = helpers.toDate(t.deadline); return d && d >= today && d <= in7; });      const focusTasks = [...overdueTasks, ...thisWeek.filter(t => !t.isOverdue)]
         .sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline))
         .slice(0, 5);
 
@@ -1537,24 +1536,36 @@
                 <button class="bbz-kpi-chip" data-action="kpi-filter" data-scope="contacts-mode" data-value="all">Alle</button>
               </div>
             </div>
-            <!-- Offene Tasks — drei Zeitzonen als Chips, kein Link-Text -->
-            <div class="bbz-kpi">
+            <!-- Offene Tasks — drei Zeitzonen als Chips, klickbar zur Planung -->
+            <div class="bbz-kpi bbz-kpi-clickable" data-action="navigate-planning" style="cursor:pointer;">
               <div class="bbz-kpi-label">Offene Tasks</div>
               <div class="bbz-kpi-value">${allOpenTasks.length}</div>
-              <div class="bbz-kpi-chips" style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
+              <div class="bbz-kpi-chips" style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;pointer-events:none;">
                 ${(() => {
                   const today = helpers.todayStart();
                   const in30  = new Date(today); in30.setDate(in30.getDate() + 30);
                   const faellig = allOpenTasks.filter(t => { const d = helpers.toDate(t.deadline); return d ? d <= today : t.isOverdue; }).length;
                   const monat   = allOpenTasks.filter(t => { const d = helpers.toDate(t.deadline); return d && d > today && d <= in30; }).length;
                   const uebrige = allOpenTasks.length - faellig - monat;
-                  return `<span class="bbz-kpi-chip bbz-kpi-chip-active" style="background:#fff1f1;border-color:#f1caca;color:var(--red);">Fällig <span style="color:var(--red);">${faellig}</span></span>`
+                  return `<span class="bbz-kpi-chip" style="background:#fff1f1;border-color:#f1caca;color:var(--red);">Fällig <span style="color:var(--red);">${faellig}</span></span>`
                        + `<span class="bbz-kpi-chip" style="background:#fff9eb;border-color:#f4dfab;color:var(--amber);">Monat <span style="color:var(--amber);">${monat}</span></span>`
                        + `<span class="bbz-kpi-chip">Übrige <span>${uebrige}</span></span>`;
                 })()}
               </div>
             </div>
-            ${this.kpiBlock("Diese Woche", thisWeek.length, thisWeek.length === 0 ? "keine Deadlines" : `bis ${helpers.formatDate(in7)}`, thisWeek.length > 3 ? "warn" : "")}
+            <!-- Events-Kachel -->
+            <div class="bbz-kpi bbz-kpi-clickable" data-action="kpi-filter" data-scope="navigate" data-value="events" style="cursor:pointer;">
+              <div class="bbz-kpi-label">Events</div>
+              <div class="bbz-kpi-value">${state.enriched.events.length}</div>
+              <div class="bbz-kpi-chips" style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;pointer-events:none;">
+                ${state.enriched.events.slice(0, 3).map(e =>
+                  `<span class="bbz-kpi-chip">${helpers.escapeHtml(e.name)} <span>${e.contactCount}</span></span>`
+                ).join("")}
+                ${state.enriched.events.length > 3
+                  ? `<span class="bbz-kpi-chip bbz-muted">+${state.enriched.events.length - 3}</span>`
+                  : ""}
+              </div>
+            </div>
           </div>
           <div class="bbz-grid bbz-grid-70-30">
             <section class="bbz-section">
