@@ -1537,13 +1537,22 @@
                 <button class="bbz-kpi-chip" data-action="kpi-filter" data-scope="contacts-mode" data-value="all">Alle</button>
               </div>
             </div>
-            <!-- Offene Tasks — klickbar zur Planung -->
-            <div class="bbz-kpi bbz-kpi-clickable" data-action="navigate-planning" style="cursor:pointer;">
+            <!-- Offene Tasks — drei Zeitzonen als Chips, kein Link-Text -->
+            <div class="bbz-kpi">
               <div class="bbz-kpi-label">Offene Tasks</div>
               <div class="bbz-kpi-value">${allOpenTasks.length}</div>
-              ${overdueTasks.length > 0
-                ? `<div class="bbz-kpi-meta-alert">${overdueTasks.length} überfällig — zur Planung →</div>`
-                : `<div class="bbz-kpi-meta-ok">keine überfällig — zur Planung →</div>`}
+              <div class="bbz-kpi-chips" style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
+                ${(() => {
+                  const today = helpers.todayStart();
+                  const in30  = new Date(today); in30.setDate(in30.getDate() + 30);
+                  const faellig = allOpenTasks.filter(t => { const d = helpers.toDate(t.deadline); return d ? d <= today : t.isOverdue; }).length;
+                  const monat   = allOpenTasks.filter(t => { const d = helpers.toDate(t.deadline); return d && d > today && d <= in30; }).length;
+                  const uebrige = allOpenTasks.length - faellig - monat;
+                  return `<span class="bbz-kpi-chip bbz-kpi-chip-active" style="background:#fff1f1;border-color:#f1caca;color:var(--red);">Fällig <span style="color:var(--red);">${faellig}</span></span>`
+                       + `<span class="bbz-kpi-chip" style="background:#fff9eb;border-color:#f4dfab;color:var(--amber);">Monat <span style="color:var(--amber);">${monat}</span></span>`
+                       + `<span class="bbz-kpi-chip">Übrige <span>${uebrige}</span></span>`;
+                })()}
+              </div>
             </div>
             ${this.kpiBlock("Diese Woche", thisWeek.length, thisWeek.length === 0 ? "keine Deadlines" : `bis ${helpers.formatDate(in7)}`, thisWeek.length > 3 ? "warn" : "")}
           </div>
@@ -1554,17 +1563,8 @@
                 <button class="bbz-button bbz-button-primary" data-action="open-firm-form">+ Firma</button>
               </div>
               <div class="bbz-section-body">
-                <div class="bbz-filters-3">
-                  <input class="bbz-input" data-filter="firms-search" type="text" placeholder="Suche nach Firma, Ort, Ansprechpartner ..." value="${helpers.escapeHtml(filters.search)}" />
-                  <select class="bbz-select" data-filter="firms-klassifizierung">
-                    <option value="">Alle Klassifizierungen</option>
-                    ${(state.meta.choices?.[CONFIG.lists.firms]?.["Klassifizierung"] || [...new Set(state.enriched.firms.map(f => f.klassifizierung).filter(Boolean))].sort()).map(k => `<option value="${helpers.escapeHtml(k)}" ${filters.klassifizierung === k ? "selected" : ""}>${helpers.escapeHtml(k)}</option>`).join("")}
-                  </select>
-                  <select class="bbz-select" data-filter="firms-vip">
-                    <option value="">VIP egal</option>
-                    <option value="yes" ${filters.vip === "yes" ? "selected" : ""}>Nur VIP</option>
-                    <option value="no" ${filters.vip === "no" ? "selected" : ""}>Nur nicht VIP</option>
-                  </select>
+                <div style="margin-bottom:10px;">
+                  <input class="bbz-input" style="width:100%;height:40px;font-size:14px;" data-filter="firms-search" type="text" placeholder="Suche nach Firma, Ort, Ansprechpartner ..." value="${helpers.escapeHtml(filters.search)}" />
                 </div>
                 <div class="bbz-table-wrap">
                   <table class="bbz-table">
@@ -1657,8 +1657,8 @@
                             const d = helpers.toDate(f.nextDeadline);
                             const meta = d
                               ? (d <= today
-                                  ? `<span style="color:var(--red);font-weight:600;">${helpers.relativeDate(f.nextDeadline)}</span>`
-                                  : helpers.relativeDate(f.nextDeadline))
+                                  ? `${f.openTasksCount} Task${f.openTasksCount !== 1 ? "s" : ""} · <span style="color:var(--red);font-weight:600;">${helpers.relativeDate(f.nextDeadline)}</span>`
+                                  : `${f.openTasksCount} Task${f.openTasksCount !== 1 ? "s" : ""} · ${helpers.relativeDate(f.nextDeadline)}`)
                               : `${f.openTasksCount} Task${f.openTasksCount !== 1 ? "s" : ""}`;
                             return `<div class="bbz-mini-item" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
                               <a class="bbz-link bbz-mini-title" data-action="navigate-planning">${helpers.escapeHtml(f.title)}</a>
