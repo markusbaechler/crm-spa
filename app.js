@@ -951,7 +951,13 @@
           authority: CONFIG.graph.authority,
           redirectUri: CONFIG.graph.redirectUri
         },
-        cache: { cacheLocation: "localStorage" }
+        cache: {
+          // sessionStorage: kompatibler mit Chrome Mobile und Inkognito-Modus
+          // localStorage wurde von Chrome auf Android in bestimmten Kontexten blockiert
+          cacheLocation: "sessionStorage",
+          // Cookie-Fallback für Browser die sessionStorage blockieren (z.B. Safari ITP)
+          storeAuthStateInCookie: true
+        }
       });
 
       await msalInstance.initialize();
