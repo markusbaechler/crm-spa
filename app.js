@@ -349,11 +349,12 @@
     },
 
     // Aktivitäts-Signal für Firmenliste und Pflege-Radar:
-    // gibt "" | "overdue" | "never" | "cold" zurück
+    // gibt "" | "overdue" | "never" | "cold" | "ok" zurück
     // "overdue" — offene überfällige Tasks (alle Segmente)
     // "never"   — A-Kunde, noch kein History-Eintrag
     // "cold"    — A/B-Kunde, kein Kontakt seit >360 Tagen
-    // ""        — alles OK, oder C-Kunde/keine Klassifizierung
+    // "ok"      — A/B-Kunde, letzter Kontakt <90 Tage, keine überfälligen Tasks
+    // ""        — C-Kunde/keine Klassifizierung: kein Signal
     firmSignal(firm) {
       if (firm.openTasksCount > 0 && firm.tasks.some(t => t.isOpen && t.isOverdue)) return "overdue";
       const kl = String(firm.klassifizierung || "").toUpperCase();
@@ -365,6 +366,7 @@
       if (!last) return "never";
       const diffDays = Math.floor((helpers.todayStart() - last) / 86400000);
       if (diffDays > 360) return "cold";
+      if (diffDays <= 90) return "ok";
       return "";
     },
 
@@ -1801,13 +1803,13 @@
       const overdueTasks   = allOpenTasks.filter(t => t.isOverdue);
 
       // Radar-Modus: A/B-Kunden mit Signal, priorisiert sortiert
-      const signalPriority = { overdue: 0, never: 1, cold: 2 };
+      const signalPriority = { overdue: 0, never: 1, cold: 2, ok: 3 };
       const today = helpers.todayStart();
       const radarRows = state.enriched.firms.filter(f => {
         const kl = String(f.klassifizierung || "").toUpperCase();
         if (!kl.includes("A") && !kl.includes("B")) return false;
         const sig = helpers.firmSignal(f);
-        if (!sig) return false;
+        if (!sig) return false; // "" = keine Info (90-360 Tage, kein Problem)
         const search = filters.search.trim().toLowerCase();
         return !search || helpers.textIncludes(f.title, search);
       }).sort((a, b) => {
@@ -1820,6 +1822,8 @@
       const radarNeverCount   = radarRows.filter(f => helpers.firmSignal(f) === "never").length;
       const radarColdCount    = radarRows.filter(f => helpers.firmSignal(f) === "cold").length;
       const radarOverdueCount = radarRows.filter(f => helpers.firmSignal(f) === "overdue").length;
+      // On Track: A/B-Kunden mit letztem Kontakt <90 Tage, keine überfälligen Tasks
+      const onTrackCount = state.enriched.firms.filter(f => helpers.firmSignal(f) === "ok").length;
 
       // Fokus-Bar: überfällige + diese Woche fällig
       const in7     = new Date(today); in7.setDate(in7.getDate() + 7);
@@ -1887,11 +1891,6 @@
           <div class="bbz-kpis">
             ${filters.radarMode ? `
             <!-- Radar-Modus KPIs -->
-            <div class="bbz-kpi bbz-kpi-blue">
-              <div class="bbz-kpi-label">Pflege-Fälle</div>
-              <div class="bbz-kpi-value">${radarRows.length}</div>
-              <div class="bbz-kpi-meta">A/B-Kunden mit Handlungsbedarf</div>
-            </div>
             <div class="bbz-kpi bbz-kpi-red">
               <div class="bbz-kpi-label">Nie kontaktiert</div>
               <div class="bbz-kpi-value bbz-kpi-value-red">${radarNeverCount}</div>
@@ -1906,6 +1905,11 @@
               <div class="bbz-kpi-label">Überfällige Tasks</div>
               <div class="bbz-kpi-value bbz-kpi-value-red">${radarOverdueCount}</div>
               <div class="bbz-kpi-meta">A/B-Kunden betroffen</div>
+            </div>
+            <div class="bbz-kpi bbz-kpi-green">
+              <div class="bbz-kpi-label">On Track ✓</div>
+              <div class="bbz-kpi-value bbz-kpi-value-green">${onTrackCount}</div>
+              <div class="bbz-kpi-meta bbz-kpi-meta-ok">Kontakt &lt;90 Tage</div>
             </div>
             ` : `
             <!-- Firmen-Kachel: Segment-Filter + orthogonale Zusatzfilter -->
@@ -1974,7 +1978,7 @@
               <div class="bbz-section-header">
                 <div>
                   <div class="bbz-section-title">${filters.radarMode ? "Pflege A/B" : "Firmen-Cockpit"}</div>
-                  <div class="bbz-section-subtitle">${filters.radarMode ? `${radarRows.length} A/B-Kunden mit Handlungsbedarf` : "Segment, Tasks und Fristen auf einen Blick"}</div>
+                  <div class="bbz-section-subtitle">${filters.radarMode ? `${radarRows.filter(f => helpers.firmSignal(f) !== "ok").length} mit Handlungsbedarf · ${onTrackCount} On Track ✓` : "Segment, Tasks und Fristen auf einen Blick"}</div>
                 </div>
                 <div style="display:flex;gap:8px;align-items:center;">
                   <!-- Tab-Bar -->
@@ -2014,8 +2018,12 @@
                         const sig = helpers.firmSignal(firm);
                         const signalDot = sig === "overdue"
                           ? `<span class="bbz-signal bbz-signal-red" title="Überfällige Tasks"></span>`
+                          : sig === "ok"
+                          ? `<span class="bbz-signal bbz-signal-green" title="On Track — letzter Kontakt < 90 Tage"></span>`
                           : `<span class="bbz-signal bbz-signal-amber"></span>`;
-                        const rowClass = sig === "overdue" ? "bbz-row-alert" : "bbz-row-cold";
+                        const rowClass = sig === "overdue" ? "bbz-row-alert"
+                          : sig === "ok" ? "bbz-row-ok"
+                          : "bbz-row-cold";
                         const lastDate = helpers.toDate(firm.latestActivity);
                         const months = lastDate
                           ? (today.getFullYear() - lastDate.getFullYear()) * 12 + (today.getMonth() - lastDate.getMonth())
@@ -2024,6 +2032,8 @@
                           ? `<span style="color:var(--red);font-weight:600;">🔴 Nie kontaktiert</span>`
                           : sig === "cold"
                           ? `<span style="color:var(--amber);font-weight:600;">🟡 Seit ${months} Monat${months !== 1 ? "en" : ""} still</span>`
+                          : sig === "ok"
+                          ? `<span style="color:var(--green);font-weight:600;">✅ On Track — vor ${months !== null ? months + " Monat" + (months !== 1 ? "en" : "") : "kurzem"}</span>`
                           : `<span style="color:var(--muted);font-weight:600;">⚠️ ${firm.tasks.filter(t => t.isOpen && t.isOverdue).length} Task${firm.tasks.filter(t => t.isOpen && t.isOverdue).length !== 1 ? "s" : ""} überfällig</span>`;
                         return `
                           <tr class="${rowClass}">
@@ -2068,8 +2078,13 @@
                           ? `<span class="bbz-signal bbz-signal-amber" title="A-Kunde — noch kein Kontakt erfasst"></span>`
                           : signal === "cold"
                           ? `<span class="bbz-signal bbz-signal-amber" title="Kein Kontakt seit über 360 Tagen (A/B-Kunde)"></span>`
+                          : signal === "ok"
+                          ? `<span class="bbz-signal bbz-signal-green" title="On Track — letzter Kontakt < 90 Tage"></span>`
                           : `<span class="bbz-signal bbz-signal-none"></span>`;
-                        const rowClass = signal === "overdue" ? "bbz-row-alert" : (signal === "cold" || signal === "never") ? "bbz-row-cold" : "";
+                        const rowClass = signal === "overdue" ? "bbz-row-alert"
+                          : (signal === "cold" || signal === "never") ? "bbz-row-cold"
+                          : signal === "ok" ? "bbz-row-ok"
+                          : "";
                         return `
                         <tr class="${rowClass}">
                           <td style="width:28px;padding-right:4px;">${signalDot}</td>
@@ -2093,6 +2108,8 @@
                       ? `<span class="bbz-signal bbz-signal-red"></span>`
                       : (signal === "never" || signal === "cold")
                       ? `<span class="bbz-signal bbz-signal-amber"></span>`
+                      : signal === "ok"
+                      ? `<span class="bbz-signal bbz-signal-green"></span>`
                       : `<span style="width:8px;flex-shrink:0;display:inline-block;"></span>`;
                     const taskBadge = firm.openTasksCount > 0
                       ? overdueTasks.some(t => t.firmId === firm.id)
@@ -2978,6 +2995,9 @@
         f.tasks.some(t => t.isOpen && t.isOverdue)
       ).sort((a, b) => helpers.compareDateAsc(a.nextDeadline, b.nextDeadline));
 
+      const radarOk = abFirmen.filter(f => helpers.firmSignal(f) === "ok")
+        .sort((a, b) => helpers.compareDateDesc(a.latestActivity, b.latestActivity));
+
       const activeRadarFirm = filters.search;
 
       const radarItem = (f, meta, tooltip, accentColor = "var(--muted)", showTaskBtn = false) => {
@@ -3014,7 +3034,7 @@
           </div>`;
       };
 
-      const hasRadarItems = radarNever.length + radarCold.length + radarOverdue.length > 0;
+      const hasRadarItems = radarNever.length + radarCold.length + radarOverdue.length + radarOk.length > 0;
 
       const radarHtml = hasRadarItems ? (
         radarZoneHtml("Nie kontaktiert", "var(--red)",
@@ -3032,11 +3052,15 @@
             const cnt = f.tasks.filter(t => t.isOpen && t.isOverdue).length;
             return radarItem(f, `${cnt} Task${cnt !== 1 ? "s" : ""} überfällig`,
               `${cnt} überfällige Task(s)`, "var(--muted)");
-          }))
-      ) : `<div class="bbz-focus-bar bbz-focus-clear" style="border-radius:10px;">
-              <span class="bbz-focus-icon">✓</span>
-              <span class="bbz-focus-clear-text">Alle A/B-Kunden aktuell</span>
-           </div>`;
+          })) +
+        radarZoneHtml("On Track ✓", "var(--green)",
+          radarOk.map(f => {
+            const lastDate = helpers.toDate(f.latestActivity);
+            const days = lastDate ? Math.floor((today - lastDate) / 86400000) : null;
+            const meta = days !== null ? `vor ${days} Tag${days !== 1 ? "en" : ""}` : "kürzlich";
+            return radarItem(f, meta, `On Track — letzter Kontakt ${helpers.formatDate(f.latestActivity)}`, "var(--green)");
+          }), false)
+      ) : `<div style="text-align:center;padding:16px 0;color:var(--subtle);font-size:13px;">Keine A/B-Kunden erfasst.</div>`;
 
       // Aktiver Firma-Filter: Reset-Banner
       const firmaFilterBanner = activeRadarFirm
@@ -3104,7 +3128,7 @@
               <div class="bbz-section-header">
                 <div>
                   <div class="bbz-section-title">${filters.radarMode ? "Pflege A/B" : "Aktivitäten"}</div>
-                  <div class="bbz-section-subtitle">${filters.radarMode ? `${radarNever.length + radarCold.length + radarOverdue.length} A/B-Kunden mit Handlungsbedarf` : filters.groupBy === "firm" ? "Gruppiert nach Firma" : "Chronologische Timeline"}</div>
+                  <div class="bbz-section-subtitle">${filters.radarMode ? `${radarNever.length + radarCold.length + radarOverdue.length} mit Handlungsbedarf · ${radarOk.length} On Track ✓` : filters.groupBy === "firm" ? "Gruppiert nach Firma" : "Chronologische Timeline"}</div>
                 </div>
                 <div style="display:flex;gap:6px;align-items:center;">
                   <!-- Tab-Bar -->
@@ -3215,7 +3239,7 @@
               <div class="bbz-section-header">
                 <div>
                   <div class="bbz-section-title">Pflege-Radar</div>
-                  <div class="bbz-section-subtitle">Kontaktfrequenz A/B-Kunden</div>
+                  <div class="bbz-section-subtitle">${radarNever.length + radarCold.length + radarOverdue.length} Handlungsbedarf · ${radarOk.length} On Track ✓</div>
                 </div>
                 ${(radarNever.length + radarCold.length + radarOverdue.length) > 0
                   ? `<button class="bbz-link" style="font-size:12px;" data-action="kpi-filter" data-scope="history-radar">Alle →</button>`
@@ -3483,15 +3507,15 @@
 
       const fields = {
         Title: fd.get("title").trim(),
-        VIP:   form.querySelector("[name='vip']")?.checked ?? false
+        VIP:   form.querySelector("[name='vip']")?.checked ?? false,
+        // Immer senden — null löscht den Wert in SP
+        Adresse:        fd.get("adresse")?.trim()      || null,
+        PLZ:            fd.get("plz")?.trim()           || null,
+        Ort:            fd.get("ort")?.trim()            || null,
+        Land:           fd.get("land")?.trim()           || null,
+        Hauptnummer:    fd.get("hauptnummer")?.trim()    || null,
+        Klassifizierung: fd.get("klassifizierung")      || null,
       };
-
-      if (fd.get("adresse")?.trim())      fields.Adresse      = fd.get("adresse").trim();
-      if (fd.get("plz")?.trim())          fields.PLZ          = fd.get("plz").trim();
-      if (fd.get("ort")?.trim())          fields.Ort          = fd.get("ort").trim();
-      if (fd.get("land")?.trim())         fields.Land         = fd.get("land").trim();
-      if (fd.get("hauptnummer")?.trim())  fields.Hauptnummer  = fd.get("hauptnummer").trim();
-      if (fd.get("klassifizierung"))      fields.Klassifizierung = fd.get("klassifizierung");
 
 
       ui.setLoading(true);
@@ -3851,10 +3875,13 @@
       try {
         if (mode === "edit") {
           if (!itemId) throw new Error("itemId fehlt fuer PATCH.");
-          const patchFields = { Datum: datum + "T00:00:00Z", Projektbezug: projektbezug };
-          if (kontaktart) patchFields.Kontaktart = kontaktart;
-          if (leadbbz) patchFields.Leadbbz = leadbbz;
-          if (notizen.trim()) patchFields.Notizen = notizen.trim();
+          const patchFields = {
+            Datum:      datum + "T00:00:00Z",
+            Projektbezug: projektbezug,
+            Kontaktart: kontaktart || null,
+            Leadbbz:    leadbbz    || null,
+            Notizen:    notizen.trim() || null,
+          };
           await api.patchItem(SCHEMA.history.listTitle, itemId, patchFields);
           ui.setMessage("Aktivitaet wurde gespeichert.", "success");
         } else {
@@ -3906,10 +3933,12 @@
       try {
         if (mode === "edit") {
           if (!itemId) throw new Error("itemId fehlt fuer PATCH.");
-          const patchFields = { Title: title.trim() };
-          if (deadline) patchFields.Deadline = deadline + "T00:00:00Z";
-          if (status) patchFields.Status = status;
-          if (leadbbz) patchFields.Leadbbz = leadbbz;
+          const patchFields = {
+            Title:    title.trim(),
+            Deadline: deadline ? deadline + "T00:00:00Z" : null,
+            Status:   status   || null,
+            Leadbbz:  leadbbz  || null,
+          };
           await api.patchItem(SCHEMA.tasks.listTitle, itemId, patchFields);
           ui.setMessage("Aufgabe wurde gespeichert.", "success");
         } else {
