@@ -464,9 +464,18 @@
   // Datum-Parser: erkennt YYYY-MM-DD, DD.MM.YYYY, JS Date-Objekte
   function _parseDate(value) {
     if (!value) return null;
+    // Hilfsfunktion: lokale Datum-Komponenten als YYYY-MM-DD
+    // Wichtig: NICHT toISOString() verwenden — das gibt UTC zurück und verschiebt
+    // in CH (UTC+1) Mitternacht-Datumswerte (z.B. aus Excel) um einen Tag zurück
+    function _localDateStr(d) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    }
     if (value instanceof Date) {
       if (isNaN(value.getTime())) return null;
-      return value.toISOString().split("T")[0];
+      return _localDateStr(value);
     }
     const s = String(value).trim();
     if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
@@ -475,7 +484,7 @@
       return `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
     }
     const d = new Date(s);
-    return isNaN(d.getTime()) ? null : d.toISOString().split("T")[0];
+    return isNaN(d.getTime()) ? null : _localDateStr(d);
   }
 
   // In-memory Log-Buffer — wird bei jedem Import neu befüllt
