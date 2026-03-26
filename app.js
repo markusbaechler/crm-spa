@@ -803,7 +803,13 @@
     },
 
     renderShell() {
+      // Desktop nav active state
       this.els.navButtons.forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.route === state.filters.route);
+      });
+
+      // Mobile bottom nav active state — direkt synchronisieren, kein MutationObserver nötig
+      document.querySelectorAll(".bbz-bottom-btn").forEach(btn => {
         btn.classList.toggle("active", btn.dataset.route === state.filters.route);
       });
 
@@ -846,7 +852,7 @@
     },
 
     loadingBlock(text = "Daten werden geladen ...") {
-      return `<section class="bbz-section"><div class="bbz-section-body"><div class="flex items-center gap-3"><div class="bbz-loader"></div><div class="text-sm text-slate-500">${helpers.escapeHtml(text)}</div></div></div></section>`;
+      return `<section class="bbz-section"><div class="bbz-section-body"><div style="display:flex;align-items:center;gap:10px;"><div class="bbz-loader"></div><div style="font-size:13px;color:var(--muted);">${helpers.escapeHtml(text)}</div></div></div></section>`;
     },
 
     emptyBlock(text = "Keine Daten vorhanden.", action = null, actionLabel = null) {
@@ -2107,15 +2113,15 @@
           <div class="${bandClass}">
             <div class="bbz-detail-header" style="margin-bottom:0;">
               <div>
-                <button class="bbz-button bbz-button-secondary mb-3" style="background:rgba(255,255,255,0.7);" data-action="back-to-firms">← Firmenliste</button>
+                <button class="bbz-button bbz-button-secondary" style="margin-bottom:12px;background:rgba(255,255,255,0.7);" data-action="back-to-firms">← Firmenliste</button>
                 <div class="bbz-detail-title">${helpers.escapeHtml(firm.title)}</div>
                 <div class="bbz-detail-subtitle">${helpers.escapeHtml(helpers.joinNonEmpty([firm.adresse, helpers.joinNonEmpty([firm.plz, firm.ort], " "), firm.land], " · ")) || "Keine Adresse erfasst"}</div>
-                <div class="flex items-center gap-2 flex-wrap mt-3">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;">
                   ${firm.klassifizierung ? `<span class="${helpers.firmBadgeClass(firm.klassifizierung)}">${helpers.escapeHtml(firm.klassifizierung)}</span>` : ""}
                   ${firm.vip ? `<span class="bbz-pill bbz-pill-vip">♛</span>` : ""}
                 </div>
               </div>
-              <div class="flex items-center gap-2 flex-wrap">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                 <button class="bbz-button bbz-button-secondary" style="${firm.contactsCount > 0 ? "opacity:0.4;cursor:not-allowed;" : "color:var(--bbz-red);border-color:var(--bbz-red);"}" data-action="delete-firm" data-id="${firm.id}" data-name="${helpers.escapeHtml(firm.title)}" data-contacts="${firm.contactsCount}">Löschen</button>
                 <button class="bbz-button bbz-button-secondary" data-action="open-firm-form" data-id="${firm.id}">Bearbeiten</button>
                 <button class="bbz-button bbz-button-secondary" data-action="open-task-form" data-firm-id="${firm.id}">+ Task</button>
@@ -2164,7 +2170,7 @@
               </div>
             </section>
           </div>
-          <div class="bbz-grid bbz-grid-2 mt-4">
+          <div class="bbz-grid bbz-grid-2" style="margin-top:12px;">
             <section class="bbz-section">
               <div class="bbz-section-header"><div><div class="bbz-section-title">Aktivitäten</div><div class="bbz-section-subtitle">Aggregiert über alle Kontakte</div></div>
                 <button class="bbz-button bbz-button-secondary" style="height:32px;font-size:13px;" data-action="open-history-form" data-firm-id="${firm.id}">+ Aktivität</button>
@@ -2288,7 +2294,7 @@
           <section class="bbz-section">
           <div class="bbz-section-header">
             <div><div class="bbz-section-title">Kontakte</div><div class="bbz-section-subtitle">${kpiMode === "history" ? "Mit History-Einträgen" : kpiMode === "tasks" ? "Mit offenen Tasks" : "Operative Ansprechpartner über alle Firmen"}</div></div>
-            <div class="flex items-center gap-2">
+            <div style="display:flex;align-items:center;gap:8px;">
               <button class="bbz-dense-toggle" onclick="window.bbzToggleDense && window.bbzToggleDense()" title="Kompakte Ansicht">⇕ Kompakt</button>
               <button class="bbz-button bbz-button-secondary" data-action="open-history-form">+ Aktivität</button>
               <button class="bbz-button bbz-button-primary" data-action="open-contact-form">+ Kontakt</button>
@@ -2340,7 +2346,7 @@
       return `
         <div>
           <div class="${bandClass}" style="margin-bottom:10px;">
-            <button class="bbz-button bbz-button-secondary mb-3" style="background:rgba(255,255,255,0.7);" data-action="back-to-contacts">← Kontaktliste</button>
+            <button class="bbz-button bbz-button-secondary" style="margin-bottom:12px;background:rgba(255,255,255,0.7);" data-action="back-to-contacts">← Kontaktliste</button>
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
               <div style="display:flex;align-items:center;gap:14px;">
                 <div class="bbz-avatar-lg" data-idx="${avatarIdx}">${helpers.escapeHtml(initials)}</div>
@@ -2356,13 +2362,13 @@
                     ${contact.funktion ? ` · ${helpers.escapeHtml(contact.funktion)}` : ""}
                     ${contact.rolle ? ` · ${helpers.escapeHtml(contact.rolle)}` : ""}
                   </div>
-                  <div class="flex items-center gap-2 flex-wrap mt-2">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;">
                     ${contact.leadbbz0 ? helpers.leadbbzBadgeHtml(contact.leadbbz0) : ""}
                     ${contact.archiviert ? '<span class="bbz-pill" style="background:var(--bbz-red-soft);color:var(--bbz-red);border-color:#f0b0b2;">Archiviert</span>' : ""}
                   </div>
                 </div>
               </div>
-              <div class="flex items-center gap-2 flex-wrap">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                 ${contact.email1 ? `<a class="bbz-button bbz-button-secondary" href="mailto:${helpers.escapeHtml(contact.email1)}">✉ Mail</a>` : ""}
                 <button class="bbz-button bbz-button-secondary" style="color:var(--bbz-red);border-color:var(--bbz-red);" data-action="delete-contact" data-id="${contact.id}" data-name="${helpers.escapeHtml(contact.fullName || contact.nachname)}">Löschen</button>
                 <button class="bbz-button bbz-button-secondary" data-action="open-contact-form" data-item-id="${contact.id}">Bearbeiten</button>
@@ -2423,7 +2429,7 @@
               </div>
             </section>
           </div>
-          <div class="bbz-grid bbz-grid-2 mt-4" style="margin-top:12px;">
+          <div class="bbz-grid bbz-grid-2" style="margin-top:12px;">
             <section class="bbz-section">
               <div class="bbz-section-header"><div><div class="bbz-section-title">Aktivitäten</div></div>
                 <button class="bbz-button bbz-button-primary" style="height:32px;font-size:13px;" data-action="open-history-form" data-contact-id="${contact.id}">+ Aktivität</button>
