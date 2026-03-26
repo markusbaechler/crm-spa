@@ -142,7 +142,7 @@
       contacts: { search: "", archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden, sortBy: "fullName", sortDir: "asc" },
       planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, groupBy: "none", sortBy: "deadline", sortDir: "asc", segment: "", leadbbz: "", faelligkeit: "" },
       history: { search: "", kontaktart: "", leadbbz: "", groupBy: "date", zeitfenster: "", radarMode: false },
-      events: { search: "", onlyWithOpenTasks: false, sortBy: "contactName", sortDir: "asc", segment: "" }
+      events: { search: "", onlyWithOpenTasks: false, sortBy: "contactName", sortDir: "asc", segment: "", selectedEvent: "" }
     },
 
     selection: {
@@ -523,6 +523,8 @@
             state.filters.planning.leadbbz = state.filters.planning.leadbbz === value ? "" : value;
           } else if (scope === "events-segment") {
             state.filters.events.segment = state.filters.events.segment === value ? "" : value;
+          } else if (scope === "events-selected") {
+            state.filters.events.selectedEvent = state.filters.events.selectedEvent === value ? "" : value;
           } else if (scope === "navigate") {
             controller.navigate(value);
             return;
@@ -3129,22 +3131,38 @@
       const filters = state.filters.events;
       const evtSortBy  = filters.sortBy  || "contactName";
       const evtSortDir = filters.sortDir === "asc" ? 1 : -1;
+      const allGroups  = state.enriched.events;
 
+      // Segment-Chips (auf Events-Kachel)
       const segChip = (label, val) => {
         const active = filters.segment === val;
         const cnt = val === ""
-          ? state.enriched.events.reduce((s, g) => s + g.contacts.length, 0)
-          : state.enriched.events.reduce((s, g) => s + g.contacts.filter(c => c.segment.startsWith(val)).length, 0);
+          ? allGroups.reduce((s, g) => s + g.contacts.length, 0)
+          : allGroups.reduce((s, g) => s + g.contacts.filter(c => c.segment.startsWith(val)).length, 0);
         return `<button class="bbz-kpi-chip ${active ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="events-segment" data-value="${helpers.escapeHtml(val)}">${helpers.escapeHtml(label || "Alle")} <span>${cnt}</span></button>`;
       };
 
-      const groups = state.enriched.events.map(group => {
+      // Event-Filter-Chips auf Anmeldungen-Kachel — ein Chip pro Event-Gruppe
+      const evtChip = (group) => {
+        const active = filters.selectedEvent === group.name;
+        return `<button class="bbz-kpi-chip ${active ? "bbz-kpi-chip-active" : ""}"
+          data-action="kpi-filter" data-scope="events-selected" data-value="${helpers.escapeHtml(group.name)}"
+          title="${helpers.escapeHtml(group.name)}">
+          ${helpers.escapeHtml(group.name)} <span>${group.contactCount}</span>
+        </button>`;
+      };
+
+      // Gruppen filtern und aufbereiten
+      const groups = allGroups.map(group => {
+        // selectedEvent-Filter: wenn gesetzt, nur diese Gruppe zeigen
+        if (filters.selectedEvent && group.name !== filters.selectedEvent) return null;
         const filtered = group.contacts.filter(item => {
           const search = filters.search.trim().toLowerCase();
           const searchMatch = !search || [group.name, item.contactName, item.firmTitle, item.rolle, item.funktion].some(v => helpers.textIncludes(v, search));
           const segMatch = !filters.segment || item.segment.startsWith(filters.segment);
           return searchMatch && segMatch && (!filters.onlyWithOpenTasks || item.openTasksCount > 0);
         });
+        if (!filtered.length) return null;
         const sorted = [...filtered].sort((a, b) => {
           if (evtSortBy === "firmTitle") return String(a.firmTitle||"").localeCompare(String(b.firmTitle||""), "de") * evtSortDir;
           return String(a.contactName||"").localeCompare(String(b.contactName||""), "de") * evtSortDir;
@@ -3153,15 +3171,16 @@
         const cntB = group.contacts.filter(c => c.segment.startsWith("B")).length;
         const cntC = group.contacts.filter(c => c.segment.startsWith("C")).length;
         return { ...group, contacts: sorted, cntA, cntB, cntC };
-      }).filter(g => g.contacts.length > 0);
+      }).filter(Boolean);
 
-      const totalGroups = state.enriched.events.length;
-      const totalContacts = state.enriched.events.reduce((sum, e) => sum + e.contactCount, 0);
-      const totalOpenTasks = state.enriched.events.reduce((sum, e) => sum + e.openTasksCount, 0);
+      const totalGroups   = allGroups.length;
+      const totalContacts = allGroups.reduce((sum, e) => sum + e.contactCount, 0);
 
       return `
         <div>
           <div class="bbz-kpis">
+
+            <!-- Kachel 1: Events mit Segment-Chips -->
             <div class="bbz-kpi">
               <div class="bbz-kpi-label">Events</div>
               <div class="bbz-kpi-value">${totalGroups}</div>
@@ -3169,8 +3188,18 @@
                 ${segChip("A", "A")}${segChip("B", "B")}${segChip("C", "C")}${segChip("Alle", "")}
               </div>
             </div>
-            ${this.kpiBlock("Anmeldungen", totalContacts)}
-            ${this.kpiBlock("Offene Tasks", totalOpenTasks, totalOpenTasks > 0 ? "über alle Events" : "keine offen", totalOpenTasks > 0 ? "warn" : "ok")}
+
+            <!-- Kachel 2: Anmeldungen mit Event-Filter-Chips -->
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">Anmeldungen</div>
+              <div class="bbz-kpi-value">${totalContacts}</div>
+              <div class="bbz-kpi-chips" style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
+                ${allGroups.map(g => evtChip(g)).join("")}
+                ${filters.selectedEvent ? `<button class="bbz-kpi-chip" data-action="kpi-filter" data-scope="events-selected" data-value="" style="opacity:0.6;">× Alle</button>` : ""}
+              </div>
+            </div>
+
+            <!-- Kachel 3: Eventhistory setzen -->
             <div class="bbz-kpi" style="display:flex;flex-direction:column;justify-content:center;">
               <div class="bbz-kpi-label">Eventhistory</div>
               <button class="bbz-button bbz-button-primary" style="margin-top:8px;height:32px;font-size:13px;"
@@ -3178,12 +3207,18 @@
                 + Eventhistory setzen
               </button>
             </div>
+
           </div>
           <section class="bbz-section">
-            <div class="bbz-section-header"><div><div class="bbz-section-title">Events</div><div class="bbz-section-subtitle">Anmeldungen nach Event-Kategorie</div></div></div>
+            <div class="bbz-section-header">
+              <div>
+                <div class="bbz-section-title">Events</div>
+                <div class="bbz-section-subtitle">${filters.selectedEvent ? `Gefiltert: ${helpers.escapeHtml(filters.selectedEvent)}` : "Anmeldungen nach Event-Kategorie"}</div>
+              </div>
+            </div>
             <div class="bbz-section-body">
               <div class="bbz-filters-3">
-                <input class="bbz-input" data-filter="events-search" type="text" placeholder="Suche nach Kategorie, Kontakt, Firma ..." value="${helpers.escapeHtml(filters.search)}" />
+                <input class="bbz-input" data-filter="events-search" type="text" placeholder="Suche nach Kontakt, Firma ..." value="${helpers.escapeHtml(filters.search)}" />
                 <select class="bbz-select" data-filter="events-sortby">
                   <option value="contactName" ${(filters.sortBy||"contactName") === "contactName" ? "selected" : ""}>Sortierung: Kontakt A–Z</option>
                   <option value="firmTitle"   ${(filters.sortBy||"") === "firmTitle"   ? "selected" : ""}>Sortierung: Firma A–Z</option>
@@ -3215,14 +3250,7 @@
                     <div class="bbz-table-wrap">
                       <table class="bbz-table">
                         <thead><tr>
-                          <th></th>
-                          <th>Kontakt</th>
-                          <th>Firma</th>
-                          <th>Segment</th>
-                          <th>Funktion / Rolle</th>
-                          <th>Letzte Aktivität</th>
-                          <th>Tasks</th>
-                          <th></th>
+                          <th></th><th>Kontakt</th><th>Firma</th><th>Segment</th><th>Funktion / Rolle</th><th>Letzte Aktivität</th><th>Tasks</th><th></th>
                         </tr></thead>
                         <tbody>
                           ${group.contacts.map(item => {
@@ -3231,17 +3259,14 @@
                               : '<span class="bbz-muted">—</span>';
                             return `
                               <tr>
-                                <td style="width:36px;">${helpers.avatarHtml({ vorname: (item.contactName||"").split(" ")[0] || "", nachname: (item.contactName||"").split(" ").slice(-1)[0] || "" })}</td>
+                                <td style="width:36px;">${helpers.avatarHtml({ vorname: (item.contactName||"").split(" ")[0]||"", nachname: (item.contactName||"").split(" ").slice(-1)[0]||"" })}</td>
                                 <td><a class="bbz-link" data-action="open-contact" data-id="${item.contactId}">${helpers.escapeHtml(item.contactName)}</a><div class="bbz-subtext">${item.email1 ? helpers.escapeHtml(item.email1) : "—"}</div></td>
-                                <td>${item.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${item.firmId}">${helpers.escapeHtml(item.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
+                                <td>${item.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${item.firmId}">${helpers.escapeHtml(item.firmTitle||"Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
                                 <td>${segBadge}</td>
-                                <td>${helpers.escapeHtml(helpers.joinNonEmpty([item.funktion, item.rolle], " · ")) || '<span class="bbz-muted">—</span>'}</td>
+                                <td>${helpers.escapeHtml(helpers.joinNonEmpty([item.funktion, item.rolle], " · "))||'<span class="bbz-muted">—</span>'}</td>
                                 <td>${item.latestHistoryDate ? `<span title="${helpers.formatDate(item.latestHistoryDate)}">${helpers.relativeDate(item.latestHistoryDate)}</span>${item.latestHistoryType ? `<div class="bbz-subtext">${helpers.escapeHtml(item.latestHistoryType)}</div>` : ""}` : '<span class="bbz-muted">—</span>'}</td>
                                 <td>${item.openTasksCount > 0 ? `<span class="bbz-status-chip bbz-status-open">${item.openTasksCount} offen</span>` : '<span class="bbz-muted">—</span>'}</td>
-                                <td style="white-space:nowrap;">
-                                  <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;"
-                                    data-action="open-history-form" data-contact-id="${item.contactId}">+ Aktivität</button>
-                                </td>
+                                <td style="white-space:nowrap;"><button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;" data-action="open-history-form" data-contact-id="${item.contactId}">+ Aktivität</button></td>
                               </tr>`;
                           }).join("")}
                         </tbody>
@@ -3842,6 +3867,7 @@
       state.filters.firms.radarMode = false;
       state.filters.history.radarMode = false;
       state.filters.events.segment = "";
+      state.filters.events.selectedEvent = "";
       window.scrollTo(0, 0);
       this.render();
     },
