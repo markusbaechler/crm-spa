@@ -461,14 +461,21 @@
           const value = kpiFilter.dataset.value;
           if (scope === "firms-klassifizierung") {
             state.filters.firms.klassifizierung = state.filters.firms.klassifizierung === value ? "" : value;
-            if (value === "") { state.filters.firms.vip = ""; } // Alle = beide Filter reset
+            if (value === "") { state.filters.firms.vip = ""; state.filters.firms.onlyPrivat = false; }
             state.filters.firms.search = "";
             state.filters.route = "firms";
             state.selection.firmId = null;
           } else if (scope === "firms-vip") {
-            state.filters.firms.vip = state.filters.firms.vip === value ? "" : value;
-            state.filters.firms.search = "";
-            state.filters.route = "firms";
+            // VIP ist additiver Toggle — unabhängig von Segment
+            state.filters.firms.vip = state.filters.firms.vip === "yes" ? "" : "yes";
+            state.filters.firms.onlyPrivat = false; // VIP und Privat schliessen sich aus
+            state.filters.firms.route = "firms";
+            state.selection.firmId = null;
+          } else if (scope === "firms-privat") {
+            // Privat ist additiver Toggle — unabhängig von Segment
+            state.filters.firms.onlyPrivat = !state.filters.firms.onlyPrivat;
+            state.filters.firms.vip = ""; // VIP und Privat schliessen sich aus
+            state.filters.firms.route = "firms";
             state.selection.firmId = null;
           } else if (scope === "contacts-mode") {
             // direkt route setzen — NICHT controller.navigate() da das _kpiMode zurücksetzt
@@ -1467,8 +1474,9 @@
         const search = filters.search.trim().toLowerCase();
         const searchMatch = !search || [firm.title, firm.ort, firm.klassifizierung, firm.hauptnummer, firm.adresse, firm.land, ...firm.contacts.map(c => c.fullName)].some(v => helpers.textIncludes(v, search));
         const klassMatch = !filters.klassifizierung || String(firm.klassifizierung || "").toUpperCase().startsWith(filters.klassifizierung.toUpperCase());
-        const vipMatch = !filters.vip || (filters.vip === "yes" && firm.vip) || (filters.vip === "no" && !firm.vip);
-        return searchMatch && klassMatch && vipMatch;
+        const vipMatch = !filters.vip || (filters.vip === "yes" && firm.vip);
+        const privatMatch = !filters.onlyPrivat || (state.meta.privateFirmId !== null && firm.id === state.meta.privateFirmId);
+        return searchMatch && klassMatch && vipMatch && privatMatch;
       });
       const firmSortDir = filters.sortDir === "asc" ? 1 : -1;
       const rows = [...filteredFirms].sort((a, b) => {
@@ -1522,18 +1530,25 @@
         <div>
           ${focusBarHtml}
           <div class="bbz-kpis">
-            <!-- Firmen-Kachel mit Schnellfilter A/B/C/Top/Alle -->
+            <!-- Firmen-Kachel: Segment-Filter + orthogonale Zusatzfilter -->
             <div class="bbz-kpi">
               <div class="bbz-kpi-label">Firmen</div>
               <div class="bbz-kpi-value">${state.enriched.firms.length}</div>
+              <!-- Reihe 1: Segment (exklusiv) -->
               <div class="bbz-kpi-chips" style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
                 ${["A","B","C"].map(k => {
                   const cnt = state.enriched.firms.filter(f => String(f.klassifizierung||"").toUpperCase().startsWith(k)).length;
                   const active = filters.klassifizierung.toUpperCase().startsWith(k);
                   return `<button class="bbz-kpi-chip ${active?"bbz-kpi-chip-active":""}" data-action="kpi-filter" data-scope="firms-klassifizierung" data-value="${k}">${k} <span>${cnt}</span></button>`;
                 }).join("")}
-                <button class="bbz-kpi-chip ${filters.vip === "yes" ? "bbz-kpi-chip-active-gold" : ""}" data-action="kpi-filter" data-scope="firms-vip" data-value="yes">♛ <span>${state.enriched.firms.filter(f=>f.vip).length}</span></button>
-                <button class="bbz-kpi-chip ${!filters.klassifizierung && !filters.vip ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-klassifizierung" data-value="">Alle</button>
+                <button class="bbz-kpi-chip ${!filters.klassifizierung && !filters.vip && !filters.onlyPrivat ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-klassifizierung" data-value="">Alle</button>
+              </div>
+              <!-- Trennlinie -->
+              <div style="border-top:1px solid var(--line-2);margin:6px 0 5px;"></div>
+              <!-- Reihe 2: Zusatzfilter (additiv, orthogonal) -->
+              <div class="bbz-kpi-chips" style="display:flex;gap:4px;flex-wrap:wrap;">
+                <button class="bbz-kpi-chip ${filters.vip === "yes" ? "bbz-kpi-chip-active-gold" : ""}" data-action="kpi-filter" data-scope="firms-vip" data-value="yes">♛ VIP <span>${state.enriched.firms.filter(f=>f.vip).length}</span></button>
+                ${state.meta.privateFirmId ? `<button class="bbz-kpi-chip ${filters.onlyPrivat ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-privat" data-value="yes">👤 Privat <span>${state.enriched.contacts.filter(c => c.firmId === state.meta.privateFirmId && !c.archiviert).length}</span></button>` : ""}
               </div>
             </div>
             <!-- Kontakte-Kachel mit History/Tasks/Alle Filter -->
