@@ -454,6 +454,35 @@
         const navPlanning = event.target.closest("[data-action='navigate-planning']");
         if (navPlanning) { event.preventDefault(); controller.navigate("planning"); return; }
 
+        // KPI-Schnellfilter — setzt Filter und navigiert bei Bedarf
+        const kpiFilter = event.target.closest("[data-action='kpi-filter']");
+        if (kpiFilter) {
+          const scope = kpiFilter.dataset.scope;
+          const value = kpiFilter.dataset.value;
+          if (scope === "firms-klassifizierung") {
+            state.filters.firms.klassifizierung = state.filters.firms.klassifizierung === value ? "" : value;
+            if (value === "") { state.filters.firms.vip = ""; } // Alle = beide Filter reset
+            state.filters.firms.search = "";
+            state.filters.route = "firms";
+            state.selection.firmId = null;
+          } else if (scope === "firms-vip") {
+            state.filters.firms.vip = state.filters.firms.vip === value ? "" : value;
+            state.filters.firms.search = "";
+            state.filters.route = "firms";
+            state.selection.firmId = null;
+          } else if (scope === "contacts-mode") {
+            // "all" | "history" | "tasks"
+            state.filters.contacts._kpiMode = state.filters.contacts._kpiMode === value ? "all" : value;
+            state.filters.route = "contacts";
+            state.selection.contactId = null;
+          } else if (scope === "navigate") {
+            controller.navigate(value);
+            return;
+          }
+          controller.render();
+          return;
+        }
+
         const openContact = event.target.closest("[data-action='open-contact']");
         if (openContact) { controller.openContact(openContact.dataset.id); return; }
 
@@ -1484,9 +1513,38 @@
         <div>
           ${focusBarHtml}
           <div class="bbz-kpis">
-            ${this.kpiBlock("Firmen", state.enriched.firms.length, `${aCount}× A · ${bCount}× B · ${cCount}× C`)}
-            ${this.kpiBlock("Kontakte", state.enriched.contacts.filter(c => !c.archiviert).length, `${state.enriched.contacts.filter(c => c.archiviert).length} archiviert`)}
-            ${this.kpiBlock("Offene Tasks", allOpenTasks.length, overdueTasks.length > 0 ? `${overdueTasks.length} überfällig` : "keine überfällig", overdueTasks.length > 0 ? "alert" : "ok")}
+            <!-- Firmen-Kachel mit Schnellfilter A/B/C/Top/Alle -->
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">Firmen</div>
+              <div class="bbz-kpi-value">${state.enriched.firms.length}</div>
+              <div class="bbz-kpi-chips" style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
+                ${["A","B","C"].map(k => {
+                  const cnt = state.enriched.firms.filter(f => String(f.klassifizierung||"").toUpperCase().startsWith(k)).length;
+                  const active = filters.klassifizierung.toUpperCase().startsWith(k);
+                  return `<button class="bbz-kpi-chip ${active?"bbz-kpi-chip-active":""}" data-action="kpi-filter" data-scope="firms-klassifizierung" data-value="${k}">${k} <span>${cnt}</span></button>`;
+                }).join("")}
+                <button class="bbz-kpi-chip ${filters.vip === "yes" ? "bbz-kpi-chip-active-gold" : ""}" data-action="kpi-filter" data-scope="firms-vip" data-value="yes">♛ <span>${state.enriched.firms.filter(f=>f.vip).length}</span></button>
+                <button class="bbz-kpi-chip ${!filters.klassifizierung && !filters.vip ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-klassifizierung" data-value="">Alle</button>
+              </div>
+            </div>
+            <!-- Kontakte-Kachel mit History/Tasks/Alle Filter -->
+            <div class="bbz-kpi" data-action="navigate" data-scope="navigate" data-value="contacts" style="cursor:default;">
+              <div class="bbz-kpi-label">Kontakte</div>
+              <div class="bbz-kpi-value">${state.enriched.contacts.filter(c => !c.archiviert).length}</div>
+              <div class="bbz-kpi-chips" style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
+                <button class="bbz-kpi-chip" data-action="kpi-filter" data-scope="contacts-mode" data-value="history">History <span>${state.enriched.contacts.filter(c => !c.archiviert && state.enriched.history.some(h => h.contactId === c.id)).length}</span></button>
+                <button class="bbz-kpi-chip" data-action="kpi-filter" data-scope="contacts-mode" data-value="tasks">Offene Tasks <span>${state.enriched.contacts.filter(c => !c.archiviert && state.enriched.tasks.some(t => t.contactId === c.id && t.isOpen)).length}</span></button>
+                <button class="bbz-kpi-chip" data-action="kpi-filter" data-scope="contacts-mode" data-value="all">Alle</button>
+              </div>
+            </div>
+            <!-- Offene Tasks — klickbar zur Planung -->
+            <div class="bbz-kpi bbz-kpi-clickable" data-action="navigate-planning" style="cursor:pointer;">
+              <div class="bbz-kpi-label">Offene Tasks</div>
+              <div class="bbz-kpi-value">${allOpenTasks.length}</div>
+              ${overdueTasks.length > 0
+                ? `<div class="bbz-kpi-meta-alert">${overdueTasks.length} überfällig — zur Planung →</div>`
+                : `<div class="bbz-kpi-meta-ok">keine überfällig — zur Planung →</div>`}
+            </div>
             ${this.kpiBlock("Diese Woche", thisWeek.length, thisWeek.length === 0 ? "keine Deadlines" : `bis ${helpers.formatDate(in7)}`, thisWeek.length > 3 ? "warn" : "")}
           </div>
           <div class="bbz-grid bbz-grid-70-30">
@@ -1697,10 +1755,22 @@
 
     contacts() {
       const filters = state.filters.contacts;
+      const kpiMode = filters._kpiMode || "all";
+
+      // Contacts mit History / offenen Tasks für KPI-Counts
+      const contactsWithHistory = state.enriched.contacts.filter(c => !c.archiviert && state.enriched.history.some(h => h.contactId === c.id));
+      const contactsWithOpenTasks = state.enriched.contacts.filter(c => !c.archiviert && state.enriched.tasks.some(t => t.contactId === c.id && t.isOpen));
+
       const filteredContacts = state.enriched.contacts.filter(c => {
         const search = filters.search.trim().toLowerCase();
         const searchMatch = !search || [c.fullName, c.firmTitle, c.funktion, c.rolle, c.email1, c.email2, c.direktwahl, c.mobile, c.kommentar, ...c.sgf, ...c.event].some(v => helpers.textIncludes(v, search));
-        return searchMatch && (!filters.archiviertAusblenden || !c.archiviert);
+        const archivMatch = !filters.archiviertAusblenden || !c.archiviert;
+        const modeMatch = kpiMode === "history"
+          ? state.enriched.history.some(h => h.contactId === c.id)
+          : kpiMode === "tasks"
+          ? state.enriched.tasks.some(t => t.contactId === c.id && t.isOpen)
+          : true;
+        return searchMatch && archivMatch && modeMatch;
       });
       const cSortDir = filters.sortDir === "asc" ? 1 : -1;
       const rows = [...filteredContacts].sort((a, b) => {
@@ -1950,10 +2020,10 @@
         return `
           <tr>
             <td>${t.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${t.firmId}">${helpers.escapeHtml(t.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
-            <td>${helpers.escapeHtml(t.title) || '<span class="bbz-muted">—</span>'}</td>
-            <td class="${helpers.isOpenTask(t.status) && helpers.isOverdue(t.deadline) ? "bbz-danger" : ""}">${helpers.formatDate(t.deadline) || '<span class="bbz-muted">—</span>'}</td>
-            <td>${statusCell}</td>
             <td>${t.contactId ? `<a class="bbz-link" data-action="open-contact" data-id="${t.contactId}">${helpers.escapeHtml(t.contactName || "Kontakt")}</a>` : helpers.escapeHtml(t.contactName || "—")}</td>
+            <td>${helpers.escapeHtml(t.title) || '<span class="bbz-muted">—</span>'}</td>
+            <td class="${helpers.isOpenTask(t.status) && helpers.isOverdue(t.deadline) ? "bbz-danger" : ""}">${t.deadline ? helpers.relativeDate(t.deadline) : '<span class="bbz-muted">—</span>'}</td>
+            <td>${statusCell}</td>
             <td>${helpers.escapeHtml(t.leadbbz) || '<span class="bbz-muted">—</span>'}</td>
             <td style="white-space:nowrap;">
               <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;margin-right:4px;" data-action="edit-task" data-id="${t.id}">Bearbeiten</button>
@@ -1964,10 +2034,10 @@
 
       const tableHead = `<thead><tr>
         ${th("Firma", "firma")}
+        <th>Kontaktperson</th>
         <th>Titel</th>
         ${th("Deadline", "deadline")}
         <th>Status</th>
-        <th>Kontaktperson</th>
         ${th("Leadbbz", "leadbbz")}
         <th>Aktionen</th>
       </tr></thead>`;
