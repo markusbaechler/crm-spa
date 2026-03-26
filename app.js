@@ -751,6 +751,31 @@
 
       const debouncedRender = helpers.debounce(() => controller.render(), 150);
 
+      // Browser-Back/Forward — State aus history.state wiederherstellen
+      window.addEventListener("popstate", (event) => {
+        const s = event.state;
+        if (!s) {
+          // Kein State (z.B. erster Eintrag) — zur Startseite
+          state.filters.route = CONFIG.defaults.route;
+          state.selection.firmId = null;
+          state.selection.contactId = null;
+        } else {
+          state.filters.route = s.route || CONFIG.defaults.route;
+          state.selection.firmId = s.firmId || null;
+          state.selection.contactId = s.contactId || null;
+        }
+        state.modal = null;
+        window.scrollTo(0, 0);
+        controller.render();
+      });
+
+      // Initialen State setzen damit der erste Back-Schritt korrekt funktioniert
+      history.replaceState(
+        { route: state.filters.route, firmId: null, contactId: null },
+        "",
+        `#${state.filters.route}`
+      );
+
       document.addEventListener("input", (event) => {
         const el = event.target;
         if (el.matches("[data-filter='firms-search']")) { state.filters.firms.search = el.value; debouncedRender(); }
@@ -1905,7 +1930,7 @@
               </div>
             </div>
             <!-- Kontakte-Kachel mit History/Tasks/Alle Filter -->
-            <div class="bbz-kpi bbz-kpi-blue" data-action="navigate" data-scope="navigate" data-value="contacts" style="cursor:default;">
+            <div class="bbz-kpi bbz-kpi-blue bbz-kpi-clickable" data-action="kpi-filter" data-scope="navigate" data-value="contacts" style="cursor:pointer;">
               <div class="bbz-kpi-label">Kontakte</div>
               <div class="bbz-kpi-value">${state.enriched.contacts.filter(c => !c.archiviert).length}</div>
               <div class="bbz-kpi-chips" style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
@@ -2208,7 +2233,8 @@
             <section class="bbz-section" style="grid-column: span 2;">
               <div class="bbz-section-header"><div><div class="bbz-section-title">Kontakte</div><div class="bbz-section-subtitle">Ansprechpartner dieser Firma</div></div></div>
               <div class="bbz-section-body">
-                <div class="bbz-table-wrap">
+                <!-- Desktop: Tabelle -->
+                <div class="bbz-table-wrap bbz-desktop-only">
                   <table class="bbz-table">
                     <thead><tr><th></th><th>Name</th><th>Funktion</th><th>Rolle</th><th>E-Mail</th><th>Telefon</th></tr></thead>
                     <tbody>
@@ -2223,6 +2249,20 @@
                         </tr>`).join("") : `<tr><td colspan="6">${ui.emptyBlock("Keine Kontakte vorhanden.", "open-contact-form", "+ Ersten Kontakt hinzufügen")}</td></tr>`}
                     </tbody>
                   </table>
+                </div>
+                <!-- Mobile: Cards -->
+                <div class="bbz-card-list bbz-mobile-only">
+                  ${firm.contacts.length ? firm.contacts.map(c => `
+                    <div class="bbz-list-card" data-action="open-contact" data-id="${c.id}">
+                      ${helpers.avatarHtml(c)}
+                      <div class="bbz-list-card-body">
+                        <div class="bbz-list-card-title">${helpers.escapeHtml(c.fullName || c.nachname)}${c.archiviert ? ' <span class="bbz-muted" style="font-size:10px;">(archiviert)</span>' : ""}</div>
+                        <div class="bbz-list-card-sub">${helpers.escapeHtml(helpers.joinNonEmpty([c.funktion, c.rolle], " · ")) || "—"}</div>
+                      </div>
+                      <div class="bbz-list-card-right">
+                        ${c.email1 ? `<span style="font-size:10px;color:var(--subtle);">${helpers.escapeHtml(c.email1)}</span>` : ""}
+                      </div>
+                    </div>`).join("") : ui.emptyBlock("Keine Kontakte vorhanden.", "open-contact-form", "+ Ersten Kontakt hinzufügen")}
                 </div>
               </div>
             </section>
@@ -3244,7 +3284,7 @@
           <div class="bbz-kpis">
 
             <!-- Kachel 1: Events mit Segment-Chips -->
-            <div class="bbz-kpi">
+            <div class="bbz-kpi bbz-kpi-blue">
               <div class="bbz-kpi-label">Events</div>
               <div class="bbz-kpi-value">${totalGroups}</div>
               <div class="bbz-kpi-chips" style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
@@ -3253,7 +3293,7 @@
             </div>
 
             <!-- Kachel 2: Anmeldungen mit Event-Filter-Chips -->
-            <div class="bbz-kpi">
+            <div class="bbz-kpi bbz-kpi-blue">
               <div class="bbz-kpi-label">Anmeldungen</div>
               <div class="bbz-kpi-value">${totalContacts}</div>
               <div class="bbz-kpi-chips" style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
@@ -3262,12 +3302,15 @@
               </div>
             </div>
 
-            <!-- Kachel 3: Eventhistory setzen -->
-            <div class="bbz-kpi" style="display:flex;flex-direction:column;justify-content:center;">
-              <div class="bbz-kpi-label">Eventhistory</div>
-              <button class="bbz-button bbz-button-primary" style="margin-top:8px;height:32px;font-size:13px;"
+            <!-- Kachel 3: Event Nachbearbeitung -->
+            <div class="bbz-kpi bbz-kpi-blue" style="display:flex;flex-direction:column;justify-content:space-between;">
+              <div>
+                <div class="bbz-kpi-label">Event Nachbearbeitung</div>
+                <div class="bbz-kpi-value" style="font-size:22px;margin-top:4px;letter-spacing:-0.03em;">Vergangene<br>Teilnahmen</div>
+              </div>
+              <button class="bbz-button bbz-button-primary" style="margin-top:10px;height:34px;font-size:12px;width:100%;"
                 data-action="open-batch-event" data-event-name="" data-mode="eventhistory">
-                + Eventhistory setzen
+                Vergangene Eventteilnahmen pflegen
               </button>
             </div>
 
@@ -3298,15 +3341,15 @@
                 <section class="bbz-section" style="box-shadow:none;">
                   <div class="bbz-section-header">
                     <div>
-                      <div class="bbz-section-title" style="display:flex;align-items:center;gap:8px;">
+                      <div class="bbz-section-title" style="font-size:15px;font-weight:700;letter-spacing:-0.02em;display:flex;align-items:center;gap:8px;">
                         ${helpers.escapeHtml(group.name)}
                         <span style="display:flex;gap:4px;align-items:center;">${segBadges}</span>
                       </div>
                       <div class="bbz-section-subtitle">${group.contacts.length} Kontakte · ${group.contacts.reduce((sum, c) => sum + c.openTasksCount, 0)} offene Tasks</div>
                     </div>
-                    <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;"
+                    <button class="bbz-button bbz-button-primary" style="height:30px;font-size:12px;"
                       data-action="open-batch-event" data-event-name="${helpers.escapeHtml(group.name)}" data-mode="anmelden">
-                      + Event setzen
+                      + Kontakte hinzufügen
                     </button>
                   </div>
                   <div class="bbz-section-body">
@@ -3926,11 +3969,11 @@
       state.selection.firmId = null;
       state.selection.contactId = null;
       state.modal = null;
-      // radarMode und segment beim Tab-Wechsel zurücksetzen
       state.filters.firms.radarMode = false;
       state.filters.history.radarMode = false;
       state.filters.events.segment = "";
       state.filters.events.selectedEvent = "";
+      history.pushState({ route, firmId: null, contactId: null }, "", `#${route}`);
       window.scrollTo(0, 0);
       this.render();
     },
@@ -3940,6 +3983,7 @@
       state.selection.contactId = null;
       state.filters.route = "firms";
       state.modal = null;
+      history.pushState({ route: "firms", firmId: id, contactId: null }, "", `#firms-${id}`);
       window.scrollTo(0, 0);
       this.render();
     },
@@ -3948,6 +3992,7 @@
       state.selection.contactId = id;
       state.filters.route = "contacts";
       state.modal = null;
+      history.pushState({ route: "contacts", firmId: null, contactId: id }, "", `#contacts-${id}`);
       window.scrollTo(0, 0);
       this.render();
     },
