@@ -2101,7 +2101,7 @@
                       <div style="font-size:12px;color:var(--muted);margin-top:2px;">${t.deadline ? helpers.relativeDate(t.deadline) : "Keine Deadline"}</div>
                     </div>
                     ${helpers.statusChipHtml(t.status, t.deadline)}
-                  </div>`).join("") : ui.emptyBlock("Noch kein Task erfasst.", "open-task-form", "+ Ersten Task erstellen")}
+                  </div>`).join("") : `<div class="bbz-empty">Noch kein Task erfasst.<br><button class="bbz-button bbz-button-secondary" style="margin-top:10px;height:32px;font-size:13px;" data-action="open-task-form" data-contact-id="${contact.id}">+ Ersten Task erstellen</button></div>`}
               </div>
             </section>
           </div>
@@ -2438,6 +2438,22 @@
           </div>`;
       };
 
+      // Aktiv gefilterte Firma — für Guard im Header und Empty State
+      const activeFirm = filters.search
+        ? state.enriched.firms.find(f => f.title === filters.search) || null
+        : null;
+      const activeFirmHasNoContacts = activeFirm && activeFirm.contacts.length === 0;
+
+      // Empty State — kontextabhängig
+      const emptyStateHtml = activeFirmHasNoContacts
+        ? `<div class="bbz-empty">
+             <strong>${helpers.escapeHtml(activeFirm.title)}</strong> hat noch keine Kontakte.<br>
+             Bitte zuerst einen Kontakt erfassen, bevor eine Aktivität hinzugefügt werden kann.<br>
+             <button class="bbz-button bbz-button-secondary" style="margin-top:10px;height:32px;font-size:13px;"
+               data-action="open-contact-form" data-firm-id="${activeFirm.id}">+ Kontakt erfassen</button>
+           </div>`
+        : ui.emptyBlock("Keine Aktivitäten für die aktuelle Filterung gefunden.", "open-history-form", "+ Erste Aktivität erfassen");
+
       const timelineHtml = groups.length ? groups.map(g => `
         <div class="bbz-history-group">
           ${filters.groupBy === "firm"
@@ -2448,7 +2464,7 @@
                </div>`}
           <div class="bbz-timeline">${g.items.map(h => renderCard(h, filters.groupBy === "firm")).join("")}</div>
         </div>`).join("")
-        : ui.emptyBlock("Keine Aktivitäten für die aktuelle Filterung gefunden.", "open-history-form", "+ Erste Aktivität erfassen");
+        : emptyStateHtml;
 
       // ── Pflege-Radar Panel ───────────────────────────────────────────────────
       const abFirmen = state.enriched.firms.filter(f => {
@@ -2589,7 +2605,10 @@
                     <option value="date" ${filters.groupBy === "date" ? "selected" : ""}>📅 Nach Datum</option>
                     <option value="firm" ${filters.groupBy === "firm" ? "selected" : ""}>🏢 Nach Firma</option>
                   </select>
-                  <button class="bbz-button bbz-button-primary" style="height:32px;font-size:12px;" data-action="open-history-form">+ Aktivität</button>
+                  <button class="bbz-button bbz-button-primary" style="height:32px;font-size:12px;"
+                    ${activeFirmHasNoContacts
+                      ? `disabled title="Zuerst einen Kontakt bei ${helpers.escapeHtml(activeFirm.title)} erfassen"`
+                      : `data-action="open-history-form"`}>+ Aktivität</button>
                 </div>
               </div>
               <div class="bbz-section-body">
