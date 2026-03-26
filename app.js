@@ -138,7 +138,7 @@
 
     filters: {
       route: CONFIG.defaults.route,
-      firms: { search: "", klassifizierung: "", vip: "", sortBy: "title", sortDir: "asc" },
+      firms: { search: "", klassifizierung: "", vip: "", onlyPrivat: false, sortBy: "title", sortDir: "asc" },
       contacts: { search: "", archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden, sortBy: "fullName", sortDir: "asc" },
       planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, onlyOverdue: false, groupBy: "none", sortBy: "deadline", sortDir: "asc" },
       history: { search: "", kontaktart: "", leadbbz: "" },
@@ -468,8 +468,8 @@
           } else if (scope === "firms-vip") {
             // VIP ist additiver Toggle — unabhängig von Segment
             state.filters.firms.vip = state.filters.firms.vip === "yes" ? "" : "yes";
-            state.filters.firms.onlyPrivat = false; // VIP und Privat schliessen sich aus
-            state.filters.firms.route = "firms";
+            state.filters.firms.onlyPrivat = false;
+            state.filters.route = "firms";
             state.selection.firmId = null;
           } else if (scope === "firms-privat") {
             // Privat ist additiver Toggle — unabhängig von Segment
