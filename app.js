@@ -692,7 +692,31 @@
           return;
         }
 
-        // Batch-Event-Auswahl: Checkbox in Vorschautabelle
+        // Hilfsfunktion: Zähler, Submit-Button und Alle-Checkbox synchronisieren
+        const syncBatchUI = (sel) => {
+          const payload = state.modal?.payload;
+          if (!payload) return;
+          const preview = payload.previewContacts || [];
+          const max = preview.length;
+          const form = document.querySelector("[data-modal-form='batch-event']");
+          const isEH = form?.dataset.mode === "eventhistory";
+          const cat  = form?.dataset.eventName || "";
+
+          const submitBtn = form?.querySelector("button[type='submit']");
+          if (submitBtn) {
+            submitBtn.textContent = isEH
+              ? `+ ${sel.length} × Eventhistory «${cat}» setzen`
+              : `+ ${sel.length} × Event «${cat}» setzen`;
+            submitBtn.disabled = sel.length === 0;
+          }
+          const counter = document.querySelector("[data-batch-counter]");
+          if (counter) counter.textContent = `${sel.length} von ${max} ausgewählt${max >= 200 ? " (max. 200 — Filter verfeinern)" : ""}`;
+          const allChecked = max > 0 && preview.every(c => sel.includes(c.id));
+          const allCb = document.querySelector("input[data-action='batch-toggle-all']");
+          if (allCb) allCb.checked = allChecked;
+        };
+
+        // Batch-Event-Auswahl: einzelne Checkbox
         const batchToggle = event.target.closest("[data-action='batch-toggle-contact']");
         if (batchToggle) {
           const cid = Number(batchToggle.dataset.contactId);
@@ -700,46 +724,26 @@
           const sel = state.modal.payload.selected;
           const idx = sel.indexOf(cid);
           if (idx === -1) sel.push(cid); else sel.splice(idx, 1);
-
-          // Kein controller.render() — nur Checkbox und Zähler direkt updaten
-          // damit der Modal-Scroll nicht zurückspringt
-          const isNowSelected = sel.includes(cid);
-          const checkbox = batchToggle.querySelector("input[type='checkbox']");
-          if (checkbox) checkbox.checked = isNowSelected;
-          batchToggle.closest("tr")?.classList.toggle("bbz-row-ok", isNowSelected);
-
-          // Submit-Button-Text aktualisieren
-          const submitBtn = document.querySelector("[data-modal-form='batch-event'] button[type='submit']");
-          if (submitBtn) submitBtn.textContent = `${sel.length} Kontakt${sel.length !== 1 ? "e" : ""} setzen`;
-
-          // «Alle»-Checkbox synchronisieren
-          const allCids = state.modal.payload.previewContacts?.map(c => c.contactId) || [];
-          const allChecked = allCids.length > 0 && allCids.every(id => sel.includes(id));
-          const allCheckbox = document.querySelector("[data-action='batch-toggle-all'] input[type='checkbox']");
-          if (allCheckbox) allCheckbox.checked = allChecked;
+          // data-action ist direkt auf dem <input> — batchToggle IST die Checkbox
+          batchToggle.checked = sel.includes(cid);
+          batchToggle.closest("tr")?.classList.toggle("bbz-row-ok", sel.includes(cid));
+          syncBatchUI(sel);
           return;
         }
 
         // Batch-Event: Alle/Keine togglen
         const batchToggleAll = event.target.closest("[data-action='batch-toggle-all']");
         if (batchToggleAll && state.modal?.payload) {
-          const allIds = (state.modal.payload.previewContacts || []).map(c => c.contactId);
+          const preview = state.modal.payload.previewContacts || [];
+          const allIds = preview.map(c => c.id);
           const allSelected = allIds.every(id => state.modal.payload.selected.includes(id));
           state.modal.payload.selected = allSelected ? [] : [...allIds];
-
-          // Alle Checkboxen direkt updaten ohne Re-Render
           const newSel = state.modal.payload.selected;
-          document.querySelectorAll("[data-action='batch-toggle-contact']").forEach(el => {
-            const rowCid = Number(el.dataset.contactId);
-            const checked = newSel.includes(rowCid);
-            const cb = el.querySelector("input[type='checkbox']");
-            if (cb) cb.checked = checked;
-            el.closest("tr")?.classList.toggle("bbz-row-ok", checked);
+          document.querySelectorAll("input[data-action='batch-toggle-contact']").forEach(cb => {
+            cb.checked = newSel.includes(Number(cb.dataset.contactId));
+            cb.closest("tr")?.classList.toggle("bbz-row-ok", cb.checked);
           });
-          const allCheckbox = batchToggleAll.querySelector("input[type='checkbox']");
-          if (allCheckbox) allCheckbox.checked = !allSelected;
-          const submitBtn = document.querySelector("[data-modal-form='batch-event'] button[type='submit']");
-          if (submitBtn) submitBtn.textContent = `${newSel.length} Kontakt${newSel.length !== 1 ? "e" : ""} setzen`;
+          syncBatchUI(newSel);
           return;
         }
 
@@ -1102,14 +1106,6 @@
           for (const col of (data.value || [])) {
             if (col.choice && Array.isArray(col.choice.choices) && col.choice.choices.length > 0) {
               choicesForList[col.name] = col.choice.choices;
-              // Vollständiger Debug — zeigt alle relevanten SP-Feldnamen
-              console.log(`[${listTitle}] Choice:`, {
-                name:        col.name,
-                displayName: col.displayName,
-                description: col.description,
-                multiSelect: col.choice.allowMultipleSelection ?? false,
-                choices:     col.choice.choices
-              });
             }
           }
           state.meta.choices[listTitle] = choicesForList;
@@ -1782,7 +1778,7 @@
                     </tbody>
                   </table>
                 </div>
-                <div style="font-size:12px;color:var(--muted);margin-top:8px;">
+                <div data-batch-counter style="font-size:12px;color:var(--muted);margin-top:8px;">
                   ${validSelected.length} von ${previewContacts.length} ausgewählt
                   ${previewContacts.length === 200 ? " (max. 200 — Filter verfeinern)" : ""}
                 </div>
@@ -3543,7 +3539,7 @@
         Ort:            fd.get("ort")?.trim()            || null,
         Land:           fd.get("land")?.trim()           || null,
         Hauptnummer:    fd.get("hauptnummer")?.trim()    || null,
-        Klassifizierung: fd.get("klassifizierung")      || null,
+        Klassifizierung: fd.get("klassifizierung")      || "",
       };
 
 
@@ -3661,10 +3657,10 @@
         Archiviert:    raw.archiviert
       };
 
-      // Einzelwahl — immer senden, leer = null zum Löschen in SP
-      fields.Anrede   = raw.anrede   || null;
-      fields.Rolle    = raw.rolle    || null;
-      fields.Leadbbz0 = raw.leadbbz0 || null;
+      // Einzelwahl-Choice-Felder — leer = "" (nicht null, SP Choice-Felder akzeptieren "" zuverlässiger)
+      fields.Anrede   = raw.anrede   || "";
+      fields.Rolle    = raw.rolle    || "";
+      fields.Leadbbz0 = raw.leadbbz0 || "";
 
       // Optionaler Text — immer senden, leer = null zum Löschen in SP
       fields.Vorname    = raw.vorname.trim()    || null;
@@ -3913,8 +3909,8 @@
           const patchFields = {
             Datum:      datum + "T00:00:00Z",
             Projektbezug: projektbezug,
-            Kontaktart: kontaktart || null,
-            Leadbbz:    leadbbz    || null,
+            Kontaktart: kontaktart || "",
+            Leadbbz:    leadbbz    || "",
             Notizen:    notizen.trim() || null,
           };
           await api.patchItem(SCHEMA.history.listTitle, itemId, patchFields);
@@ -3971,8 +3967,8 @@
           const patchFields = {
             Title:    title.trim(),
             Deadline: deadline ? deadline + "T00:00:00Z" : null,
-            Status:   status   || null,
-            Leadbbz:  leadbbz  || null,
+            Status:   status   || "",
+            Leadbbz:  leadbbz  || "",
           };
           await api.patchItem(SCHEMA.tasks.listTitle, itemId, patchFields);
           ui.setMessage("Aufgabe wurde gespeichert.", "success");
