@@ -140,7 +140,7 @@
       route: CONFIG.defaults.route,
       firms: { search: "", klassifizierung: "", vip: "", onlyPrivat: false, sortBy: "title", sortDir: "asc", radarMode: false },
       contacts: { search: "", archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden, sortBy: "fullName", sortDir: "asc" },
-      planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, onlyOverdue: false, groupBy: "none", sortBy: "deadline", sortDir: "asc" },
+      planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, onlyOverdue: false, groupBy: "none", sortBy: "deadline", sortDir: "asc", segment: "", leadbbz: "", faelligkeit: "" },
       history: { search: "", kontaktart: "", leadbbz: "", groupBy: "date", zeitfenster: "", radarMode: false },
       events: { search: "", onlyWithOpenTasks: false, sortBy: "contactName", sortDir: "asc" }
     },
@@ -521,6 +521,13 @@
               state.filters.history.search = "";
               state.filters.history.zeitfenster = "";
             }
+          } else if (scope === "planning-faelligkeit") {
+            state.filters.planning.faelligkeit = state.filters.planning.faelligkeit === value ? "" : value;
+            state.filters.planning.onlyOverdue = false;
+          } else if (scope === "planning-segment") {
+            state.filters.planning.segment = state.filters.planning.segment === value ? "" : value;
+          } else if (scope === "planning-leadbbz") {
+            state.filters.planning.leadbbz = state.filters.planning.leadbbz === value ? "" : value;
           } else if (scope === "navigate") {
             controller.navigate(value);
             return;
@@ -2257,12 +2264,65 @@
     planning() {
       const filters = state.filters.planning;
       const statusChoices = state.meta.choices?.[CONFIG.lists.tasks]?.["Status"] || [];
+      const today = helpers.todayStart();
+      const in7   = new Date(today); in7.setDate(in7.getDate() + 7);
+      const in30  = new Date(today); in30.setDate(in30.getDate() + 30);
+      const in365 = new Date(today); in365.setDate(in365.getDate() + 365);
 
       const baseRows = state.enriched.tasks.filter(t => {
         const search = filters.search.trim().toLowerCase();
         const searchMatch = !search || [t.title, t.status, t.contactName, t.firmTitle, t.leadbbz].some(v => helpers.textIncludes(v, search));
-        return searchMatch && (!filters.onlyOpen || t.isOpen) && (!filters.onlyOverdue || t.isOverdue);
+        if (!searchMatch) return false;
+        if (filters.onlyOpen && !t.isOpen) return false;
+        if (filters.onlyOverdue && !t.isOverdue) return false;
+
+        // Fälligkeits-Filter
+        if (filters.faelligkeit) {
+          const d = helpers.toDate(t.deadline);
+          if (filters.faelligkeit === "overdue" && !(t.isOpen && t.isOverdue)) return false;
+          if (filters.faelligkeit === "week"    && !(d && d > today && d <= in7))  return false;
+          if (filters.faelligkeit === "month"   && !(d && d > in7  && d <= in30))  return false;
+          if (filters.faelligkeit === "rest"    && !(d && d > in30 && d <= in365)) return false;
+        }
+
+        // Segment-Filter
+        if (filters.segment) {
+          const firm = t.firmId ? state.enriched.firms.find(f => f.id === t.firmId) : null;
+          const kl = String(firm?.klassifizierung || "").toUpperCase();
+          if (!kl.startsWith(filters.segment.toUpperCase())) return false;
+        }
+
+        // Lead BBZ-Filter
+        if (filters.leadbbz && t.leadbbz !== filters.leadbbz) return false;
+
+        return true;
       });
+
+      // Zähler für Chips
+      const cntOverdue = state.enriched.tasks.filter(t => t.isOpen && t.isOverdue).length;
+      const cntWeek    = state.enriched.tasks.filter(t => { const d = helpers.toDate(t.deadline); return t.isOpen && d && d > today && d <= in7; }).length;
+      const cntMonth   = state.enriched.tasks.filter(t => { const d = helpers.toDate(t.deadline); return t.isOpen && d && d > in7 && d <= in30; }).length;
+      const cntRest    = state.enriched.tasks.filter(t => { const d = helpers.toDate(t.deadline); return t.isOpen && d && d > in30 && d <= in365; }).length;
+
+      const allLeadbbz = [...new Set(state.enriched.tasks.map(t => t.leadbbz).filter(Boolean))].sort();
+
+      const chipF = (label, val, cnt, style = "") => {
+        const active = filters.faelligkeit === val;
+        return `<button class="bbz-kpi-chip ${active ? "bbz-kpi-chip-active" : ""}" style="${style}" data-action="kpi-filter" data-scope="planning-faelligkeit" data-value="${val}">${label} <span>${cnt}</span></button>`;
+      };
+      const chipS = (label, val) => {
+        const cnt = val === "" ? state.enriched.tasks.length : state.enriched.tasks.filter(t => {
+          const firm = t.firmId ? state.enriched.firms.find(f => f.id === t.firmId) : null;
+          return String(firm?.klassifizierung || "").toUpperCase().startsWith(val);
+        }).length;
+        const active = filters.segment === val;
+        return `<button class="bbz-kpi-chip ${active ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="planning-segment" data-value="${val}">${label === "Alle" ? "Alle" : label} <span>${cnt}</span></button>`;
+      };
+      const chipL = (l) => {
+        const cnt = state.enriched.tasks.filter(t => t.leadbbz === l).length;
+        const active = filters.leadbbz === l;
+        return `<button class="bbz-kpi-chip ${active ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="planning-leadbbz" data-value="${helpers.escapeHtml(l)}">${helpers.escapeHtml(l)} <span>${cnt}</span></button>`;
+      };
 
       // Multi-column sort
       const dir = filters.sortDir === "asc" ? 1 : -1;
@@ -2299,17 +2359,6 @@
           .sort((a, b) => a[0].localeCompare(b[0], "de"))
           .map(([key, rows]) => ({ key, label: key, rows }));
       }
-
-      const openTasks    = state.enriched.tasks.filter(t => t.isOpen).length;
-      const overdueTasks = state.enriched.tasks.filter(t => t.isOpen && t.isOverdue).length;
-      const nextWeekTasks = state.enriched.tasks.filter(t => {
-        if (!t.isOpen) return false;
-        const d = helpers.toDate(t.deadline);
-        if (!d) return false;
-        const today = helpers.todayStart();
-        const in7 = new Date(today); in7.setDate(in7.getDate() + 7);
-        return d >= today && d <= in7;
-      }).length;
 
       // Sort-Header helper
       const th = (label, col) => {
@@ -2355,10 +2404,38 @@
       return `
         <div>
           <div class="bbz-kpis">
-            ${this.kpiBlock("Tasks gesamt", state.enriched.tasks.length)}
-            ${this.kpiBlock("Offen", openTasks, overdueTasks > 0 ? `${overdueTasks} überfällig` : "keine überfällig", overdueTasks > 0 ? "alert" : "ok")}
-            ${this.kpiBlock("Überfällig", overdueTasks, overdueTasks > 0 ? "sofort prüfen" : "—", overdueTasks > 0 ? "alert" : "")}
-            ${this.kpiBlock("Diese Woche", nextWeekTasks, nextWeekTasks > 0 ? "fällig in 7 Tagen" : "keine", nextWeekTasks > 2 ? "warn" : "")}
+            <!-- Kachel 1: Fälligkeit -->
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">Tasks gesamt</div>
+              <div class="bbz-kpi-value">${state.enriched.tasks.length}</div>
+              <div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
+                ${chipF("Überfällig", "overdue", cntOverdue, cntOverdue > 0 ? "background:#fff1f1;border-color:#f1caca;color:var(--red);" : "")}
+                ${chipF("Woche", "week", cntWeek, cntWeek > 0 ? "background:#fff9eb;border-color:#f4dfab;color:var(--amber);" : "")}
+                ${chipF("Monat", "month", cntMonth)}
+                ${chipF("Übrige", "rest", cntRest)}
+                ${filters.faelligkeit ? `<button class="bbz-kpi-chip" data-action="kpi-filter" data-scope="planning-faelligkeit" data-value="">Alle</button>` : ""}
+              </div>
+            </div>
+            <!-- Kachel 2: Segment -->
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">Segment</div>
+              <div class="bbz-kpi-value" style="font-size:18px;margin-top:3px;">${filters.segment || "—"}</div>
+              <div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
+                ${["A","B","C"].map(k => chipS(k, k)).join("")}
+                <button class="bbz-kpi-chip ${!filters.segment ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="planning-segment" data-value="">Alle</button>
+              </div>
+            </div>
+            <!-- Kachel 3: Lead BBZ -->
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">Lead BBZ</div>
+              <div class="bbz-kpi-value" style="font-size:18px;margin-top:3px;">${filters.leadbbz ? helpers.escapeHtml(filters.leadbbz) : "—"}</div>
+              <div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
+                ${allLeadbbz.map(chipL).join("")}
+                ${filters.leadbbz ? `<button class="bbz-kpi-chip" data-action="kpi-filter" data-scope="planning-leadbbz" data-value="">Alle</button>` : ""}
+              </div>
+            </div>
+            <!-- Kachel 4: Sichtbar -->
+            ${this.kpiBlock("Sichtbar", baseRows.length, baseRows.length < state.enriched.tasks.length ? `von ${state.enriched.tasks.length} gefiltert` : "alle", baseRows.length < state.enriched.tasks.length ? "warn" : "")}
           </div>
           <section class="bbz-section">
             <div class="bbz-section-header">
@@ -2366,15 +2443,14 @@
               <button class="bbz-button bbz-button-primary" data-action="open-task-form">+ Task</button>
             </div>
             <div class="bbz-section-body">
-              <div class="bbz-filters-4" style="grid-template-columns:2fr 1fr 1fr 1fr;">
+              <div class="bbz-filters-3" style="grid-template-columns:2fr 1fr 1fr;">
                 <input class="bbz-input" data-filter="planning-search" type="text" placeholder="Suche nach Titel, Firma, Kontakt, Status ..." value="${helpers.escapeHtml(filters.search)}" />
                 <select class="bbz-select" data-filter="planning-groupby">
                   <option value="none"    ${filters.groupBy === "none"    ? "selected" : ""}>Keine Gruppierung</option>
                   <option value="status"  ${filters.groupBy === "status"  ? "selected" : ""}>Gruppe: Status</option>
                   <option value="leadbbz" ${filters.groupBy === "leadbbz" ? "selected" : ""}>Gruppe: Leadbbz</option>
                 </select>
-                <label class="bbz-checkbox"><input type="checkbox" data-filter="planning-open"    ${filters.onlyOpen    ? "checked" : ""} /> Nur offene Tasks</label>
-                <label class="bbz-checkbox"><input type="checkbox" data-filter="planning-overdue" ${filters.onlyOverdue ? "checked" : ""} /> Nur überfällige</label>
+                <label class="bbz-checkbox"><input type="checkbox" data-filter="planning-open" ${filters.onlyOpen ? "checked" : ""} /> Nur offene Tasks</label>
               </div>
               <div class="bbz-table-wrap">
                 <table class="bbz-table" style="min-width:1060px;">
