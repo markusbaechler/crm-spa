@@ -1540,7 +1540,7 @@
               </div>
               <div class="bbz-modal-footer">
                 <div style="flex:1;">
-                  ${mode === "edit" ? `<button type="button" class="bbz-button bbz-button-secondary" style="color:var(--bbz-red);border-color:var(--bbz-red);" data-action="delete-history" data-id="${itemId}" data-title="${helpers.escapeHtml(entry?.typ || entry?.title || 'Eintrag')}">Löschen</button>` : ""}
+                  ${mode === "edit" ? `<button type="button" class="bbz-button bbz-button-secondary" style="color:var(--red);border-color:var(--red);" data-action="delete-history" data-id="${itemId}" data-title="${helpers.escapeHtml(entry?.typ || entry?.title || 'Eintrag')}">Löschen</button>` : ""}
                 </div>
                 <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Abbrechen</button>
                 <button type="submit" class="bbz-button bbz-button-primary" ${state.meta.loading ? "disabled" : ""}>Speichern</button>
@@ -1715,7 +1715,7 @@
                         const firmObj = state.enriched.firms.find(f => f.id === c.firmId);
                         const seg = String(firmObj?.klassifizierung || "").toUpperCase();
                         const isChecked = validSelected.includes(c.id);
-                        return `<tr style="${isChecked ? "background:var(--bbz-blue-light);" : ""}">
+                        return `<tr style="${isChecked ? "background:var(--blue-light);" : ""}">
                           <td><input type="checkbox" data-action="batch-toggle-contact" data-contact-id="${c.id}" ${isChecked ? "checked" : ""} /></td>
                           <td>${helpers.avatarHtml(c)} <span style="margin-left:6px;">${helpers.escapeHtml(c.fullName || c.nachname)}</span></td>
                           <td><span class="bbz-muted" style="font-size:12px;">${helpers.escapeHtml(c.firmTitle || "—")}</span></td>
@@ -1802,27 +1802,57 @@
         .sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline))
         .slice(0, 5);
 
-      // Fokus-Bar HTML
+      // Fokus-Bar HTML — neues Design
       const focusBarHtml = (() => {
         if (focusTasks.length === 0) {
-          return `<div class="bbz-focus-bar bbz-focus-clear">
-            <span class="bbz-focus-icon">✓</span>
-            <span class="bbz-focus-clear-text">Alles im Griff — keine überfälligen oder dringenden Tasks diese Woche</span>
+          return `<div class="bbz-focus-bar">
+            <div class="bbz-focus-inner">
+              <div class="bbz-focus-stat">
+                <div class="bbz-focus-stat-label">Dringend heute</div>
+                <div class="bbz-focus-number bbz-focus-number-ok">0</div>
+                <div class="bbz-focus-stat-sub">alles erledigt</div>
+              </div>
+              <div class="bbz-focus-divider"></div>
+              <div class="bbz-focus-ok">
+                <div class="bbz-focus-ok-icon">
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#22d98a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
+                </div>
+                <div class="bbz-focus-ok-text">Heute geschafft.</div>
+                <div class="bbz-focus-ok-sub">Keine offenen Tasks mehr.</div>
+              </div>
+              <div class="bbz-focus-divider"></div>
+              <div class="bbz-focus-cta">
+                <a class="bbz-focus-all-link" data-action="navigate-planning">Zur Planung →</a>
+              </div>
+            </div>
           </div>`;
         }
-        const items = focusTasks.map(t => {
+        const taskItems = focusTasks.map(t => {
           const isOd = t.isOverdue;
-          return `<a class="bbz-focus-item ${isOd ? "bbz-focus-overdue" : "bbz-focus-soon"}" data-action="navigate-planning">
+          return `<div class="bbz-focus-task" data-action="navigate-planning">
+            <div class="${isOd ? "bbz-focus-bar-red" : "bbz-focus-bar-amber"}"></div>
             <span class="bbz-focus-firm">${helpers.escapeHtml(t.firmTitle || t.contactName || "—")}</span>
-            <span class="bbz-focus-task">${helpers.escapeHtml(t.title)}</span>
-            <span class="bbz-focus-date">${isOd ? "überfällig" : helpers.relativeDate(t.deadline)}</span>
-          </a>`;
+            <span class="bbz-focus-desc">${helpers.escapeHtml(t.title)}</span>
+            <span class="bbz-focus-due ${isOd ? "bbz-focus-due-red" : "bbz-focus-due-amber"}">${isOd ? "überfällig" : helpers.relativeDate(t.deadline)}</span>
+          </div>`;
         }).join("");
-        const moreCount = allOpenTasks.filter(t => t.isOverdue).length + thisWeek.length - focusTasks.length;
+        const urgentCount = overdueTasks.length;
+        const moreCount = Math.max(0, overdueTasks.length + thisWeek.length - focusTasks.length);
         return `<div class="bbz-focus-bar">
-          <span class="bbz-focus-label">Fokus heute</span>
-          <div class="bbz-focus-items">${items}</div>
-          ${moreCount > 0 ? `<a class="bbz-focus-more" data-action="navigate-planning">+${moreCount} weitere →</a>` : ""}
+          <div class="bbz-focus-inner">
+            <div class="bbz-focus-stat">
+              <div class="bbz-focus-stat-label">Dringend heute</div>
+              <div class="bbz-focus-number${urgentCount > 0 ? " bbz-focus-number-alert" : ""}">${urgentCount > 0 ? urgentCount : focusTasks.length}</div>
+              <div class="bbz-focus-stat-sub">${urgentCount > 0 ? "überfällige Tasks" : "Tasks diese Woche"}</div>
+            </div>
+            <div class="bbz-focus-divider"></div>
+            <div class="bbz-focus-tasks">${taskItems}</div>
+            <div class="bbz-focus-divider"></div>
+            <div class="bbz-focus-cta">
+              <a class="bbz-focus-all-link" data-action="navigate-planning">Alle ${allOpenTasks.length} Tasks →</a>
+              ${moreCount > 0 ? `<span style="font-size:10px;color:rgba(255,255,255,0.2);">+${moreCount} weitere</span>` : ""}
+            </div>
+          </div>
         </div>`;
       })();
 
@@ -1832,29 +1862,29 @@
           <div class="bbz-kpis">
             ${filters.radarMode ? `
             <!-- Radar-Modus KPIs -->
-            <div class="bbz-kpi">
+            <div class="bbz-kpi bbz-kpi-blue">
               <div class="bbz-kpi-label">Pflege-Fälle</div>
               <div class="bbz-kpi-value">${radarRows.length}</div>
-              <div style="margin-top:6px;font-size:12px;color:var(--muted);">A/B-Kunden mit Handlungsbedarf</div>
+              <div class="bbz-kpi-meta">A/B-Kunden mit Handlungsbedarf</div>
             </div>
-            <div class="bbz-kpi">
+            <div class="bbz-kpi bbz-kpi-red">
               <div class="bbz-kpi-label">Nie kontaktiert</div>
-              <div class="bbz-kpi-value" style="color:var(--bbz-red);">${radarNeverCount}</div>
-              <div style="margin-top:6px;font-size:12px;color:var(--muted);">A-Kunden ohne History</div>
+              <div class="bbz-kpi-value bbz-kpi-value-red">${radarNeverCount}</div>
+              <div class="bbz-kpi-meta">A-Kunden ohne History</div>
             </div>
-            <div class="bbz-kpi">
+            <div class="bbz-kpi bbz-kpi-amber">
               <div class="bbz-kpi-label">Eingeschlafen</div>
-              <div class="bbz-kpi-value" style="color:var(--amber);">${radarColdCount}</div>
-              <div style="margin-top:6px;font-size:12px;color:var(--muted);">>360 Tage kein Kontakt</div>
+              <div class="bbz-kpi-value bbz-kpi-value-amber">${radarColdCount}</div>
+              <div class="bbz-kpi-meta">>360 Tage kein Kontakt</div>
             </div>
-            <div class="bbz-kpi">
+            <div class="bbz-kpi bbz-kpi-red">
               <div class="bbz-kpi-label">Überfällige Tasks</div>
-              <div class="bbz-kpi-value" style="color:var(--muted);">${radarOverdueCount}</div>
-              <div style="margin-top:6px;font-size:12px;color:var(--muted);">A/B-Kunden betroffen</div>
+              <div class="bbz-kpi-value bbz-kpi-value-red">${radarOverdueCount}</div>
+              <div class="bbz-kpi-meta">A/B-Kunden betroffen</div>
             </div>
             ` : `
             <!-- Firmen-Kachel: Segment-Filter + orthogonale Zusatzfilter -->
-            <div class="bbz-kpi">
+            <div class="bbz-kpi bbz-kpi-blue">
               <div class="bbz-kpi-label">Firmen</div>
               <div class="bbz-kpi-value">${state.enriched.firms.length}</div>
               <!-- Reihe 1: Segment (exklusiv) -->
@@ -1875,7 +1905,7 @@
               </div>
             </div>
             <!-- Kontakte-Kachel mit History/Tasks/Alle Filter -->
-            <div class="bbz-kpi" data-action="navigate" data-scope="navigate" data-value="contacts" style="cursor:default;">
+            <div class="bbz-kpi bbz-kpi-blue" data-action="navigate" data-scope="navigate" data-value="contacts" style="cursor:default;">
               <div class="bbz-kpi-label">Kontakte</div>
               <div class="bbz-kpi-value">${state.enriched.contacts.filter(c => !c.archiviert).length}</div>
               <div class="bbz-kpi-chips" style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
@@ -1885,23 +1915,23 @@
               </div>
             </div>
             <!-- Offene Tasks — drei Zeitzonen als Chips, klickbar zur Planung -->
-            <div class="bbz-kpi bbz-kpi-clickable" data-action="navigate-planning" style="cursor:pointer;">
+            <div class="bbz-kpi bbz-kpi-amber bbz-kpi-clickable" data-action="navigate-planning" style="cursor:pointer;">
               <div class="bbz-kpi-label">Offene Tasks</div>
-              <div class="bbz-kpi-value">${allOpenTasks.length}</div>
+              <div class="bbz-kpi-value${allOpenTasks.filter(t=>t.isOverdue).length > 0 ? ' bbz-kpi-value-amber' : ''}">${allOpenTasks.length}</div>
               <div class="bbz-kpi-chips" style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;pointer-events:none;">
                 ${(() => {
                   const in30  = new Date(today); in30.setDate(in30.getDate() + 30);
                   const faellig = allOpenTasks.filter(t => { const d = helpers.toDate(t.deadline); return d ? d <= today : t.isOverdue; }).length;
                   const monat   = allOpenTasks.filter(t => { const d = helpers.toDate(t.deadline); return d && d > today && d <= in30; }).length;
                   const uebrige = allOpenTasks.length - faellig - monat;
-                  return `<span class="bbz-kpi-chip" style="background:var(--bbz-red-soft);border-color:#f0b0b2;color:var(--bbz-red);">Fällig <span style="color:var(--bbz-red);">${faellig}</span></span>`
+                  return `<span class="bbz-kpi-chip" style="background:var(--red-soft);border-color:#f0b0b2;color:var(--red);">Fällig <span style="color:var(--red);">${faellig}</span></span>`
                        + `<span class="bbz-kpi-chip" style="background:#fff9eb;border-color:#f4dfab;color:var(--amber);">Monat <span style="color:var(--amber);">${monat}</span></span>`
                        + `<span class="bbz-kpi-chip">Übrige <span>${uebrige}</span></span>`;
                 })()}
               </div>
             </div>`}
             <!-- Events-Kachel — immer sichtbar -->
-            <div class="bbz-kpi bbz-kpi-clickable" data-action="kpi-filter" data-scope="navigate" data-value="events" style="cursor:pointer;">
+            <div class="bbz-kpi bbz-kpi-blue bbz-kpi-clickable" data-action="kpi-filter" data-scope="navigate" data-value="events" style="cursor:pointer;">
               <div class="bbz-kpi-label">Events</div>
               <div class="bbz-kpi-value">${state.enriched.events.length}</div>
               <div class="bbz-kpi-chips" style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;pointer-events:none;">
@@ -1930,7 +1960,7 @@
                     </button>
                     <button class="bbz-button" style="height:32px;font-size:12px;border:none;border-radius:0;${filters.radarMode ? "background:var(--panel);color:var(--text);font-weight:700;" : "background:none;color:var(--muted);"}"
                       data-action="kpi-filter" data-scope="firms-radar" ${filters.radarMode ? "disabled" : ""}>
-                      Pflege A/B ${radarRows.length > 0 ? `<span style="background:var(--bbz-red-light);color:var(--bbz-red);border-radius:999px;padding:1px 6px;font-size:11px;margin-left:4px;">${radarRows.length}</span>` : ""}
+                      Pflege A/B ${radarRows.length > 0 ? `<span style="background:var(--red-light);color:var(--red);border-radius:999px;padding:1px 6px;font-size:11px;margin-left:4px;">${radarRows.length}</span>` : ""}
                     </button>
                   </div>
                   ${!filters.radarMode ? `<button class="bbz-button bbz-button-primary" data-action="open-firm-form">+ Firma</button>` : ""}
@@ -1966,7 +1996,7 @@
                           ? (today.getFullYear() - lastDate.getFullYear()) * 12 + (today.getMonth() - lastDate.getMonth())
                           : null;
                         const grundHtml = sig === "never"
-                          ? `<span style="color:var(--bbz-red);font-weight:600;">🔴 Nie kontaktiert</span>`
+                          ? `<span style="color:var(--red);font-weight:600;">🔴 Nie kontaktiert</span>`
                           : sig === "cold"
                           ? `<span style="color:var(--amber);font-weight:600;">🟡 Seit ${months} Monat${months !== 1 ? "en" : ""} still</span>`
                           : `<span style="color:var(--muted);font-weight:600;">⚠️ ${firm.tasks.filter(t => t.isOpen && t.isOverdue).length} Task${firm.tasks.filter(t => t.isOpen && t.isOverdue).length !== 1 ? "s" : ""} überfällig</span>`;
@@ -1978,7 +2008,7 @@
                             <td>${grundHtml}</td>
                             <td>${firm.latestActivity ? `<span title="${helpers.formatDate(firm.latestActivity)}">${helpers.relativeDate(firm.latestActivity)}</span>` : '<span class="bbz-muted">—</span>'}</td>
                             <td class="${firm.nextDeadline && helpers.isOverdue(firm.nextDeadline) ? "bbz-danger" : ""}">${firm.nextDeadline ? helpers.relativeDate(firm.nextDeadline) : '<span class="bbz-muted">—</span>'}</td>
-                            <td>${firm.contactsCount > 0 ? firm.contactsCount : `<span style="color:var(--bbz-red);">${firm.contactsCount}</span>`}</td>
+                            <td>${firm.contactsCount > 0 ? firm.contactsCount : `<span style="color:var(--red);">${firm.contactsCount}</span>`}</td>
                           </tr>`;
                       }).join("") : `<tr><td colspan="7">${ui.emptyBlock("Keine Pflege-Fälle gefunden.")}</td></tr>`}
                     </tbody>
@@ -2030,6 +2060,33 @@
                     </tbody>
                   </table>
                 </div>`}
+                <!-- Mobile Card List (nur sichtbar auf kleinen Screens via CSS) -->
+                <div class="bbz-card-list bbz-mobile-only">
+                  ${rows.length ? rows.map(firm => {
+                    const signal = helpers.firmSignal(firm);
+                    const sigDot = signal === "overdue"
+                      ? `<span class="bbz-signal bbz-signal-red"></span>`
+                      : (signal === "never" || signal === "cold")
+                      ? `<span class="bbz-signal bbz-signal-amber"></span>`
+                      : `<span style="width:8px;flex-shrink:0;display:inline-block;"></span>`;
+                    const taskBadge = firm.openTasksCount > 0
+                      ? overdueTasks.some(t => t.firmId === firm.id)
+                        ? `<span class="bbz-status-chip bbz-status-overdue">${firm.openTasksCount} überfällig</span>`
+                        : `<span class="bbz-status-chip bbz-status-open">${firm.openTasksCount} offen</span>`
+                      : "";
+                    return `<div class="bbz-list-card" data-action="open-firm" data-id="${firm.id}">
+                      ${sigDot}
+                      <div class="bbz-list-card-body">
+                        <div class="bbz-list-card-title">${helpers.escapeHtml(firm.title)}</div>
+                        <div class="bbz-list-card-sub">${helpers.escapeHtml(helpers.joinNonEmpty([firm.plz, firm.ort], " ") || "")}${firm.latestActivity ? " · " + helpers.relativeDate(firm.latestActivity) : ""}</div>
+                      </div>
+                      <div class="bbz-list-card-right">
+                        ${firm.klassifizierung ? `<span class="${helpers.firmBadgeClass(firm.klassifizierung)}">${helpers.escapeHtml(firm.klassifizierung)}</span>` : ""}
+                        ${taskBadge}
+                      </div>
+                    </div>`;
+                  }).join("") : ui.emptyBlock("Keine Firmen gefunden.")}
+                </div>
               </div>
             </section>
             <div class="bbz-cockpit-stack">
@@ -2076,7 +2133,7 @@
                             const d = helpers.toDate(f.nextDeadline);
                             const meta = d
                               ? (d <= today
-                                  ? `${f.openTasksCount} Task${f.openTasksCount !== 1 ? "s" : ""} · <span style="color:var(--bbz-red);font-weight:600;">${helpers.relativeDate(f.nextDeadline)}</span>`
+                                  ? `${f.openTasksCount} Task${f.openTasksCount !== 1 ? "s" : ""} · <span style="color:var(--red);font-weight:600;">${helpers.relativeDate(f.nextDeadline)}</span>`
                                   : `${f.openTasksCount} Task${f.openTasksCount !== 1 ? "s" : ""} · ${helpers.relativeDate(f.nextDeadline)}`)
                               : `${f.openTasksCount} Task${f.openTasksCount !== 1 ? "s" : ""}`;
                             return `<div class="bbz-mini-item" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
@@ -2122,7 +2179,7 @@
                 </div>
               </div>
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                <button class="bbz-button bbz-button-secondary" style="${firm.contactsCount > 0 ? "opacity:0.4;cursor:not-allowed;" : "color:var(--bbz-red);border-color:var(--bbz-red);"}" data-action="delete-firm" data-id="${firm.id}" data-name="${helpers.escapeHtml(firm.title)}" data-contacts="${firm.contactsCount}">Löschen</button>
+                <button class="bbz-button bbz-button-secondary" style="${firm.contactsCount > 0 ? "opacity:0.4;cursor:not-allowed;" : "color:var(--red);border-color:var(--red);"}" data-action="delete-firm" data-id="${firm.id}" data-name="${helpers.escapeHtml(firm.title)}" data-contacts="${firm.contactsCount}">Löschen</button>
                 <button class="bbz-button bbz-button-secondary" data-action="open-firm-form" data-id="${firm.id}">Bearbeiten</button>
                 <button class="bbz-button bbz-button-secondary" data-action="open-task-form" data-firm-id="${firm.id}">+ Task</button>
                 <button class="bbz-button bbz-button-secondary" data-action="open-history-form" data-firm-id="${firm.id}">+ Aktivität</button>
@@ -2180,11 +2237,11 @@
                   <div class="bbz-timeline-item">
                     <div class="bbz-timeline-date">${helpers.relativeDate(h.datum) || "—"}<br><span class="bbz-muted" style="font-size:11px;">${helpers.formatDate(h.datum)}</span><br><span class="bbz-muted">${helpers.escapeHtml(h.contactName || "")}</span></div>
                     <div>
-                      <div class="bbz-timeline-title">${helpers.escapeHtml(h.typ || h.title || "Eintrag")} ${h.projektbezugBool ? '<span class="bbz-chip" style="background:var(--bbz-blue-light);color:var(--bbz-blue);border-color:#a8c8e0;">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}</div>
+                      <div class="bbz-timeline-title">${helpers.escapeHtml(h.typ || h.title || "Eintrag")} ${h.projektbezugBool ? '<span class="bbz-chip" style="background:var(--blue-light);color:var(--blue);border-color:#a8c8e0;">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}</div>
                       <div class="bbz-timeline-text">${helpers.escapeHtml(h.notizen || "—")}</div>
                       <div style="margin-top:6px;display:flex;gap:6px;">
                         <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;" data-action="edit-history" data-id="${h.id}">Bearbeiten</button>
-                        <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;color:var(--bbz-red);border-color:var(--bbz-red);" data-action="delete-history" data-id="${h.id}" data-title="${helpers.escapeHtml(h.typ || h.title || 'Eintrag')}">Löschen</button>
+                        <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;color:var(--red);border-color:var(--red);" data-action="delete-history" data-id="${h.id}" data-title="${helpers.escapeHtml(h.typ || h.title || 'Eintrag')}">Löschen</button>
                       </div>
                     </div>
                   </div>`).join("")}</div>`
@@ -2208,7 +2265,7 @@
                           <td>${t.contactId ? `<a class="bbz-link" data-action="open-contact" data-id="${t.contactId}">${helpers.escapeHtml(t.contactName || "Kontakt")}</a>` : helpers.escapeHtml(t.contactName || "—")}</td>
                           <td style="white-space:nowrap;">
                             <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 8px;margin-right:3px;" data-action="edit-task" data-id="${t.id}">Bearbeiten</button>
-                            <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 8px;color:var(--bbz-red);border-color:var(--bbz-red);" data-action="delete-task" data-id="${t.id}" data-title="${helpers.escapeHtml(t.title)}">Löschen</button>
+                            <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 8px;color:var(--red);border-color:var(--red);" data-action="delete-task" data-id="${t.id}" data-title="${helpers.escapeHtml(t.title)}">Löschen</button>
                           </td>
                         </tr>`).join("") : `<tr><td colspan="5">${ui.emptyBlock("Keine Aufgaben vorhanden.")}</td></tr>`}
                     </tbody>
@@ -2364,13 +2421,13 @@
                   </div>
                   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;">
                     ${contact.leadbbz0 ? helpers.leadbbzBadgeHtml(contact.leadbbz0) : ""}
-                    ${contact.archiviert ? '<span class="bbz-pill" style="background:var(--bbz-red-soft);color:var(--bbz-red);border-color:#f0b0b2;">Archiviert</span>' : ""}
+                    ${contact.archiviert ? '<span class="bbz-pill" style="background:var(--red-soft);color:var(--red);border-color:#f0b0b2;">Archiviert</span>' : ""}
                   </div>
                 </div>
               </div>
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                 ${contact.email1 ? `<a class="bbz-button bbz-button-secondary" href="mailto:${helpers.escapeHtml(contact.email1)}">✉ Mail</a>` : ""}
-                <button class="bbz-button bbz-button-secondary" style="color:var(--bbz-red);border-color:var(--bbz-red);" data-action="delete-contact" data-id="${contact.id}" data-name="${helpers.escapeHtml(contact.fullName || contact.nachname)}">Löschen</button>
+                <button class="bbz-button bbz-button-secondary" style="color:var(--red);border-color:var(--red);" data-action="delete-contact" data-id="${contact.id}" data-name="${helpers.escapeHtml(contact.fullName || contact.nachname)}">Löschen</button>
                 <button class="bbz-button bbz-button-secondary" data-action="open-contact-form" data-item-id="${contact.id}">Bearbeiten</button>
                 <button class="bbz-button bbz-button-secondary" data-action="open-task-form" data-contact-id="${contact.id}">+ Task</button>
                 <button class="bbz-button bbz-button-primary" data-action="open-history-form" data-contact-id="${contact.id}">+ Aktivität</button>
@@ -2439,11 +2496,11 @@
                   <div class="bbz-timeline-item">
                     <div class="bbz-timeline-date">${helpers.relativeDate(h.datum) || "—"}<br><span class="bbz-muted" style="font-size:11px;">${helpers.formatDate(h.datum)}</span></div>
                     <div>
-                      <div class="bbz-timeline-title">${helpers.escapeHtml(h.typ || h.title || "Eintrag")} ${h.projektbezugBool ? '<span class="bbz-chip" style="background:var(--bbz-blue-light);color:var(--bbz-blue);border-color:#a8c8e0;">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}</div>
+                      <div class="bbz-timeline-title">${helpers.escapeHtml(h.typ || h.title || "Eintrag")} ${h.projektbezugBool ? '<span class="bbz-chip" style="background:var(--blue-light);color:var(--blue);border-color:#a8c8e0;">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}</div>
                       <div class="bbz-timeline-text">${helpers.escapeHtml(h.notizen || "—")}</div>
                       <div style="margin-top:6px;display:flex;gap:6px;">
                         <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;" data-action="edit-history" data-id="${h.id}">Bearbeiten</button>
-                        <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;color:var(--bbz-red);border-color:var(--bbz-red);" data-action="delete-history" data-id="${h.id}" data-title="${helpers.escapeHtml(h.typ || h.title || 'Eintrag')}">Löschen</button>
+                        <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;color:var(--red);border-color:var(--red);" data-action="delete-history" data-id="${h.id}" data-title="${helpers.escapeHtml(h.typ || h.title || 'Eintrag')}">Löschen</button>
                       </div>
                     </div>
                   </div>`).join("")}</div>` : ui.emptyBlock("Noch keine Aktivitäten erfasst.")}
@@ -2573,7 +2630,7 @@
             <td>${helpers.escapeHtml(t.leadbbz) || '<span class="bbz-muted">—</span>'}</td>
             <td style="white-space:nowrap;">
               <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;margin-right:4px;" data-action="edit-task" data-id="${t.id}">Bearbeiten</button>
-              <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;color:var(--bbz-red);border-color:var(--bbz-red);" data-action="delete-task" data-id="${t.id}" data-title="${helpers.escapeHtml(t.title)}">Löschen</button>
+              <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;color:var(--red);border-color:var(--red);" data-action="delete-task" data-id="${t.id}" data-title="${helpers.escapeHtml(t.title)}">Löschen</button>
             </td>
           </tr>`;
       };
@@ -2601,7 +2658,7 @@
               <div class="bbz-kpi-label">Tasks gesamt</div>
               <div class="bbz-kpi-value">${state.enriched.tasks.length}</div>
               <div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
-                ${chipF("Überfällig", "overdue", cntOverdue, cntOverdue > 0 ? "background:var(--bbz-red-soft);border-color:#f0b0b2;color:var(--bbz-red);" : "")}
+                ${chipF("Überfällig", "overdue", cntOverdue, cntOverdue > 0 ? "background:var(--red-soft);border-color:#f0b0b2;color:var(--red);" : "")}
                 ${chipF("Woche", "week", cntWeek, cntWeek > 0 ? "background:#fff9eb;border-color:#f4dfab;color:var(--amber);" : "")}
                 ${chipF("Monat", "month", cntMonth)}
                 ${chipF("Übrige", "rest", cntRest)}
@@ -2702,7 +2759,7 @@
       const trendHtml   = trendDiff > 0
         ? `<span style="color:var(--green);font-weight:700;">↑ +${trendDiff} vs. Vorwoche</span>`
         : trendDiff < 0
-        ? `<span style="color:var(--bbz-red);font-weight:700;">↓ ${trendDiff} vs. Vorwoche</span>`
+        ? `<span style="color:var(--red);font-weight:700;">↓ ${trendDiff} vs. Vorwoche</span>`
         : `<span style="color:var(--muted);">= Vorwoche</span>`;
 
       // ── KPI-Kacheln ─────────────────────────────────────────────────────────
@@ -2726,7 +2783,7 @@
 
       // Aktive Filter-Badges für Filterleiste
       const activeFilterBadges = [
-        filters.kontaktart ? `<span class="bbz-chip" style="background:var(--bbz-blue-light);color:var(--bbz-blue);border-color:#a8c8e0;cursor:pointer;" data-action="kpi-filter" data-scope="history-kontaktart" data-value="">${helpers.escapeHtml(filters.kontaktart)} ×</span>` : "",
+        filters.kontaktart ? `<span class="bbz-chip" style="background:var(--blue-light);color:var(--blue);border-color:#a8c8e0;cursor:pointer;" data-action="kpi-filter" data-scope="history-kontaktart" data-value="">${helpers.escapeHtml(filters.kontaktart)} ×</span>` : "",
         filters.leadbbz    ? `<span class="bbz-chip" style="background:#f0fdf4;color:#15803d;border-color:#86efac;cursor:pointer;" data-action="kpi-filter" data-scope="history-leadbbz" data-value="">${helpers.escapeHtml(filters.leadbbz)} ×</span>` : "",
         filters.zeitfenster ? `<span class="bbz-chip" style="cursor:pointer;" data-action="kpi-filter" data-scope="history-zeitfenster" data-value="">${filters.zeitfenster === "today" ? "Heute" : filters.zeitfenster === "week" ? "Diese Woche" : "Dieser Monat"} ×</span>` : ""
       ].filter(Boolean).join("");
@@ -2736,7 +2793,7 @@
         const hasLongText = (h.notizen || "").length > 120;
         const tagsHtml = `
           <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0;margin-left:8px;">
-            ${h.projektbezugBool ? '<span class="bbz-chip" style="background:var(--bbz-blue-light);color:var(--bbz-blue);border-color:#a8c8e0;">Projektbezug</span>' : ""}
+            ${h.projektbezugBool ? '<span class="bbz-chip" style="background:var(--blue-light);color:var(--blue);border-color:#a8c8e0;">Projektbezug</span>' : ""}
             ${h.leadbbz ? helpers.leadbbzBadgeHtml(h.leadbbz) : ""}
           </div>`;
         return `
@@ -2812,7 +2869,7 @@
       const firmGroupHeader = (g) => {
         const firm = g.firm;
         const kl   = String(firm?.klassifizierung || "").toUpperCase();
-        const borderColor = kl.includes("A") ? "var(--bbz-blue)" : kl.includes("B") ? "#d97706" : "#64748b";
+        const borderColor = kl.includes("A") ? "var(--blue)" : kl.includes("B") ? "#d97706" : "#64748b";
         const bgColor     = kl.includes("A") ? "#f0f7ff" : kl.includes("B") ? "#fffdf0" : "#f8fafc";
         return `
           <div class="bbz-history-firm-header" style="border-left:4px solid ${borderColor};background:${bgColor};">
@@ -2943,7 +3000,7 @@
 
       // Aktiver Firma-Filter: Reset-Banner
       const firmaFilterBanner = activeRadarFirm
-        ? `<div style="background:var(--bbz-blue-light);border:1px solid #a8c8e0;border-radius:8px;padding:7px 11px;font-size:12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">
+        ? `<div style="background:var(--blue-light);border:1px solid #a8c8e0;border-radius:8px;padding:7px 11px;font-size:12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">
              <span>Gefiltert: <strong>${helpers.escapeHtml(activeRadarFirm)}</strong></span>
              <button class="bbz-link" style="font-size:12px;" data-action="history-firma-filter" data-firm-title="${helpers.escapeHtml(activeRadarFirm)}">× aufheben</button>
            </div>` : "";
@@ -3018,7 +3075,7 @@
                     </button>
                     <button class="bbz-button" style="height:32px;font-size:12px;border:none;border-radius:0;padding:0 10px;${filters.radarMode ? "background:var(--panel);color:var(--text);font-weight:700;" : "background:none;color:var(--muted);"}"
                       data-action="kpi-filter" data-scope="history-radar" ${filters.radarMode ? "disabled" : ""}>
-                      Pflege A/B ${(radarNever.length + radarCold.length + radarOverdue.length) > 0 ? `<span style="background:var(--bbz-red-light);color:var(--bbz-red);border-radius:999px;padding:1px 6px;font-size:11px;margin-left:4px;">${radarNever.length + radarCold.length + radarOverdue.length}</span>` : ""}
+                      Pflege A/B ${(radarNever.length + radarCold.length + radarOverdue.length) > 0 ? `<span style="background:var(--red-light);color:var(--red);border-radius:999px;padding:1px 6px;font-size:11px;margin-left:4px;">${radarNever.length + radarCold.length + radarOverdue.length}</span>` : ""}
                     </button>
                   </div>
                   ${!filters.radarMode ? `
@@ -3075,7 +3132,7 @@
                             ? (today.getFullYear() - lastDate.getFullYear()) * 12 + (today.getMonth() - lastDate.getMonth())
                             : null;
                           const grundHtml = sig === "never"
-                            ? `<span style="color:var(--bbz-red);font-weight:600;">🔴 Nie kontaktiert</span>`
+                            ? `<span style="color:var(--red);font-weight:600;">🔴 Nie kontaktiert</span>`
                             : sig === "cold"
                             ? `<span style="color:var(--amber);font-weight:600;">🟡 Seit ${months} Monat${months !== 1 ? "en" : ""} still</span>`
                             : `<span style="color:var(--muted);font-weight:600;">⚠️ ${firm.tasks.filter(t => t.isOpen && t.isOverdue).length} Task${firm.tasks.filter(t => t.isOpen && t.isOverdue).length !== 1 ? "s" : ""} überfällig</span>`;
