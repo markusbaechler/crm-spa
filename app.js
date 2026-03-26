@@ -810,11 +810,18 @@
       });
 
       // Initialen State setzen damit der erste Back-Schritt korrekt funktioniert
-      history.replaceState(
-        { route: state.filters.route, firmId: null, contactId: null },
-        "",
-        `#${state.filters.route}`
-      );
+      // WICHTIG: Nicht ausführen wenn MSAL gerade einen Auth-Redirect verarbeitet
+      // (Hash enthält "code=" oder "error=") — sonst überschreibt replaceState den Auth-Hash
+      // und handleRedirectPromise() findet keinen gültigen Hash mehr
+      const currentHash = window.location.hash;
+      const isMsalRedirect = currentHash.includes("code=") || currentHash.includes("error=") || currentHash.includes("state=");
+      if (!isMsalRedirect) {
+        history.replaceState(
+          { route: state.filters.route, firmId: null, contactId: null },
+          "",
+          `#${state.filters.route}`
+        );
+      }
 
       document.addEventListener("input", (event) => {
         const el = event.target;
@@ -968,6 +975,12 @@
         if (redirectResponse?.account) {
           state.auth.account = redirectResponse.account;
           state.auth.isAuthenticated = true;
+          // MSAL-Hash aus der URL entfernen und durch saubere Route ersetzen
+          history.replaceState(
+            { route: CONFIG.defaults.route, firmId: null, contactId: null },
+            "",
+            `#${CONFIG.defaults.route}`
+          );
         }
       } catch (error) {
         console.warn("handleRedirectPromise Fehler:", error);
