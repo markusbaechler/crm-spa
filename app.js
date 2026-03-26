@@ -2416,10 +2416,10 @@
                 ${filters.faelligkeit ? `<button class="bbz-kpi-chip" data-action="kpi-filter" data-scope="planning-faelligkeit" data-value="">Alle</button>` : ""}
               </div>
             </div>
-            <!-- Kachel 2: Segment -->
+            <!-- Kachel 2: Kundenklassifizierung -->
             <div class="bbz-kpi">
-              <div class="bbz-kpi-label">Segment</div>
-              <div class="bbz-kpi-value" style="font-size:18px;margin-top:3px;">${filters.segment || "—"}</div>
+              <div class="bbz-kpi-label">Kundenklassifizierung</div>
+              <div class="bbz-kpi-value">${filters.segment || "—"}</div>
               <div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
                 ${["A","B","C"].map(k => chipS(k, k)).join("")}
                 <button class="bbz-kpi-chip ${!filters.segment ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="planning-segment" data-value="">Alle</button>
@@ -2428,7 +2428,7 @@
             <!-- Kachel 3: Lead BBZ -->
             <div class="bbz-kpi">
               <div class="bbz-kpi-label">Lead BBZ</div>
-              <div class="bbz-kpi-value" style="font-size:18px;margin-top:3px;">${filters.leadbbz ? helpers.escapeHtml(filters.leadbbz) : "—"}</div>
+              <div class="bbz-kpi-value">${filters.leadbbz ? helpers.escapeHtml(filters.leadbbz) : "—"}</div>
               <div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
                 ${allLeadbbz.map(chipL).join("")}
                 ${filters.leadbbz ? `<button class="bbz-kpi-chip" data-action="kpi-filter" data-scope="planning-leadbbz" data-value="">Alle</button>` : ""}
