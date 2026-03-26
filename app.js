@@ -1534,7 +1534,7 @@
               </div>
               <div class="bbz-modal-footer">
                 <div style="flex:1;">
-                  ${mode === "edit" ? `<button type="button" class="bbz-button bbz-button-secondary" style="color:var(--red);border-color:var(--red);" data-action="delete-history" data-id="${itemId}" data-title="${helpers.escapeHtml(entry?.typ || entry?.title || 'Eintrag')}">Löschen</button>` : ""}
+                  ${mode === "edit" ? `<button type="button" class="bbz-button bbz-button-secondary" style="color:var(--bbz-red);border-color:var(--bbz-red);" data-action="delete-history" data-id="${itemId}" data-title="${helpers.escapeHtml(entry?.typ || entry?.title || 'Eintrag')}">Löschen</button>` : ""}
                 </div>
                 <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Abbrechen</button>
                 <button type="submit" class="bbz-button bbz-button-primary" ${state.meta.loading ? "disabled" : ""}>Speichern</button>
@@ -1709,7 +1709,7 @@
                         const firmObj = state.enriched.firms.find(f => f.id === c.firmId);
                         const seg = String(firmObj?.klassifizierung || "").toUpperCase();
                         const isChecked = validSelected.includes(c.id);
-                        return `<tr style="${isChecked ? "background:var(--color-background-info,#eff6ff);" : ""}">
+                        return `<tr style="${isChecked ? "background:var(--bbz-blue-light);" : ""}">
                           <td><input type="checkbox" data-action="batch-toggle-contact" data-contact-id="${c.id}" ${isChecked ? "checked" : ""} /></td>
                           <td>${helpers.avatarHtml(c)} <span style="margin-left:6px;">${helpers.escapeHtml(c.fullName || c.nachname)}</span></td>
                           <td><span class="bbz-muted" style="font-size:12px;">${helpers.escapeHtml(c.firmTitle || "—")}</span></td>
@@ -1833,7 +1833,7 @@
             </div>
             <div class="bbz-kpi">
               <div class="bbz-kpi-label">Nie kontaktiert</div>
-              <div class="bbz-kpi-value" style="color:var(--red);">${radarNeverCount}</div>
+              <div class="bbz-kpi-value" style="color:var(--bbz-red);">${radarNeverCount}</div>
               <div style="margin-top:6px;font-size:12px;color:var(--muted);">A-Kunden ohne History</div>
             </div>
             <div class="bbz-kpi">
@@ -1888,7 +1888,7 @@
                   const faellig = allOpenTasks.filter(t => { const d = helpers.toDate(t.deadline); return d ? d <= today : t.isOverdue; }).length;
                   const monat   = allOpenTasks.filter(t => { const d = helpers.toDate(t.deadline); return d && d > today && d <= in30; }).length;
                   const uebrige = allOpenTasks.length - faellig - monat;
-                  return `<span class="bbz-kpi-chip" style="background:#fff1f1;border-color:#f1caca;color:var(--red);">Fällig <span style="color:var(--red);">${faellig}</span></span>`
+                  return `<span class="bbz-kpi-chip" style="background:var(--bbz-red-soft);border-color:#f0b0b2;color:var(--bbz-red);">Fällig <span style="color:var(--bbz-red);">${faellig}</span></span>`
                        + `<span class="bbz-kpi-chip" style="background:#fff9eb;border-color:#f4dfab;color:var(--amber);">Monat <span style="color:var(--amber);">${monat}</span></span>`
                        + `<span class="bbz-kpi-chip">Übrige <span>${uebrige}</span></span>`;
                 })()}
@@ -1924,7 +1924,7 @@
                     </button>
                     <button class="bbz-button" style="height:32px;font-size:12px;border:none;border-radius:0;${filters.radarMode ? "background:var(--panel);color:var(--text);font-weight:700;" : "background:none;color:var(--muted);"}"
                       data-action="kpi-filter" data-scope="firms-radar" ${filters.radarMode ? "disabled" : ""}>
-                      Pflege A/B ${radarRows.length > 0 ? `<span style="background:#fee2e2;color:var(--red);border-radius:999px;padding:1px 6px;font-size:11px;margin-left:4px;">${radarRows.length}</span>` : ""}
+                      Pflege A/B ${radarRows.length > 0 ? `<span style="background:var(--bbz-red-light);color:var(--bbz-red);border-radius:999px;padding:1px 6px;font-size:11px;margin-left:4px;">${radarRows.length}</span>` : ""}
                     </button>
                   </div>
                   ${!filters.radarMode ? `<button class="bbz-button bbz-button-primary" data-action="open-firm-form">+ Firma</button>` : ""}
@@ -1960,7 +1960,7 @@
                           ? (today.getFullYear() - lastDate.getFullYear()) * 12 + (today.getMonth() - lastDate.getMonth())
                           : null;
                         const grundHtml = sig === "never"
-                          ? `<span style="color:var(--red);font-weight:600;">🔴 Nie kontaktiert</span>`
+                          ? `<span style="color:var(--bbz-red);font-weight:600;">🔴 Nie kontaktiert</span>`
                           : sig === "cold"
                           ? `<span style="color:var(--amber);font-weight:600;">🟡 Seit ${months} Monat${months !== 1 ? "en" : ""} still</span>`
                           : `<span style="color:var(--muted);font-weight:600;">⚠️ ${firm.tasks.filter(t => t.isOpen && t.isOverdue).length} Task${firm.tasks.filter(t => t.isOpen && t.isOverdue).length !== 1 ? "s" : ""} überfällig</span>`;
@@ -1972,7 +1972,7 @@
                             <td>${grundHtml}</td>
                             <td>${firm.latestActivity ? `<span title="${helpers.formatDate(firm.latestActivity)}">${helpers.relativeDate(firm.latestActivity)}</span>` : '<span class="bbz-muted">—</span>'}</td>
                             <td class="${firm.nextDeadline && helpers.isOverdue(firm.nextDeadline) ? "bbz-danger" : ""}">${firm.nextDeadline ? helpers.relativeDate(firm.nextDeadline) : '<span class="bbz-muted">—</span>'}</td>
-                            <td>${firm.contactsCount > 0 ? firm.contactsCount : `<span style="color:var(--red);">${firm.contactsCount}</span>`}</td>
+                            <td>${firm.contactsCount > 0 ? firm.contactsCount : `<span style="color:var(--bbz-red);">${firm.contactsCount}</span>`}</td>
                           </tr>`;
                       }).join("") : `<tr><td colspan="7">${ui.emptyBlock("Keine Pflege-Fälle gefunden.")}</td></tr>`}
                     </tbody>
@@ -2070,7 +2070,7 @@
                             const d = helpers.toDate(f.nextDeadline);
                             const meta = d
                               ? (d <= today
-                                  ? `${f.openTasksCount} Task${f.openTasksCount !== 1 ? "s" : ""} · <span style="color:var(--red);font-weight:600;">${helpers.relativeDate(f.nextDeadline)}</span>`
+                                  ? `${f.openTasksCount} Task${f.openTasksCount !== 1 ? "s" : ""} · <span style="color:var(--bbz-red);font-weight:600;">${helpers.relativeDate(f.nextDeadline)}</span>`
                                   : `${f.openTasksCount} Task${f.openTasksCount !== 1 ? "s" : ""} · ${helpers.relativeDate(f.nextDeadline)}`)
                               : `${f.openTasksCount} Task${f.openTasksCount !== 1 ? "s" : ""}`;
                             return `<div class="bbz-mini-item" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
@@ -2116,7 +2116,7 @@
                 </div>
               </div>
               <div class="flex items-center gap-2 flex-wrap">
-                <button class="bbz-button bbz-button-secondary" style="${firm.contactsCount > 0 ? "opacity:0.4;cursor:not-allowed;" : "color:var(--red);border-color:var(--red);"}" data-action="delete-firm" data-id="${firm.id}" data-name="${helpers.escapeHtml(firm.title)}" data-contacts="${firm.contactsCount}">Löschen</button>
+                <button class="bbz-button bbz-button-secondary" style="${firm.contactsCount > 0 ? "opacity:0.4;cursor:not-allowed;" : "color:var(--bbz-red);border-color:var(--bbz-red);"}" data-action="delete-firm" data-id="${firm.id}" data-name="${helpers.escapeHtml(firm.title)}" data-contacts="${firm.contactsCount}">Löschen</button>
                 <button class="bbz-button bbz-button-secondary" data-action="open-firm-form" data-id="${firm.id}">Bearbeiten</button>
                 <button class="bbz-button bbz-button-secondary" data-action="open-task-form" data-firm-id="${firm.id}">+ Task</button>
                 <button class="bbz-button bbz-button-secondary" data-action="open-history-form" data-firm-id="${firm.id}">+ Aktivität</button>
@@ -2174,11 +2174,11 @@
                   <div class="bbz-timeline-item">
                     <div class="bbz-timeline-date">${helpers.relativeDate(h.datum) || "—"}<br><span class="bbz-muted" style="font-size:11px;">${helpers.formatDate(h.datum)}</span><br><span class="bbz-muted">${helpers.escapeHtml(h.contactName || "")}</span></div>
                     <div>
-                      <div class="bbz-timeline-title">${helpers.escapeHtml(h.typ || h.title || "Eintrag")} ${h.projektbezugBool ? '<span class="bbz-chip" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}</div>
+                      <div class="bbz-timeline-title">${helpers.escapeHtml(h.typ || h.title || "Eintrag")} ${h.projektbezugBool ? '<span class="bbz-chip" style="background:var(--bbz-blue-light);color:var(--bbz-blue);border-color:#a8c8e0;">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}</div>
                       <div class="bbz-timeline-text">${helpers.escapeHtml(h.notizen || "—")}</div>
                       <div style="margin-top:6px;display:flex;gap:6px;">
                         <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;" data-action="edit-history" data-id="${h.id}">Bearbeiten</button>
-                        <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;color:var(--red);border-color:var(--red);" data-action="delete-history" data-id="${h.id}" data-title="${helpers.escapeHtml(h.typ || h.title || 'Eintrag')}">Löschen</button>
+                        <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;color:var(--bbz-red);border-color:var(--bbz-red);" data-action="delete-history" data-id="${h.id}" data-title="${helpers.escapeHtml(h.typ || h.title || 'Eintrag')}">Löschen</button>
                       </div>
                     </div>
                   </div>`).join("")}</div>`
@@ -2202,7 +2202,7 @@
                           <td>${t.contactId ? `<a class="bbz-link" data-action="open-contact" data-id="${t.contactId}">${helpers.escapeHtml(t.contactName || "Kontakt")}</a>` : helpers.escapeHtml(t.contactName || "—")}</td>
                           <td style="white-space:nowrap;">
                             <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 8px;margin-right:3px;" data-action="edit-task" data-id="${t.id}">Bearbeiten</button>
-                            <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 8px;color:var(--red);border-color:var(--red);" data-action="delete-task" data-id="${t.id}" data-title="${helpers.escapeHtml(t.title)}">Löschen</button>
+                            <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 8px;color:var(--bbz-red);border-color:var(--bbz-red);" data-action="delete-task" data-id="${t.id}" data-title="${helpers.escapeHtml(t.title)}">Löschen</button>
                           </td>
                         </tr>`).join("") : `<tr><td colspan="5">${ui.emptyBlock("Keine Aufgaben vorhanden.")}</td></tr>`}
                     </tbody>
@@ -2358,13 +2358,13 @@
                   </div>
                   <div class="flex items-center gap-2 flex-wrap mt-2">
                     ${contact.leadbbz0 ? helpers.leadbbzBadgeHtml(contact.leadbbz0) : ""}
-                    ${contact.archiviert ? '<span class="bbz-pill" style="background:#fff1f1;color:var(--red);border-color:#f1caca;">Archiviert</span>' : ""}
+                    ${contact.archiviert ? '<span class="bbz-pill" style="background:var(--bbz-red-soft);color:var(--bbz-red);border-color:#f0b0b2;">Archiviert</span>' : ""}
                   </div>
                 </div>
               </div>
               <div class="flex items-center gap-2 flex-wrap">
                 ${contact.email1 ? `<a class="bbz-button bbz-button-secondary" href="mailto:${helpers.escapeHtml(contact.email1)}">✉ Mail</a>` : ""}
-                <button class="bbz-button bbz-button-secondary" style="color:var(--red);border-color:var(--red);" data-action="delete-contact" data-id="${contact.id}" data-name="${helpers.escapeHtml(contact.fullName || contact.nachname)}">Löschen</button>
+                <button class="bbz-button bbz-button-secondary" style="color:var(--bbz-red);border-color:var(--bbz-red);" data-action="delete-contact" data-id="${contact.id}" data-name="${helpers.escapeHtml(contact.fullName || contact.nachname)}">Löschen</button>
                 <button class="bbz-button bbz-button-secondary" data-action="open-contact-form" data-item-id="${contact.id}">Bearbeiten</button>
                 <button class="bbz-button bbz-button-secondary" data-action="open-task-form" data-contact-id="${contact.id}">+ Task</button>
                 <button class="bbz-button bbz-button-primary" data-action="open-history-form" data-contact-id="${contact.id}">+ Aktivität</button>
@@ -2433,11 +2433,11 @@
                   <div class="bbz-timeline-item">
                     <div class="bbz-timeline-date">${helpers.relativeDate(h.datum) || "—"}<br><span class="bbz-muted" style="font-size:11px;">${helpers.formatDate(h.datum)}</span></div>
                     <div>
-                      <div class="bbz-timeline-title">${helpers.escapeHtml(h.typ || h.title || "Eintrag")} ${h.projektbezugBool ? '<span class="bbz-chip" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}</div>
+                      <div class="bbz-timeline-title">${helpers.escapeHtml(h.typ || h.title || "Eintrag")} ${h.projektbezugBool ? '<span class="bbz-chip" style="background:var(--bbz-blue-light);color:var(--bbz-blue);border-color:#a8c8e0;">Projektbezug</span>' : '<span class="bbz-chip">Allgemein</span>'}</div>
                       <div class="bbz-timeline-text">${helpers.escapeHtml(h.notizen || "—")}</div>
                       <div style="margin-top:6px;display:flex;gap:6px;">
                         <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;" data-action="edit-history" data-id="${h.id}">Bearbeiten</button>
-                        <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;color:var(--red);border-color:var(--red);" data-action="delete-history" data-id="${h.id}" data-title="${helpers.escapeHtml(h.typ || h.title || 'Eintrag')}">Löschen</button>
+                        <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;color:var(--bbz-red);border-color:var(--bbz-red);" data-action="delete-history" data-id="${h.id}" data-title="${helpers.escapeHtml(h.typ || h.title || 'Eintrag')}">Löschen</button>
                       </div>
                     </div>
                   </div>`).join("")}</div>` : ui.emptyBlock("Noch keine Aktivitäten erfasst.")}
@@ -2567,7 +2567,7 @@
             <td>${helpers.escapeHtml(t.leadbbz) || '<span class="bbz-muted">—</span>'}</td>
             <td style="white-space:nowrap;">
               <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;margin-right:4px;" data-action="edit-task" data-id="${t.id}">Bearbeiten</button>
-              <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;color:var(--red);border-color:var(--red);" data-action="delete-task" data-id="${t.id}" data-title="${helpers.escapeHtml(t.title)}">Löschen</button>
+              <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;color:var(--bbz-red);border-color:var(--bbz-red);" data-action="delete-task" data-id="${t.id}" data-title="${helpers.escapeHtml(t.title)}">Löschen</button>
             </td>
           </tr>`;
       };
@@ -2595,7 +2595,7 @@
               <div class="bbz-kpi-label">Tasks gesamt</div>
               <div class="bbz-kpi-value">${state.enriched.tasks.length}</div>
               <div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
-                ${chipF("Überfällig", "overdue", cntOverdue, cntOverdue > 0 ? "background:#fff1f1;border-color:#f1caca;color:var(--red);" : "")}
+                ${chipF("Überfällig", "overdue", cntOverdue, cntOverdue > 0 ? "background:var(--bbz-red-soft);border-color:#f0b0b2;color:var(--bbz-red);" : "")}
                 ${chipF("Woche", "week", cntWeek, cntWeek > 0 ? "background:#fff9eb;border-color:#f4dfab;color:var(--amber);" : "")}
                 ${chipF("Monat", "month", cntMonth)}
                 ${chipF("Übrige", "rest", cntRest)}
@@ -2696,7 +2696,7 @@
       const trendHtml   = trendDiff > 0
         ? `<span style="color:var(--green);font-weight:700;">↑ +${trendDiff} vs. Vorwoche</span>`
         : trendDiff < 0
-        ? `<span style="color:var(--red);font-weight:700;">↓ ${trendDiff} vs. Vorwoche</span>`
+        ? `<span style="color:var(--bbz-red);font-weight:700;">↓ ${trendDiff} vs. Vorwoche</span>`
         : `<span style="color:var(--muted);">= Vorwoche</span>`;
 
       // ── KPI-Kacheln ─────────────────────────────────────────────────────────
@@ -2720,7 +2720,7 @@
 
       // Aktive Filter-Badges für Filterleiste
       const activeFilterBadges = [
-        filters.kontaktart ? `<span class="bbz-chip" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;cursor:pointer;" data-action="kpi-filter" data-scope="history-kontaktart" data-value="">${helpers.escapeHtml(filters.kontaktart)} ×</span>` : "",
+        filters.kontaktart ? `<span class="bbz-chip" style="background:var(--bbz-blue-light);color:var(--bbz-blue);border-color:#a8c8e0;cursor:pointer;" data-action="kpi-filter" data-scope="history-kontaktart" data-value="">${helpers.escapeHtml(filters.kontaktart)} ×</span>` : "",
         filters.leadbbz    ? `<span class="bbz-chip" style="background:#f0fdf4;color:#15803d;border-color:#86efac;cursor:pointer;" data-action="kpi-filter" data-scope="history-leadbbz" data-value="">${helpers.escapeHtml(filters.leadbbz)} ×</span>` : "",
         filters.zeitfenster ? `<span class="bbz-chip" style="cursor:pointer;" data-action="kpi-filter" data-scope="history-zeitfenster" data-value="">${filters.zeitfenster === "today" ? "Heute" : filters.zeitfenster === "week" ? "Diese Woche" : "Dieser Monat"} ×</span>` : ""
       ].filter(Boolean).join("");
@@ -2730,7 +2730,7 @@
         const hasLongText = (h.notizen || "").length > 120;
         const tagsHtml = `
           <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0;margin-left:8px;">
-            ${h.projektbezugBool ? '<span class="bbz-chip" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">Projektbezug</span>' : ""}
+            ${h.projektbezugBool ? '<span class="bbz-chip" style="background:var(--bbz-blue-light);color:var(--bbz-blue);border-color:#a8c8e0;">Projektbezug</span>' : ""}
             ${h.leadbbz ? helpers.leadbbzBadgeHtml(h.leadbbz) : ""}
           </div>`;
         return `
@@ -2806,7 +2806,7 @@
       const firmGroupHeader = (g) => {
         const firm = g.firm;
         const kl   = String(firm?.klassifizierung || "").toUpperCase();
-        const borderColor = kl.includes("A") ? "#2563eb" : kl.includes("B") ? "#d97706" : "#64748b";
+        const borderColor = kl.includes("A") ? "var(--bbz-blue)" : kl.includes("B") ? "#d97706" : "#64748b";
         const bgColor     = kl.includes("A") ? "#f0f7ff" : kl.includes("B") ? "#fffdf0" : "#f8fafc";
         return `
           <div class="bbz-history-firm-header" style="border-left:4px solid ${borderColor};background:${bgColor};">
@@ -2937,7 +2937,7 @@
 
       // Aktiver Firma-Filter: Reset-Banner
       const firmaFilterBanner = activeRadarFirm
-        ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:7px 11px;font-size:12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">
+        ? `<div style="background:var(--bbz-blue-light);border:1px solid #a8c8e0;border-radius:8px;padding:7px 11px;font-size:12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">
              <span>Gefiltert: <strong>${helpers.escapeHtml(activeRadarFirm)}</strong></span>
              <button class="bbz-link" style="font-size:12px;" data-action="history-firma-filter" data-firm-title="${helpers.escapeHtml(activeRadarFirm)}">× aufheben</button>
            </div>` : "";
@@ -3012,7 +3012,7 @@
                     </button>
                     <button class="bbz-button" style="height:32px;font-size:12px;border:none;border-radius:0;padding:0 10px;${filters.radarMode ? "background:var(--panel);color:var(--text);font-weight:700;" : "background:none;color:var(--muted);"}"
                       data-action="kpi-filter" data-scope="history-radar" ${filters.radarMode ? "disabled" : ""}>
-                      Pflege A/B ${(radarNever.length + radarCold.length + radarOverdue.length) > 0 ? `<span style="background:#fee2e2;color:var(--red);border-radius:999px;padding:1px 6px;font-size:11px;margin-left:4px;">${radarNever.length + radarCold.length + radarOverdue.length}</span>` : ""}
+                      Pflege A/B ${(radarNever.length + radarCold.length + radarOverdue.length) > 0 ? `<span style="background:var(--bbz-red-light);color:var(--bbz-red);border-radius:999px;padding:1px 6px;font-size:11px;margin-left:4px;">${radarNever.length + radarCold.length + radarOverdue.length}</span>` : ""}
                     </button>
                   </div>
                   ${!filters.radarMode ? `
@@ -3069,7 +3069,7 @@
                             ? (today.getFullYear() - lastDate.getFullYear()) * 12 + (today.getMonth() - lastDate.getMonth())
                             : null;
                           const grundHtml = sig === "never"
-                            ? `<span style="color:var(--red);font-weight:600;">🔴 Nie kontaktiert</span>`
+                            ? `<span style="color:var(--bbz-red);font-weight:600;">🔴 Nie kontaktiert</span>`
                             : sig === "cold"
                             ? `<span style="color:var(--amber);font-weight:600;">🟡 Seit ${months} Monat${months !== 1 ? "en" : ""} still</span>`
                             : `<span style="color:var(--muted);font-weight:600;">⚠️ ${firm.tasks.filter(t => t.isOpen && t.isOverdue).length} Task${firm.tasks.filter(t => t.isOpen && t.isOverdue).length !== 1 ? "s" : ""} überfällig</span>`;
