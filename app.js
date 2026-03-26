@@ -2507,19 +2507,19 @@
           <section class="bbz-section">
           <div class="bbz-section-header">
             <div><div class="bbz-section-title">Kontakte</div><div class="bbz-section-subtitle">${kpiMode === "history" ? "Mit History-Einträgen" : kpiMode === "tasks" ? "Mit offenen Tasks" : "Operative Ansprechpartner über alle Firmen"}</div></div>
-            <div style="display:flex;align-items:center;gap:8px;">
-              <button class="bbz-dense-toggle" onclick="window.bbzToggleDense && window.bbzToggleDense()" title="Kompakte Ansicht">⇕ Kompakt</button>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <button class="bbz-dense-toggle bbz-desktop-only" onclick="window.bbzToggleDense && window.bbzToggleDense()" title="Kompakte Ansicht">⇕ Kompakt</button>
               <button class="bbz-button bbz-button-secondary" data-action="open-history-form">+ Aktivität</button>
               <button class="bbz-button bbz-button-primary" data-action="open-contact-form">+ Kontakt</button>
             </div>
           </div>
           <div class="bbz-section-body">
-            <div class="bbz-filters-3">
+            <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:10px;">
               <input class="bbz-input" data-filter="contacts-search" type="text" placeholder="Suche nach Name, Firma, Funktion, Rolle, E-Mail ..." value="${helpers.escapeHtml(filters.search)}" />
               <label class="bbz-checkbox"><input type="checkbox" data-filter="contacts-archiviert" ${filters.archiviertAusblenden ? "checked" : ""} /> Archivierte ausblenden</label>
-              <div></div>
             </div>
-            <div class="bbz-table-wrap">
+            <!-- Desktop: Tabelle -->
+            <div class="bbz-table-wrap bbz-desktop-only">
               <table class="bbz-table">
                 <thead><tr>${cTh("Name","fullName")}${cTh("Firma","firmTitle")}<th>Funktion</th>${cTh("Rolle","rolle")}${cTh("Lead BBZ","leadbbz0")}<th>E-Mail</th><th>Telefon</th><th>Archiviert</th></tr></thead>
                 <tbody>
@@ -2536,6 +2536,26 @@
                     </tr>`).join("") : `<tr><td colspan="8">${ui.emptyBlock("Keine Kontakte fuer die aktuelle Filterung gefunden.")}</td></tr>`}
                 </tbody>
               </table>
+            </div>
+            <!-- Mobile: Card-List -->
+            <div class="bbz-mobile-only bbz-card-list">
+              ${rows.length ? rows.map(c => `
+                <div class="bbz-list-card" data-action="open-contact" data-id="${c.id}">
+                  ${helpers.avatarHtml(c)}
+                  <div class="bbz-list-card-body">
+                    <div class="bbz-list-card-title">${helpers.escapeHtml(c.fullName || c.nachname)}${c.archiviert ? ' <span class="bbz-muted" style="font-size:10px;">(archiviert)</span>' : ""}</div>
+                    <div class="bbz-list-card-sub">
+                      ${c.firmTitle ? helpers.escapeHtml(c.firmTitle) : ""}
+                      ${c.funktion ? ` · ${helpers.escapeHtml(c.funktion)}` : ""}
+                      ${c.rolle ? ` · ${helpers.escapeHtml(c.rolle)}` : ""}
+                    </div>
+                  </div>
+                  <div class="bbz-list-card-right">
+                    ${c.leadbbz0 ? helpers.leadbbzBadgeHtml(c.leadbbz0) : ""}
+                    ${c.email1 ? `<span style="font-size:10px;color:var(--subtle);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${helpers.escapeHtml(c.email1)}</span>` : ""}
+                  </div>
+                </div>`).join("")
+              : ui.emptyBlock("Keine Kontakte für die aktuelle Filterung gefunden.")}
             </div>
           </div>
           </section>
