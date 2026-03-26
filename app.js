@@ -985,6 +985,19 @@
     async login() {
       if (!state.auth.msal) throw new Error("MSAL ist nicht initialisiert.");
 
+      // Mobile-Browser blockieren Popups zuverlässig — auf Redirect umschalten
+      // handleRedirectPromise() in initAuth() fängt die Response nach der Rückkehr ab
+      const isMobile = window.innerWidth < 768 || /Mobi|Android/i.test(navigator.userAgent);
+
+      if (isMobile) {
+        await state.auth.msal.loginRedirect({
+          scopes: CONFIG.graph.scopes,
+          prompt: "select_account"
+        });
+        return; // Seite verlässt — kein Code danach ausgeführt
+      }
+
+      // Desktop: Popup wie bisher
       const loginResponse = await state.auth.msal.loginPopup({
         scopes: CONFIG.graph.scopes,
         prompt: "select_account"
