@@ -2064,16 +2064,11 @@
                     value="${helpers.escapeHtml(filters.search)}" />
                 </div>
                 ${filters.radarMode ? `
-                <div class="bbz-table-wrap">
+                <!-- Desktop: Tabelle -->
+                <div class="bbz-table-wrap bbz-desktop-only">
                   <table class="bbz-table">
                     <thead><tr>
-                      <th></th>
-                      <th>Firma</th>
-                      <th>Klassifizierung</th>
-                      <th>Pflege-Grund</th>
-                      <th>Letzte Aktivität</th>
-                      <th>Nächste Deadline</th>
-                      <th>Kontakte</th>
+                      <th></th><th>Firma</th><th>Klassifizierung</th><th>Pflege-Grund</th><th>Letzte Aktivität</th><th>Nächste Deadline</th><th>Kontakte</th>
                     </tr></thead>
                     <tbody>
                       ${radarRows.length ? radarRows.map(firm => {
@@ -2110,6 +2105,32 @@
                       }).join("") : `<tr><td colspan="7">${ui.emptyBlock("Keine Pflege-Fälle gefunden.")}</td></tr>`}
                     </tbody>
                   </table>
+                </div>
+                <!-- Mobile: Card-List Radar -->
+                <div class="bbz-mobile-only bbz-card-list">
+                  ${radarRows.length ? radarRows.map(firm => {
+                    const sig = helpers.firmSignal(firm);
+                    const sigClass = sig === "overdue" ? "bbz-signal-red" : sig === "ok" ? "bbz-signal-green" : "bbz-signal-amber";
+                    const lastDate = helpers.toDate(firm.latestActivity);
+                    const months = lastDate ? (today.getFullYear() - lastDate.getFullYear()) * 12 + (today.getMonth() - lastDate.getMonth()) : null;
+                    const grundText = sig === "never" ? "🔴 Nie kontaktiert"
+                      : sig === "cold" ? `🟡 Seit ${months} Monat${months !== 1 ? "en" : ""} still`
+                      : sig === "ok" ? `✅ On Track`
+                      : `⚠️ ${firm.tasks.filter(t => t.isOpen && t.isOverdue).length} Task(s) überfällig`;
+                    return `<div class="bbz-list-card" data-action="open-firm" data-id="${firm.id}">
+                      <span class="bbz-signal ${sigClass}"></span>
+                      <div class="bbz-list-card-body">
+                        <div class="bbz-list-card-title">${helpers.escapeHtml(firm.title)}</div>
+                        <div class="bbz-list-card-sub">
+                          ${firm.klassifizierung ? `<span class="${helpers.firmBadgeClass(firm.klassifizierung)}" style="margin-right:4px;">${helpers.escapeHtml(firm.klassifizierung)}</span>` : ""}
+                          ${grundText}
+                        </div>
+                      </div>
+                      <div class="bbz-list-card-right">
+                        ${firm.latestActivity ? `<span style="font-size:10px;color:var(--subtle);">${helpers.relativeDate(firm.latestActivity)}</span>` : ""}
+                      </div>
+                    </div>`;
+                  }).join("") : ui.emptyBlock("Keine Pflege-Fälle gefunden.")}
                 </div>` : `
                 <div class="bbz-table-wrap">
                   <table class="bbz-table">
@@ -2372,7 +2393,8 @@
                 <button class="bbz-button bbz-button-secondary" style="height:32px;font-size:13px;" data-action="open-task-form" data-firm-id="${firm.id}">+ Task</button>
               </div>
               <div class="bbz-section-body">
-                <div class="bbz-table-wrap">
+                <!-- Desktop: Tabelle -->
+                <div class="bbz-table-wrap bbz-desktop-only">
                   <table class="bbz-table">
                     <thead><tr><th>Titel</th><th>Deadline</th><th>Status</th><th>Kontakt</th><th>Aktionen</th></tr></thead>
                     <tbody>
@@ -2389,6 +2411,21 @@
                         </tr>`).join("") : `<tr><td colspan="5">${ui.emptyBlock("Keine Aufgaben vorhanden.")}</td></tr>`}
                     </tbody>
                   </table>
+                </div>
+                <!-- Mobile: Card-List -->
+                <div class="bbz-mobile-only">
+                  ${firm.tasks.length ? `<div class="bbz-card-list">${firm.tasks.map(t => `
+                    <div class="bbz-task-card" data-action="edit-task" data-id="${t.id}">
+                      <div class="bbz-task-card-top">
+                        <span class="bbz-task-card-title">${helpers.escapeHtml(t.title)}</span>
+                        ${helpers.statusChipHtml(t.status, t.deadline)}
+                      </div>
+                      <div class="bbz-task-card-meta">
+                        ${t.contactName ? `<span>${helpers.escapeHtml(t.contactName)}</span>` : ""}
+                        ${t.deadline ? `<span>·</span><span class="${t.isOpen && t.isOverdue ? "bbz-danger" : ""}">${helpers.relativeDate(t.deadline)}</span>` : ""}
+                      </div>
+                    </div>`).join("")}</div>`
+                  : ui.emptyBlock("Keine Aufgaben vorhanden.")}
                 </div>
               </div>
             </section>
@@ -2820,11 +2857,32 @@
                 </select>
                 <label class="bbz-checkbox"><input type="checkbox" data-filter="planning-open" ${filters.onlyOpen ? "checked" : ""} /> Nur offene Tasks</label>
               </div>
-              <div class="bbz-table-wrap">
+              <!-- Desktop: Tabelle -->
+              <div class="bbz-table-wrap bbz-desktop-only">
                 <table class="bbz-table" style="min-width:1060px;">
                   ${tableHead}
                   <tbody>${baseRows.length ? tableBody : `<tr><td colspan="7">${ui.emptyBlock("Keine Tasks fuer die aktuelle Filterung gefunden.")}</td></tr>`}</tbody>
                 </table>
+              </div>
+              <!-- Mobile: Card-List -->
+              <div class="bbz-mobile-only">
+                ${baseRows.length ? `<div class="bbz-card-list">${groups.map(g => `
+                  ${g.label ? `<div style="padding:8px 14px 4px;font-size:11px;font-weight:700;color:var(--subtle);text-transform:uppercase;letter-spacing:0.06em;">${helpers.escapeHtml(g.label)} (${g.rows.length})</div>` : ""}
+                  ${g.rows.map(t => `
+                    <div class="bbz-task-card" data-action="edit-task" data-id="${t.id}">
+                      <div class="bbz-task-card-top">
+                        <span class="bbz-task-card-title">${helpers.escapeHtml(t.title)}</span>
+                        ${helpers.statusChipHtml(t.status, t.deadline)}
+                      </div>
+                      <div class="bbz-task-card-meta">
+                        ${t.firmTitle ? `<span>${helpers.escapeHtml(t.firmTitle)}</span><span>·</span>` : ""}
+                        ${t.contactName ? `<span>${helpers.escapeHtml(t.contactName)}</span>` : ""}
+                        ${t.deadline ? `<span>·</span><span class="${t.isOpen && t.isOverdue ? "bbz-danger" : ""}">${helpers.relativeDate(t.deadline)}</span>` : ""}
+                        ${t.leadbbz ? `<span>·</span>${helpers.leadbbzBadgeHtml(t.leadbbz)}` : ""}
+                      </div>
+                    </div>`).join("")}
+                `).join("")}</div>`
+                : ui.emptyBlock("Keine Tasks für die aktuelle Filterung.")}
               </div>
             </div>
           </section>
@@ -3222,7 +3280,8 @@
                   <input class="bbz-input" style="width:100%;" data-filter="history-search" type="text"
                     placeholder="Suche nach Firma ..." value="${helpers.escapeHtml(filters.search)}" />
                 </div>
-                <div class="bbz-table-wrap">
+                <!-- Desktop: Tabelle -->
+                <div class="bbz-table-wrap bbz-desktop-only">
                   <table class="bbz-table">
                     <thead><tr>
                       <th></th>
@@ -3238,7 +3297,7 @@
                         const signalPriority = { overdue: 0, never: 1, cold: 2 };
                         const search = filters.search.trim().toLowerCase();
                         const allRadarRows = [...radarNever, ...radarOverdue, ...radarCold.filter(f => !radarOverdue.includes(f))]
-                          .filter((f, i, arr) => arr.findIndex(x => x.id === f.id) === i) // deduplicate
+                          .filter((f, i, arr) => arr.findIndex(x => x.id === f.id) === i)
                           .filter(f => !search || helpers.textIncludes(f.title, search))
                           .sort((a, b) => {
                             const pa = signalPriority[helpers.firmSignal(a)] ?? 9;
@@ -3285,6 +3344,52 @@
                       })()}
                     </tbody>
                   </table>
+                </div>
+                <!-- Mobile: Card-List -->
+                <div class="bbz-mobile-only">
+                  ${(() => {
+                    const signalPriority = { overdue: 0, never: 1, cold: 2 };
+                    const search = filters.search.trim().toLowerCase();
+                    const allRadarRows = [...radarNever, ...radarOverdue, ...radarCold.filter(f => !radarOverdue.includes(f))]
+                      .filter((f, i, arr) => arr.findIndex(x => x.id === f.id) === i)
+                      .filter(f => !search || helpers.textIncludes(f.title, search))
+                      .sort((a, b) => {
+                        const pa = signalPriority[helpers.firmSignal(a)] ?? 9;
+                        const pb = signalPriority[helpers.firmSignal(b)] ?? 9;
+                        if (pa !== pb) return pa - pb;
+                        return helpers.compareDateAsc(a.latestActivity, b.latestActivity);
+                      });
+                    if (!allRadarRows.length) return ui.emptyBlock("Keine Pflege-Fälle gefunden.");
+                    return `<div class="bbz-card-list">${allRadarRows.map(firm => {
+                      const sig = helpers.firmSignal(firm);
+                      const signalClass = sig === "overdue" ? "bbz-signal-red" : "bbz-signal-amber";
+                      const lastDate = helpers.toDate(firm.latestActivity);
+                      const months = lastDate ? (today.getFullYear() - lastDate.getFullYear()) * 12 + (today.getMonth() - lastDate.getMonth()) : null;
+                      const grundText = sig === "never" ? "🔴 Nie kontaktiert"
+                        : sig === "cold" ? `🟡 Seit ${months} Monat${months !== 1 ? "en" : ""} still`
+                        : `⚠️ ${firm.tasks.filter(t => t.isOpen && t.isOverdue).length} Task(s) überfällig`;
+                      const hasContacts = firm.contacts.length > 0;
+                      return `
+                        <div class="bbz-list-card" data-action="open-firm" data-id="${firm.id}">
+                          <span class="bbz-signal ${signalClass}"></span>
+                          <div class="bbz-list-card-body">
+                            <div class="bbz-list-card-title">${helpers.escapeHtml(firm.title)}</div>
+                            <div class="bbz-list-card-sub">
+                              ${firm.klassifizierung ? `<span class="${helpers.firmBadgeClass(firm.klassifizierung)}" style="margin-right:4px;">${helpers.escapeHtml(firm.klassifizierung)}</span>` : ""}
+                              ${grundText}
+                              ${firm.latestActivity ? ` · ${helpers.relativeDate(firm.latestActivity)}` : ""}
+                            </div>
+                          </div>
+                          <div class="bbz-list-card-right">
+                            ${sig === "never"
+                              ? `<button class="bbz-button bbz-button-secondary" style="height:26px;font-size:11px;padding:0 8px;" data-action="open-task-form" data-firm-id="${firm.id}">+ Task</button>`
+                              : hasContacts
+                              ? `<button class="bbz-button bbz-button-secondary" style="height:26px;font-size:11px;padding:0 8px;" data-action="open-history-form" data-firm-id="${firm.id}">+ Aktivität</button>`
+                              : ""}
+                          </div>
+                        </div>`;
+                    }).join("")}</div>`;
+                  })()}
                 </div>` : `
                 <!-- Timeline -->
                 <div class="bbz-filters-2" style="display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:10px;align-items:center;">
@@ -3438,8 +3543,9 @@
                       + Kontakte hinzufügen
                     </button>
                   </div>
-                  <div class="bbz-section-body">
-                    <div class="bbz-table-wrap">
+                  <div class="bbz-section-body" style="padding:0;">
+                    <!-- Desktop: Tabelle -->
+                    <div class="bbz-table-wrap bbz-desktop-only" style="border:none;border-radius:0;">
                       <table class="bbz-table">
                         <thead><tr>
                           <th></th><th>Kontakt</th><th>Firma</th><th>Segment</th><th>Funktion / Rolle</th><th>Letzte Aktivität</th><th>Tasks</th><th></th>
@@ -3463,6 +3569,27 @@
                           }).join("")}
                         </tbody>
                       </table>
+                    </div>
+                    <!-- Mobile: Card-List -->
+                    <div class="bbz-mobile-only bbz-card-list">
+                      ${group.contacts.map(item => `
+                        <div class="bbz-list-card">
+                          ${helpers.avatarHtml({ vorname: (item.contactName||"").split(" ")[0]||"", nachname: (item.contactName||"").split(" ").slice(-1)[0]||"" })}
+                          <div class="bbz-list-card-body">
+                            <div class="bbz-list-card-title">
+                              <a class="bbz-link" data-action="open-contact" data-id="${item.contactId}">${helpers.escapeHtml(item.contactName)}</a>
+                            </div>
+                            <div class="bbz-list-card-sub">
+                              ${item.firmTitle ? helpers.escapeHtml(item.firmTitle) : "—"}
+                              ${item.segment ? ` · <span class="${helpers.firmBadgeClass(item.segment)}">${helpers.escapeHtml(item.segment)}</span>` : ""}
+                              ${item.latestHistoryDate ? ` · ${helpers.relativeDate(item.latestHistoryDate)}` : ""}
+                            </div>
+                          </div>
+                          <div class="bbz-list-card-right">
+                            ${item.openTasksCount > 0 ? `<span class="bbz-status-chip bbz-status-open">${item.openTasksCount}</span>` : ""}
+                            <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:11px;padding:0 8px;" data-action="open-history-form" data-contact-id="${item.contactId}">+ Aktivität</button>
+                          </div>
+                        </div>`).join("")}
                     </div>
                   </div>
                 </section>`;
