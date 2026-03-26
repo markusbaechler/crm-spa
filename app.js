@@ -700,7 +700,23 @@
           const sel = state.modal.payload.selected;
           const idx = sel.indexOf(cid);
           if (idx === -1) sel.push(cid); else sel.splice(idx, 1);
-          controller.render();
+
+          // Kein controller.render() — nur Checkbox und Zähler direkt updaten
+          // damit der Modal-Scroll nicht zurückspringt
+          const isNowSelected = sel.includes(cid);
+          const checkbox = batchToggle.querySelector("input[type='checkbox']");
+          if (checkbox) checkbox.checked = isNowSelected;
+          batchToggle.closest("tr")?.classList.toggle("bbz-row-ok", isNowSelected);
+
+          // Submit-Button-Text aktualisieren
+          const submitBtn = document.querySelector("[data-modal-form='batch-event'] button[type='submit']");
+          if (submitBtn) submitBtn.textContent = `${sel.length} Kontakt${sel.length !== 1 ? "e" : ""} setzen`;
+
+          // «Alle»-Checkbox synchronisieren
+          const allCids = state.modal.payload.previewContacts?.map(c => c.contactId) || [];
+          const allChecked = allCids.length > 0 && allCids.every(id => sel.includes(id));
+          const allCheckbox = document.querySelector("[data-action='batch-toggle-all'] input[type='checkbox']");
+          if (allCheckbox) allCheckbox.checked = allChecked;
           return;
         }
 
@@ -710,7 +726,20 @@
           const allIds = (state.modal.payload.previewContacts || []).map(c => c.contactId);
           const allSelected = allIds.every(id => state.modal.payload.selected.includes(id));
           state.modal.payload.selected = allSelected ? [] : [...allIds];
-          controller.render();
+
+          // Alle Checkboxen direkt updaten ohne Re-Render
+          const newSel = state.modal.payload.selected;
+          document.querySelectorAll("[data-action='batch-toggle-contact']").forEach(el => {
+            const rowCid = Number(el.dataset.contactId);
+            const checked = newSel.includes(rowCid);
+            const cb = el.querySelector("input[type='checkbox']");
+            if (cb) cb.checked = checked;
+            el.closest("tr")?.classList.toggle("bbz-row-ok", checked);
+          });
+          const allCheckbox = batchToggleAll.querySelector("input[type='checkbox']");
+          if (allCheckbox) allCheckbox.checked = !allSelected;
+          const submitBtn = document.querySelector("[data-modal-form='batch-event'] button[type='submit']");
+          if (submitBtn) submitBtn.textContent = `${newSel.length} Kontakt${newSel.length !== 1 ? "e" : ""} setzen`;
           return;
         }
 
