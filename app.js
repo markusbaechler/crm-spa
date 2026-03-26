@@ -959,10 +959,9 @@
           redirectUri: CONFIG.graph.redirectUri
         },
         cache: {
-          // sessionStorage: kompatibler mit Chrome Mobile und Inkognito-Modus
-          // localStorage wurde von Chrome auf Android in bestimmten Kontexten blockiert
-          cacheLocation: "sessionStorage",
-          // Cookie-Fallback für Browser die sessionStorage blockieren (z.B. Safari ITP)
+          // localStorage: persistiert über Redirects — wichtig für loginRedirect Flow
+          // storeAuthStateInCookie: Fallback für Safari ITP und restriktive Browser
+          cacheLocation: "localStorage",
           storeAuthStateInCookie: true
         }
       });
@@ -1417,7 +1416,7 @@
               <div class="bbz-modal-title">${title}</div>
               <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
             </div>
-            <form data-modal-form="contact" data-mode="${mode}" data-item-id="${itemId || ""}" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;">
+            <form data-modal-form="contact" data-mode="${mode}" data-item-id="${itemId || ""}" style="display:flex;flex-direction:column;flex:1;min-height:0;">
               <div class="bbz-modal-body" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;">
                 <div class="bbz-form-grid">
 
@@ -1527,7 +1526,7 @@
               <div class="bbz-modal-title">${title}</div>
               <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
             </div>
-            <form data-modal-form="firm" data-mode="${mode}" data-item-id="${firmId || ""}" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;">
+            <form data-modal-form="firm" data-mode="${mode}" data-item-id="${firmId || ""}" style="display:flex;flex-direction:column;flex:1;min-height:0;">
               <div class="bbz-modal-body" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;">
                 <div class="bbz-form-grid">
                   <div class="bbz-field bbz-span-2">
@@ -1591,7 +1590,7 @@
               <div class="bbz-modal-title">${title}</div>
               <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
             </div>
-            <form data-modal-form="history" data-mode="${mode}" data-item-id="${itemId || ""}" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;">
+            <form data-modal-form="history" data-mode="${mode}" data-item-id="${itemId || ""}" style="display:flex;flex-direction:column;flex:1;min-height:0;">
               <div class="bbz-modal-body" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;">
                 <div class="bbz-form-grid">
                   <div class="bbz-field">
@@ -1655,7 +1654,7 @@
               <div class="bbz-modal-title">${title}</div>
               <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
             </div>
-            <form data-modal-form="task" data-mode="${mode}" data-item-id="${itemId || ""}" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;">
+            <form data-modal-form="task" data-mode="${mode}" data-item-id="${itemId || ""}" style="display:flex;flex-direction:column;flex:1;min-height:0;">
               <div class="bbz-modal-body" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;">
                 <div class="bbz-form-grid">
                   <div class="bbz-field bbz-span-2">
@@ -1756,7 +1755,7 @@
               <div class="bbz-modal-title">${isEventhistory ? "Eventhistory setzen" : `${helpers.escapeHtml(activeCategory)} — Event setzen`}</div>
               <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
             </div>
-            <form data-modal-form="batch-event" data-event-name="${helpers.escapeHtml(activeCategory)}" data-mode="${mode}" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;">
+            <form data-modal-form="batch-event" data-event-name="${helpers.escapeHtml(activeCategory)}" data-mode="${mode}" style="display:flex;flex-direction:column;flex:1;min-height:0;">
               <div class="bbz-modal-body" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;">
 
                 ${isEventhistory ? `
