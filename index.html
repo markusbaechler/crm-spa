@@ -426,12 +426,42 @@
       body { padding: 6px; }
       .bbz-header { height: auto; flex-wrap: wrap; padding: 10px 12px; gap: 10px; }
       .bbz-nav { justify-content: flex-start; flex-wrap: wrap; height: auto; }
-      .bbz-kpis, .bbz-grid-2, .bbz-grid-3, .bbz-grid-70-30,
+      /* KPI 2×2 statt 4×1 */
+      .bbz-kpis { grid-template-columns: 1fr 1fr; }
+      .bbz-grid-2, .bbz-grid-3, .bbz-grid-70-30,
       .bbz-filters-3, .bbz-filters-4, .bbz-meta-grid,
       .bbz-form-grid { grid-template-columns: 1fr; }
       .bbz-timeline-item { grid-template-columns: 1fr; }
       .bbz-detail-title { font-size: 24px; }
       .bbz-span-2 { grid-column: span 1; }
+
+      /* History Split-View: Tab-Bar statt nebeneinander */
+      .bbz-history-tab-bar {
+        display: flex;
+        gap: 0;
+        margin-bottom: 10px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        overflow: hidden;
+        background: var(--panel-2);
+      }
+      .bbz-history-tab-btn {
+        flex: 1; padding: 9px 0; font-size: 13px; font-weight: 600;
+        background: none; border: none; cursor: pointer; color: var(--muted);
+        transition: background 0.12s, color 0.12s;
+      }
+      .bbz-history-tab-btn.active { background: var(--panel); color: var(--text); box-shadow: inset 0 -2px 0 var(--blue); }
+
+      /* Split-View: Panel-Sichtbarkeit via Tab-State auf Container */
+      .bbz-history-split { display: block !important; }
+      .bbz-history-split > section:first-child { display: block; }
+      .bbz-history-split > section:last-child  { display: none; }
+      .bbz-history-split.show-radar > section:first-child { display: none; }
+      .bbz-history-split.show-radar > section:last-child  { display: block; }
+    }
+    @media (min-width: 921px) {
+      /* Tab-Bar auf Desktop nie sichtbar */
+      .bbz-history-tab-bar { display: none; }
     }
   </style>
 </head>
