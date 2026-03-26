@@ -142,6 +142,25 @@
     .bbz-kpi-meta-warn  { margin-top: 5px; font-size: 12px; color: var(--amber); font-weight: 600; }
     .bbz-kpi-meta-ok    { margin-top: 5px; font-size: 12px; color: var(--green); font-weight: 600; }
 
+    /* Interaktive KPI-Chips */
+    .bbz-kpi-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      height: 22px; padding: 0 8px; border-radius: 999px;
+      border: 1px solid var(--line); background: var(--panel-2);
+      color: var(--muted); font-size: 11px; font-weight: 600;
+      cursor: pointer; white-space: nowrap; transition: all 0.1s;
+    }
+    .bbz-kpi-chip:hover { background: #e8f0fe; border-color: #c3d7fd; color: var(--blue); }
+    .bbz-kpi-chip span { font-weight: 700; color: var(--text); }
+    .bbz-kpi-chip-active { background: #dbeafe; border-color: #93c5fd; color: #1d4ed8; }
+    .bbz-kpi-chip-active span { color: #1d4ed8; }
+    .bbz-kpi-chip-active-gold { background: #fef9c3; border-color: #fbbf24; color: #78350f; }
+    .bbz-kpi-chip-active-gold span { color: #78350f; }
+
+    /* Klickbare KPI-Kachel */
+    .bbz-kpi-clickable { transition: background 0.1s; }
+    .bbz-kpi-clickable:hover { background: #f0f7ff; border-color: #bfdbfe; }
+
     /* Detail-Band: border-bottom durchgezogen, kein weisser Spalt zu KPIs */
     .bbz-detail-band { border-radius: 16px; padding: 20px 20px 16px; margin-bottom: 10px; }
 
