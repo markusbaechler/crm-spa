@@ -302,10 +302,25 @@
     .bbz-avatar-lg[data-idx="5"] { background: #ccfbf1; color: #0f766e; }
 
     .bbz-timeline { display: grid; gap: 7px; }
-    .bbz-timeline-item { display: grid; grid-template-columns: 140px 1fr; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); }
+    .bbz-timeline-item { display: block; padding: 10px 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); }
     .bbz-timeline-date { font-size: 12px; color: var(--muted); line-height: 1.35; }
     .bbz-timeline-title { font-size: 13px; font-weight: 700; margin-bottom: 4px; line-height: 1.3; }
     .bbz-timeline-text { font-size: 13px; color: #334155; line-height: 1.45; white-space: pre-wrap; }
+    /* Truncation: 3 Zeilen, aufklappbar */
+    .bbz-timeline-clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    .bbz-timeline-item.bbz-expanded .bbz-timeline-clamp { display: block; -webkit-line-clamp: unset; overflow: visible; }
+
+    /* Gruppen-Header */
+    .bbz-history-group { margin-bottom: 16px; }
+    .bbz-history-group-header { display: flex; align-items: center; gap: 10px; padding: 5px 4px; margin-bottom: 6px; border-bottom: 2px solid var(--line); }
+    .bbz-history-group-label { font-size: 12px; font-weight: 700; color: var(--text); letter-spacing: .01em; }
+    .bbz-history-group-count { font-size: 12px; color: var(--muted); }
+    .bbz-history-group-meta  { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+    /* Pflege-Radar Item */
+    .bbz-radar-item { transition: background 0.1s; }
+    .bbz-radar-item:hover { background: #f0f7ff !important; border-color: #bfdbfe !important; }
+    .bbz-radar-item-active { background: #eff6ff !important; border-color: #93c5fd !important; }
 
     .bbz-empty { border: 1px dashed #cfd8e3; border-radius: 11px; padding: 20px 16px; text-align: center; color: var(--muted); background: #fbfdff; font-size: 13px; }
     .bbz-loader { width: 16px; height: 16px; border: 2px solid rgba(37, 99, 235, 0.14); border-top-color: var(--blue); border-radius: 999px; animation: bbzspin 0.75s linear infinite; flex: 0 0 auto; }
