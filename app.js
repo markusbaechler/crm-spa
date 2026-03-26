@@ -212,10 +212,15 @@
     },
 
     // FIX 1: fehlende Hilfsfunktion fuer <input type="date"> — gibt YYYY-MM-DD zurueck
+    // Wichtig: Lokale Datum-Komponenten verwenden (nicht toISOString = UTC),
+    // sonst verschiebt sich das Datum in Zeitzonen wie CH (UTC+1) um einen Tag
     toDateInput(value) {
       const d = helpers.toDate(value);
       if (!d) return "";
-      return d.toISOString().split("T")[0];
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
     },
 
     todayStart() {
