@@ -549,7 +549,15 @@
         const openHistoryForm = event.target.closest("[data-action='open-history-form']");
         if (openHistoryForm) {
           const contactId = openHistoryForm.dataset.contactId || null;
-          const firmId = openHistoryForm.dataset.firmId || null;
+          const firmId    = openHistoryForm.dataset.firmId    || null;
+          // Guard: Firma ohne Kontakte — kein Modal öffnen
+          if (!contactId && firmId) {
+            const firm = dataModel.getFirmById(Number(firmId));
+            if (firm && firm.contacts.length === 0) {
+              ui.setMessage(`"${firm.title}" hat noch keine Kontakte. Bitte zuerst einen Kontakt erfassen.`, "error");
+              return;
+            }
+          }
           controller.openHistoryForm(contactId ? Number(contactId) : null, firmId ? Number(firmId) : null, null);
           return;
         }
@@ -572,7 +580,15 @@
         const openTaskForm = event.target.closest("[data-action='open-task-form']");
         if (openTaskForm) {
           const contactId = openTaskForm.dataset.contactId || null;
-          const firmId = openTaskForm.dataset.firmId || null;
+          const firmId    = openTaskForm.dataset.firmId    || null;
+          // Guard: Firma ohne Kontakte — kein Modal öffnen
+          if (!contactId && firmId) {
+            const firm = dataModel.getFirmById(Number(firmId));
+            if (firm && firm.contacts.length === 0) {
+              ui.setMessage(`"${firm.title}" hat noch keine Kontakte. Bitte zuerst einen Kontakt erfassen.`, "error");
+              return;
+            }
+          }
           controller.openTaskForm(contactId ? Number(contactId) : null, firmId ? Number(firmId) : null, null);
           return;
         }
@@ -1847,7 +1863,8 @@
                         <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;color:var(--red);border-color:var(--red);" data-action="delete-history" data-id="${h.id}" data-title="${helpers.escapeHtml(h.typ || h.title || 'Eintrag')}">Löschen</button>
                       </div>
                     </div>
-                  </div>`).join("")}</div>` : ui.emptyBlock("Noch keine Aktivitäten erfasst.", "open-history-form", "+ Erste Aktivität erfassen")}
+                  </div>`).join("")}</div>`
+                  : `<div class="bbz-empty">Noch keine Aktivitäten erfasst.<br><button class="bbz-button bbz-button-secondary" style="margin-top:10px;height:32px;font-size:13px;" data-action="open-history-form" data-firm-id="${firm.id}">+ Erste Aktivität erfassen</button></div>`}
               </div>
             </section>
             <section class="bbz-section">
@@ -2988,12 +3005,8 @@
 
     openHistoryForm(contactId = null, firmId = null, itemId = null) {
       let prefillContactId = contactId;
-      if (!prefillContactId && firmId && !itemId) {
+      if (!prefillContactId && firmId) {
         const firm = dataModel.getFirmById(firmId);
-        if (firm && firm.contacts.length === 0) {
-          ui.setMessage(`"${firm.title}" hat noch keine Kontakte. Bitte zuerst einen Kontakt bei dieser Firma erfassen.`, "error");
-          return;
-        }
         prefillContactId = firm?.contacts?.[0]?.id || null;
       }
       const mode = itemId ? "edit" : "create";
@@ -3003,12 +3016,8 @@
 
     openTaskForm(contactId = null, firmId = null, itemId = null) {
       let prefillContactId = contactId;
-      if (!prefillContactId && firmId && !itemId) {
+      if (!prefillContactId && firmId) {
         const firm = dataModel.getFirmById(firmId);
-        if (firm && firm.contacts.length === 0) {
-          ui.setMessage(`"${firm.title}" hat noch keine Kontakte. Bitte zuerst einen Kontakt bei dieser Firma erfassen.`, "error");
-          return;
-        }
         prefillContactId = firm?.contacts?.[0]?.id || null;
       }
       const mode = itemId ? "edit" : "create";
