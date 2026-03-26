@@ -757,6 +757,7 @@
         if (el.matches("[data-filter='history-search']")) { state.filters.history.search = el.value; debouncedRender(); }
         if (el.matches("[data-filter='events-search']")) { state.filters.events.search = el.value; debouncedRender(); }
         if (el.matches("[data-filter='batch-search']") && state.modal?.payload) { state.modal.payload.filterSearch = el.value; state.modal.payload.selected = []; debouncedRender(); }
+        if (el.matches("[data-filter='batch-eventhistory-category-text']") && state.modal?.payload) { state.modal.payload.selectedHistoryCategory = el.value; state.modal.payload.selected = []; debouncedRender(); }
       });
 
       document.addEventListener("change", (event) => {
@@ -778,6 +779,7 @@
         if (el.matches("[data-filter='batch-segment']") && state.modal?.payload) { state.modal.payload.filterSegment = el.value; state.modal.payload.selected = []; controller.render(); }
         if (el.matches("[data-filter='batch-leadbbz']") && state.modal?.payload) { state.modal.payload.filterLeadbbz = el.value; state.modal.payload.selected = []; controller.render(); }
         if (el.matches("[data-filter='batch-sgf']") && state.modal?.payload) { state.modal.payload.filterSgf = el.value; state.modal.payload.selected = []; controller.render(); }
+        if (el.matches("[data-filter='batch-eventhistory-category']") && state.modal?.payload) { state.modal.payload.selectedHistoryCategory = el.value; state.modal.payload.selected = []; controller.render(); }
         if (el.matches("[data-action='task-status-change']")) {
           controller.handleTaskStatusChange(Number(el.dataset.taskId), el.value);
         }
@@ -1222,10 +1224,6 @@
             segment: contact.firm ? String(contact.firm.klassifizierung || "").toUpperCase() : "",
             leadbbz: contact.leadbbz0 || "",
             sgf: contact.sgf || [],
-            // Hat bereits an diesem Event teilgenommen (steht in eventhistory)
-            hasAttended: Array.isArray(contact.eventhistory)
-              ? contact.eventhistory.some(eh => String(eh).trim() === key)
-              : String(contact.eventhistory || "").includes(key),
             latestHistoryDate: latestH?.datum || "",
             latestHistoryType: latestH?.typ || "",
             latestHistoryText: latestH?.notizen || "",
@@ -1600,87 +1598,99 @@
     },
 
     renderBatchEventForm(payload = {}) {
-      const { eventName = "", mode = "anmelden", filterSegment = "", filterLeadbbz = "", filterSgf = "", filterSearch = "", selected = [] } = payload;
+      const { eventName = "", mode = "anmelden", filterSegment = "", filterLeadbbz = "", filterSgf = "", filterSearch = "", selected = [], selectedHistoryCategory = "" } = payload;
       const LC = CONFIG.lists.contacts;
-      const isBestaetigen = mode === "bestaetigen";
+      const isEventhistory = mode === "eventhistory";
 
-      // Kandidaten berechnen
-      const existingContactIds = new Set(
-        (state.enriched.events.find(g => g.name === eventName)?.contacts || []).map(c => c.contactId)
-      );
+      // SP-Choices für Eventhistory-Feld laden
+      const eventhistoryChoices = state.meta.choices?.[CONFIG.lists.contacts]?.["Eventhistory"] || [];
+      const eventChoices        = state.meta.choices?.[CONFIG.lists.contacts]?.["Event"] || [];
+
+      // Im Eventhistory-Modus: Kategorie muss erst gewählt werden
+      const activeCategory = isEventhistory ? selectedHistoryCategory : eventName;
+      const categoryMissing = isEventhistory && !activeCategory;
+
       const allLeadbbz = [...new Set(state.enriched.contacts.map(c => c.leadbbz0).filter(Boolean))].sort();
       const allSgf     = [...new Set(state.enriched.contacts.flatMap(c => helpers.toArray(c.sgf)))].filter(Boolean).sort();
 
-      // Im "bestätigen"-Modus: Kandidaten = bereits angemeldete Kontakte die noch NICHT in Eventhistory
-      // Im "anmelden"-Modus: Kandidaten = alle Kontakte die noch NICHT für dieses Event angemeldet
-      let candidates = isBestaetigen
-        ? state.enriched.contacts.filter(c => existingContactIds.has(c.id) && !(
-            Array.isArray(c.eventhistory)
-              ? c.eventhistory.some(eh => String(eh).trim() === eventName)
-              : String(c.eventhistory || "").includes(eventName)
-          ))
-        : state.enriched.contacts.filter(c => !c.archiviert && !existingContactIds.has(c.id));
+      // Kandidaten berechnen — nur wenn Kategorie bekannt
+      let candidates = [];
+      if (!categoryMissing) {
+        const existingContactIds = isEventhistory
+          ? new Set() // Eventhistory: alle Kontakte wählbar
+          : new Set((state.enriched.events.find(g => g.name === activeCategory)?.contacts || []).map(c => c.contactId));
 
-      // Filter anwenden
-      if (filterSegment) {
-        const firmMap = new Map(state.enriched.firms.map(f => [f.id, f]));
-        candidates = candidates.filter(c => {
-          const f = firmMap.get(c.firmId);
-          return String(f?.klassifizierung || "").toUpperCase().startsWith(filterSegment);
-        });
-      }
-      if (filterLeadbbz) candidates = candidates.filter(c => c.leadbbz0 === filterLeadbbz);
-      if (filterSgf) candidates = candidates.filter(c => helpers.toArray(c.sgf).includes(filterSgf));
-      if (filterSearch.trim()) {
-        const s = filterSearch.trim().toLowerCase();
-        candidates = candidates.filter(c => [c.fullName, c.firmTitle].some(v => helpers.textIncludes(v, s)));
+        candidates = isEventhistory
+          ? state.enriched.contacts.filter(c => !c.archiviert)
+          : state.enriched.contacts.filter(c => !c.archiviert && !existingContactIds.has(c.id));
+
+        if (filterSegment) {
+          const firmMap = new Map(state.enriched.firms.map(f => [f.id, f]));
+          candidates = candidates.filter(c => String(firmMap.get(c.firmId)?.klassifizierung || "").toUpperCase().startsWith(filterSegment));
+        }
+        if (filterLeadbbz) candidates = candidates.filter(c => c.leadbbz0 === filterLeadbbz);
+        if (filterSgf) candidates = candidates.filter(c => helpers.toArray(c.sgf).includes(filterSgf));
+        if (filterSearch.trim()) {
+          const s = filterSearch.trim().toLowerCase();
+          candidates = candidates.filter(c => [c.fullName, c.firmTitle].some(v => helpers.textIncludes(v, s)));
+        }
       }
 
       const previewContacts = candidates.slice(0, 200);
-      const validSelected = selected.filter(id => previewContacts.some(c => c.id === id));
-      // Payload aktualisieren — batch-toggle-all braucht previewContacts im State
+      const validSelected = categoryMissing ? [] : selected.filter(id => previewContacts.some(c => c.id === id));
       if (state.modal?.payload) {
         state.modal.payload.previewContacts = previewContacts;
         state.modal.payload.selected = validSelected;
       }
       const allChecked = previewContacts.length > 0 && previewContacts.every(c => validSelected.includes(c.id));
 
-      // Segment-Auswahl aus SP-Choices
-      const segmentOptions = ["", "A", "B", "C"].map(v =>
-        `<option value="${v}" ${filterSegment === v ? "selected" : ""}>${v || "— alle Segmente —"}</option>`
-      ).join("");
       const leadbbzOptions = [`<option value="">— alle Lead BBZ —</option>`, ...allLeadbbz.map(l =>
-        `<option value="${helpers.escapeHtml(l)}" ${filterLeadbbz === l ? "selected" : ""}>${helpers.escapeHtml(l)}</option>`)
-      ].join("");
+        `<option value="${helpers.escapeHtml(l)}" ${filterLeadbbz === l ? "selected" : ""}>${helpers.escapeHtml(l)}</option>`)].join("");
       const sgfOptions = [`<option value="">— alle SGF —</option>`, ...allSgf.map(s =>
-        `<option value="${helpers.escapeHtml(s)}" ${filterSgf === s ? "selected" : ""}>${helpers.escapeHtml(s)}</option>`)
-      ].join("");
+        `<option value="${helpers.escapeHtml(s)}" ${filterSgf === s ? "selected" : ""}>${helpers.escapeHtml(s)}</option>`)].join("");
 
-      const modeLabel = isBestaetigen ? "Eventhistory setzen" : "Event setzen";
-      const modeDesc = isBestaetigen
-        ? `Ausgewählte Kontakte erhalten <strong>${helpers.escapeHtml(eventName)}</strong> im Feld <strong>Eventhistory</strong>. Bestehende Werte bleiben erhalten.`
-        : `Ausgewählte Kontakte erhalten <strong>${helpers.escapeHtml(eventName)}</strong> im Feld <strong>Event</strong>. Bestehende Werte bleiben erhalten.`;
+      const modeLabel = isEventhistory ? "Eventhistory setzen" : "Event setzen";
+      const choicesForDropdown = isEventhistory ? eventhistoryChoices : [];
 
       return `
         <div class="bbz-modal-backdrop show">
           <div class="bbz-modal" style="max-width:780px;width:95vw;">
             <div class="bbz-modal-header">
-              <div class="bbz-modal-title">${helpers.escapeHtml(eventName)} — ${modeLabel}</div>
+              <div class="bbz-modal-title">${isEventhistory ? "Eventhistory setzen" : `${helpers.escapeHtml(activeCategory)} — Event setzen`}</div>
               <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
             </div>
-            <form data-modal-form="batch-event" data-event-name="${helpers.escapeHtml(eventName)}" data-mode="${mode}">
+            <form data-modal-form="batch-event" data-event-name="${helpers.escapeHtml(activeCategory)}" data-mode="${mode}">
               <div class="bbz-modal-body">
-                <div class="bbz-banner" style="background:var(--color-background-info,#eff6ff);border-color:var(--color-border-info,#bfdbfe);color:var(--color-text-info,#1d4ed8);margin-bottom:14px;font-size:13px;">${modeDesc}</div>
 
-                <!-- Filter-Zeile -->
+                ${isEventhistory ? `
+                <!-- Schritt 1: Kategorie wählen -->
+                <div class="bbz-field" style="margin-bottom:14px;">
+                  <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px;">Eventhistory-Kategorie *</label>
+                  ${eventhistoryChoices.length
+                    ? `<select class="bbz-select" data-filter="batch-eventhistory-category" style="max-width:360px;">
+                        <option value="">— Kategorie wählen —</option>
+                        ${eventhistoryChoices.map(c => `<option value="${helpers.escapeHtml(c)}" ${selectedHistoryCategory === c ? "selected" : ""}>${helpers.escapeHtml(c)}</option>`).join("")}
+                       </select>`
+                    : `<input class="bbz-input" data-filter="batch-eventhistory-category-text" type="text"
+                         placeholder="Kategorie eingeben (Choices nicht geladen)" value="${helpers.escapeHtml(selectedHistoryCategory)}" style="max-width:360px;" />`
+                  }
+                </div>
+                ${categoryMissing ? `<div style="font-size:13px;color:var(--muted);padding:12px 0;">Bitte zuerst eine Kategorie wählen.</div>` : ""}
+                ` : ""}
+
+                ${!categoryMissing ? `
+                <!-- Filterzeile -->
                 <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;">
-                  <input class="bbz-input" data-filter="batch-search" type="text" placeholder="Name / Firma suchen ..." value="${helpers.escapeHtml(filterSearch)}" style="font-size:12px;" />
-                  <select class="bbz-select" data-filter="batch-segment" style="font-size:12px;"><option value="">— Segment —</option>${["A","B","C"].map(v=>`<option value="${v}" ${filterSegment===v?"selected":""}>${v}</option>`).join("")}</select>
+                  <input class="bbz-input" data-filter="batch-search" type="text" placeholder="Name / Firma ..." value="${helpers.escapeHtml(filterSearch)}" style="font-size:12px;" />
+                  <select class="bbz-select" data-filter="batch-segment" style="font-size:12px;">
+                    <option value="">— Segment —</option>
+                    ${["A","B","C"].map(v=>`<option value="${v}" ${filterSegment===v?"selected":""}>${v}</option>`).join("")}
+                  </select>
                   <select class="bbz-select" data-filter="batch-leadbbz" style="font-size:12px;">${leadbbzOptions}</select>
                   <select class="bbz-select" data-filter="batch-sgf" style="font-size:12px;">${sgfOptions}</select>
                 </div>
 
-                <!-- Tabelle -->
+                <!-- Kontakt-Tabelle -->
                 <div class="bbz-table-wrap" style="max-height:340px;overflow-y:auto;">
                   <table class="bbz-table" style="min-width:500px;">
                     <thead><tr>
@@ -1704,21 +1714,24 @@
                           <td>${seg ? `<span class="${helpers.firmBadgeClass(seg)}">${helpers.escapeHtml(seg)}</span>` : '<span class="bbz-muted">—</span>'}</td>
                           <td>${helpers.leadbbzBadgeHtml(c.leadbbz0)}</td>
                         </tr>`;
-                      }).join("") : `<tr><td colspan="5"><div class="bbz-empty" style="padding:16px;">Keine Kontakte entsprechen den Filtern.</div></td></tr>`}
+                      }).join("") : `<tr><td colspan="5"><div class="bbz-empty" style="padding:16px;">Keine Kontakte für diese Filter.</div></td></tr>`}
                     </tbody>
                   </table>
                 </div>
                 <div style="font-size:12px;color:var(--muted);margin-top:8px;">
                   ${validSelected.length} von ${previewContacts.length} ausgewählt
-                  ${previewContacts.length === 200 ? " (max. 200 angezeigt — bitte Filter verfeinern)" : ""}
+                  ${previewContacts.length === 200 ? " (max. 200 — Filter verfeinern)" : ""}
                 </div>
-                <!-- Hidden: selektierte IDs als JSON für Submit -->
                 <input type="hidden" name="selectedIds" value="${helpers.escapeHtml(JSON.stringify(validSelected))}" />
+                ` : ""}
               </div>
               <div class="bbz-modal-footer">
                 <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Abbrechen</button>
-                <button type="submit" class="bbz-button bbz-button-primary" ${state.meta.loading || validSelected.length === 0 ? "disabled" : ""}>
-                  ${isBestaetigen ? `+ ${validSelected.length} × Eventhistory setzen` : `+ ${validSelected.length} × Event setzen`}
+                <button type="submit" class="bbz-button bbz-button-primary"
+                  ${state.meta.loading || validSelected.length === 0 || categoryMissing ? "disabled" : ""}>
+                  ${isEventhistory
+                    ? `+ ${validSelected.length} × Eventhistory «${helpers.escapeHtml(activeCategory || "?")}» setzen`
+                    : `+ ${validSelected.length} × Event «${helpers.escapeHtml(activeCategory)}» setzen`}
                 </button>
               </div>
             </form>
@@ -3119,7 +3132,6 @@
 
       const segChip = (label, val) => {
         const active = filters.segment === val;
-        // Zählt Kontakte über alle Event-Gruppen mit passendem Segment
         const cnt = val === ""
           ? state.enriched.events.reduce((s, g) => s + g.contacts.length, 0)
           : state.enriched.events.reduce((s, g) => s + g.contacts.filter(c => c.segment.startsWith(val)).length, 0);
@@ -3137,18 +3149,15 @@
           if (evtSortBy === "firmTitle") return String(a.firmTitle||"").localeCompare(String(b.firmTitle||""), "de") * evtSortDir;
           return String(a.contactName||"").localeCompare(String(b.contactName||""), "de") * evtSortDir;
         });
-        // KPI-Aggregate pro Gruppe
         const cntA = group.contacts.filter(c => c.segment.startsWith("A")).length;
         const cntB = group.contacts.filter(c => c.segment.startsWith("B")).length;
         const cntC = group.contacts.filter(c => c.segment.startsWith("C")).length;
-        const cntAttended = group.contacts.filter(c => c.hasAttended).length;
-        return { ...group, contacts: sorted, cntA, cntB, cntC, cntAttended };
+        return { ...group, contacts: sorted, cntA, cntB, cntC };
       }).filter(g => g.contacts.length > 0);
 
       const totalGroups = state.enriched.events.length;
       const totalContacts = state.enriched.events.reduce((sum, e) => sum + e.contactCount, 0);
       const totalOpenTasks = state.enriched.events.reduce((sum, e) => sum + e.openTasksCount, 0);
-      const totalAttended = state.enriched.events.reduce((sum, e) => sum + e.contacts.filter(c => c.hasAttended).length, 0);
 
       return `
         <div>
@@ -3161,8 +3170,14 @@
               </div>
             </div>
             ${this.kpiBlock("Anmeldungen", totalContacts)}
-            ${this.kpiBlock("Teilnahme bestätigt", totalAttended, totalAttended > 0 ? `von ${totalContacts}` : "noch keine", totalAttended > 0 ? "ok" : "")}
             ${this.kpiBlock("Offene Tasks", totalOpenTasks, totalOpenTasks > 0 ? "über alle Events" : "keine offen", totalOpenTasks > 0 ? "warn" : "ok")}
+            <div class="bbz-kpi" style="display:flex;flex-direction:column;justify-content:center;">
+              <div class="bbz-kpi-label">Eventhistory</div>
+              <button class="bbz-button bbz-button-primary" style="margin-top:8px;height:32px;font-size:13px;"
+                data-action="open-batch-event" data-event-name="" data-mode="eventhistory">
+                + Eventhistory setzen
+              </button>
+            </div>
           </div>
           <section class="bbz-section">
             <div class="bbz-section-header"><div><div class="bbz-section-title">Events</div><div class="bbz-section-subtitle">Anmeldungen nach Event-Kategorie</div></div></div>
@@ -3181,29 +3196,20 @@
                   group.cntB ? `<span class="bbz-pill bbz-pill-b" style="font-size:11px;padding:1px 6px;">B ${group.cntB}</span>` : "",
                   group.cntC ? `<span class="bbz-pill bbz-pill-c" style="font-size:11px;padding:1px 6px;">C ${group.cntC}</span>` : ""
                 ].filter(Boolean).join("");
-                const attendedBadge = group.cntAttended > 0
-                  ? `<span class="bbz-chip" style="background:#f0fdf4;color:#15803d;border-color:#86efac;font-size:11px;">✓ ${group.cntAttended} bestätigt</span>`
-                  : "";
                 return `
                 <section class="bbz-section" style="box-shadow:none;">
                   <div class="bbz-section-header">
                     <div>
                       <div class="bbz-section-title" style="display:flex;align-items:center;gap:8px;">
                         ${helpers.escapeHtml(group.name)}
-                        <span style="display:flex;gap:4px;align-items:center;">${segBadges}${attendedBadge}</span>
+                        <span style="display:flex;gap:4px;align-items:center;">${segBadges}</span>
                       </div>
                       <div class="bbz-section-subtitle">${group.contacts.length} Kontakte · ${group.contacts.reduce((sum, c) => sum + c.openTasksCount, 0)} offene Tasks</div>
                     </div>
-                    <div style="display:flex;gap:6px;">
-                      <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;"
-                        data-action="open-batch-event" data-event-name="${helpers.escapeHtml(group.name)}" data-mode="anmelden">
-                        + Event setzen
-                      </button>
-                      <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;"
-                        data-action="open-batch-event" data-event-name="${helpers.escapeHtml(group.name)}" data-mode="bestaetigen">
-                        + Eventhistory setzen
-                      </button>
-                    </div>
+                    <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;"
+                      data-action="open-batch-event" data-event-name="${helpers.escapeHtml(group.name)}" data-mode="anmelden">
+                      + Event setzen
+                    </button>
                   </div>
                   <div class="bbz-section-body">
                     <div class="bbz-table-wrap">
@@ -3214,7 +3220,6 @@
                           <th>Firma</th>
                           <th>Segment</th>
                           <th>Funktion / Rolle</th>
-                          <th>Teilnahme</th>
                           <th>Letzte Aktivität</th>
                           <th>Tasks</th>
                           <th></th>
@@ -3224,9 +3229,6 @@
                             const segBadge = item.segment
                               ? `<span class="${helpers.firmBadgeClass(item.segment)}">${helpers.escapeHtml(item.segment)}</span>`
                               : '<span class="bbz-muted">—</span>';
-                            const attendedHtml = item.hasAttended
-                              ? `<span class="bbz-status-chip bbz-status-done" title="In Eventhistory erfasst">✓ Dabei</span>`
-                              : `<span class="bbz-chip" style="font-size:11px;color:var(--muted);">Angemeldet</span>`;
                             return `
                               <tr>
                                 <td style="width:36px;">${helpers.avatarHtml({ vorname: (item.contactName||"").split(" ")[0] || "", nachname: (item.contactName||"").split(" ").slice(-1)[0] || "" })}</td>
@@ -3234,7 +3236,6 @@
                                 <td>${item.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${item.firmId}">${helpers.escapeHtml(item.firmTitle || "Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
                                 <td>${segBadge}</td>
                                 <td>${helpers.escapeHtml(helpers.joinNonEmpty([item.funktion, item.rolle], " · ")) || '<span class="bbz-muted">—</span>'}</td>
-                                <td>${attendedHtml}</td>
                                 <td>${item.latestHistoryDate ? `<span title="${helpers.formatDate(item.latestHistoryDate)}">${helpers.relativeDate(item.latestHistoryDate)}</span>${item.latestHistoryType ? `<div class="bbz-subtext">${helpers.escapeHtml(item.latestHistoryType)}</div>` : ""}` : '<span class="bbz-muted">—</span>'}</td>
                                 <td>${item.openTasksCount > 0 ? `<span class="bbz-status-chip bbz-status-open">${item.openTasksCount} offen</span>` : '<span class="bbz-muted">—</span>'}</td>
                                 <td style="white-space:nowrap;">
@@ -3575,63 +3576,64 @@
           filterSgf: "",
           filterSearch: "",
           selected: [],
-          previewContacts: []
+          previewContacts: [],
+          selectedHistoryCategory: ""
         }
       };
       this.render();
     },
 
     async handleBatchEventSubmit(form) {
-      const eventName = form.dataset.eventName || "";
       const mode = form.dataset.mode || "anmelden";
-      const isBestaetigen = mode === "bestaetigen";
+      const isEventhistory = mode === "eventhistory";
+      // Für eventhistory: aktive Kategorie aus Payload lesen (Dropdown-Auswahl)
+      const eventName = isEventhistory
+        ? (state.modal?.payload?.selectedHistoryCategory || "")
+        : (form.dataset.eventName || "");
+
       let selectedIds = [];
       try { selectedIds = JSON.parse(form.querySelector("[name='selectedIds']")?.value || "[]"); } catch { /* ignore */ }
 
+      if (!eventName) { ui.setMessage("Bitte eine Kategorie wählen.", "error"); return; }
       if (!selectedIds.length) { ui.setMessage("Keine Kontakte ausgewählt.", "error"); return; }
-      if (!eventName) { ui.setMessage("Event-Name fehlt.", "error"); return; }
 
       ui.setLoading(true);
       ui.setMessage("");
 
       let ok = 0, fail = 0;
       try {
-        // Alle Kontakte parallel PATCH-en (Promise.allSettled = kein Abbruch bei Einzelfehler)
         const results = await Promise.allSettled(selectedIds.map(async cid => {
           const contact = state.enriched.contacts.find(c => c.id === cid);
           if (!contact) throw new Error(`Kontakt ${cid} nicht gefunden`);
 
-          const currentEvent      = helpers.toArray(contact.event);
-          const currentEventHist  = helpers.toArray(contact.eventhistory);
+          const currentEvent     = helpers.toArray(contact.event);
+          const currentEventHist = helpers.toArray(contact.eventhistory);
 
-          let newEvent     = [...currentEvent];
-          let newEventHist = [...currentEventHist];
-
-          if (isBestaetigen) {
-            // Eventhistory-Flag setzen (additiv — bestehende Werte bleiben)
-            if (!newEventHist.includes(eventName)) newEventHist = [...newEventHist, eventName];
+          const patchFields = {};
+          if (isEventhistory) {
+            // Eventhistory-Feld: Kategorie additiv hinzufügen
+            if (!currentEventHist.includes(eventName)) {
+              patchFields["Eventhistory@odata.type"] = "Collection(Edm.String)";
+              patchFields["Eventhistory"] = [...currentEventHist, eventName];
+            }
           } else {
-            // Event-Flag setzen (additiv — bestehende Werte bleiben)
-            if (!newEvent.includes(eventName)) newEvent = [...newEvent, eventName];
+            // Event-Feld: Kategorie additiv hinzufügen
+            if (!currentEvent.includes(eventName)) {
+              patchFields["Event@odata.type"] = "Collection(Edm.String)";
+              patchFields["Event"] = [...currentEvent, eventName];
+            }
           }
-
-          const patchFields = {
-            "Event@odata.type":        "Collection(Edm.String)",
-            "Event":                   newEvent,
-            "Eventhistory@odata.type": "Collection(Edm.String)",
-            "Eventhistory":            newEventHist
-          };
+          // Nichts zu tun wenn Flag bereits gesetzt
+          if (Object.keys(patchFields).length === 0) return;
           await api.patchItem(SCHEMA.contacts.listTitle, Number(cid), patchFields);
         }));
 
-        results.forEach(r => r.status === "fulfilled" ? ok++ : fail++);
-
+        results.forEach(r => r.status === "fulfilled" ? ok++ : (fail++, console.error(r.reason)));
         await api.loadAll();
         this.closeModal();
 
-        const msg = isBestaetigen
-          ? `✓ Eventhistory für ${ok} Kontakt${ok !== 1 ? "e" : ""} gesetzt${fail > 0 ? ` — ${fail} Fehler (Konsole prüfen)` : ""}.`
-          : `✓ Event für ${ok} Kontakt${ok !== 1 ? "e" : ""} gesetzt${fail > 0 ? ` — ${fail} Fehler (Konsole prüfen)` : ""}.`;
+        const fieldLabel = isEventhistory ? "Eventhistory" : "Event";
+        const msg = `✓ ${fieldLabel} «${eventName}» für ${ok} Kontakt${ok !== 1 ? "e" : ""} gesetzt${fail > 0 ? ` — ${fail} Fehler (Konsole prüfen)` : ""}.`;
         ui.setMessage(msg, fail > 0 ? "error" : "success");
         if (fail === 0) setTimeout(() => ui.setMessage(""), 3000);
 
