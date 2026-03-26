@@ -220,9 +220,12 @@
 
     /* SIGNALS */
     .bbz-signal { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .bbz-signal-red   { background: var(--red);  box-shadow: 0 0 0 2.5px rgba(149,14,19,0.15); }
+    .bbz-signal-red   { background: var(--red);   box-shadow: 0 0 0 2.5px rgba(149,14,19,0.15); }
     .bbz-signal-amber { background: #d48000; box-shadow: 0 0 0 2.5px rgba(212,128,0,0.15); }
+    .bbz-signal-green { background: var(--green);  box-shadow: 0 0 0 2.5px rgba(24,105,53,0.15); }
     .bbz-signal-none  { background: transparent; }
+    tr.bbz-row-ok td  { background: #f0fdf4 !important; }
+    tr.bbz-row-ok:hover td { background: #e6f9ec !important; }
 
     /* FOCUS BAR */
     .bbz-focus-bar { background: var(--dark); border-radius: var(--r-xl); margin-bottom: 14px; position: relative; overflow: hidden; }
