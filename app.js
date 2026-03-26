@@ -1101,9 +1101,19 @@
         });
       });
 
+      const eventChoicesOrder = state.meta.choices?.[CONFIG.lists.contacts]?.["Event"] || [];
+      const eventOrderIndex = (name) => {
+        const idx = eventChoicesOrder.indexOf(name);
+        return idx === -1 ? 9999 : idx; // nicht in SP-Choices → ans Ende
+      };
+
       const events = [...eventMap.values()]
         .map(group => ({ ...group, contactCount: group.contacts.length, openTasksCount: group.contacts.reduce((sum, c) => sum + c.openTasksCount, 0), contacts: group.contacts.sort((a, b) => String(a.contactName).localeCompare(String(b.contactName), "de")) }))
-        .sort((a, b) => a.name.localeCompare(b.name, "de"));
+        .sort((a, b) => {
+          const ia = eventOrderIndex(a.name), ib = eventOrderIndex(b.name);
+          if (ia !== ib) return ia - ib;
+          return a.name.localeCompare(b.name, "de"); // Fallback alphabetisch
+        });
 
       state.enriched.contacts = contacts.sort((a, b) => a.fullName.localeCompare(b.fullName, "de"));
       state.enriched.history = history.sort((a, b) => helpers.compareDateDesc(a.datum, b.datum));
