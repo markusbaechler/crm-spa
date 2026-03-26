@@ -614,12 +614,24 @@
       }
     }
 
-    /* --- SECTION-HEADER: Wrap auf sehr kleinen Screens --- */
-    @media (max-width: 400px) {
-      .bbz-section-header {
-        flex-wrap: wrap;
-        gap: 8px;
-      }
+    /* --- SECTION-HEADER: immer wrappen auf Mobile --- */
+    @media (max-width: 640px) {
+      .bbz-section-header { flex-wrap: wrap; gap: 6px; padding: 8px 12px; }
+      .bbz-section-header > div:first-child { flex: 1 1 100%; }
+      .bbz-section-header .bbz-button { flex: 1; min-width: 0; height: 34px; font-size: 12px; padding: 0 8px; overflow: hidden; text-overflow: ellipsis; }
+    }
+
+    /* --- KPI-KACHELN: kompakter auf Mobile --- */
+    @media (max-width: 640px) {
+      .bbz-kpi-value { font-size: 24px !important; }
+      .bbz-kpi .bbz-button { width: 100% !important; font-size: 11px !important; height: 30px !important; white-space: normal !important; line-height: 1.2 !important; padding: 4px 8px !important; text-align: center !important; }
+      .bbz-kpi-chip { font-size: 9px !important; padding: 0 5px !important; }
+    }
+
+    /* --- EVENTS: Cockpit-Stack Section-Header --- */
+    @media (max-width: 640px) {
+      .bbz-cockpit-stack .bbz-section-header { flex-wrap: wrap; }
+      .bbz-cockpit-stack .bbz-section-header .bbz-button-primary { flex: 1; min-width: 0; font-size: 11px; height: 30px; white-space: normal; }
     }
 
     /* BOTTOM NAV */
