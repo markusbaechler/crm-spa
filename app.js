@@ -140,7 +140,7 @@
       route: CONFIG.defaults.route,
       firms: { search: "", klassifizierung: "", vip: "", onlyPrivat: false, sortBy: "title", sortDir: "asc", radarMode: false },
       contacts: { search: "", archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden, sortBy: "fullName", sortDir: "asc" },
-      planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, onlyOverdue: false, groupBy: "none", sortBy: "deadline", sortDir: "asc", segment: "", leadbbz: "", faelligkeit: "" },
+      planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, groupBy: "none", sortBy: "deadline", sortDir: "asc", segment: "", leadbbz: "", faelligkeit: "" },
       history: { search: "", kontaktart: "", leadbbz: "", groupBy: "date", zeitfenster: "", radarMode: false },
       events: { search: "", onlyWithOpenTasks: false, sortBy: "contactName", sortDir: "asc" }
     },
@@ -476,18 +476,12 @@
             state.selection.firmId = null;
           } else if (scope === "firms-radar") {
             state.filters.firms.radarMode = !state.filters.firms.radarMode;
-            // Radar-Modus: Filter zurücksetzen für saubere Ansicht
             if (state.filters.firms.radarMode) {
               state.filters.firms.search = "";
               state.filters.firms.klassifizierung = "";
               state.filters.firms.vip = "";
               state.filters.firms.onlyPrivat = false;
             }
-            state.filters.route = "firms";
-            state.selection.firmId = null;
-            // VIP ist additiver Toggle — unabhängig von Segment
-            state.filters.firms.vip = state.filters.firms.vip === "yes" ? "" : "yes";
-            state.filters.firms.onlyPrivat = false;
             state.filters.route = "firms";
             state.selection.firmId = null;
           } else if (scope === "firms-privat") {
@@ -523,7 +517,6 @@
             }
           } else if (scope === "planning-faelligkeit") {
             state.filters.planning.faelligkeit = state.filters.planning.faelligkeit === value ? "" : value;
-            state.filters.planning.onlyOverdue = false;
           } else if (scope === "planning-segment") {
             state.filters.planning.segment = state.filters.planning.segment === value ? "" : value;
           } else if (scope === "planning-leadbbz") {
@@ -737,7 +730,6 @@
         if (el.matches("[data-filter='firms-sortdir']")) { state.filters.firms.sortDir = el.value; controller.render(); }
         if (el.matches("[data-filter='contacts-archiviert']")) { state.filters.contacts.archiviertAusblenden = el.checked; controller.render(); }
         if (el.matches("[data-filter='planning-open']")) { state.filters.planning.onlyOpen = el.checked; controller.render(); }
-        if (el.matches("[data-filter='planning-overdue']")) { state.filters.planning.onlyOverdue = el.checked; controller.render(); }
         if (el.matches("[data-filter='planning-groupby']")) { state.filters.planning.groupBy = el.value; controller.render(); }
         if (el.matches("[data-filter='planning-sortdir']")) { state.filters.planning.sortDir = el.value; controller.render(); }
         if (el.matches("[data-filter='history-kontaktart']")) { state.filters.history.kontaktart = el.value; controller.render(); }
@@ -1846,7 +1838,6 @@
                 </div>
                 <div class="bbz-section-body">
                   ${(() => {
-                    const today = helpers.todayStart();
                     const in30  = new Date(today); in30.setDate(in30.getDate() + 30);
 
                     // Alle Firmen mit offenen Tasks, nach nächster Deadline sortiert
@@ -2274,7 +2265,6 @@
         const searchMatch = !search || [t.title, t.status, t.contactName, t.firmTitle, t.leadbbz].some(v => helpers.textIncludes(v, search));
         if (!searchMatch) return false;
         if (filters.onlyOpen && !t.isOpen) return false;
-        if (filters.onlyOverdue && !t.isOverdue) return false;
 
         // Fälligkeits-Filter
         if (filters.faelligkeit) {
@@ -2774,7 +2764,7 @@
             <!-- Kontaktart-Chips -->
             <div class="bbz-kpi">
               <div class="bbz-kpi-label">Kontaktart</div>
-              <div class="bbz-kpi-value" style="font-size:18px;margin-top:3px;">${filters.kontaktart ? helpers.escapeHtml(filters.kontaktart) : "—"}</div>
+              <div class="bbz-kpi-value">${filters.kontaktart ? helpers.escapeHtml(filters.kontaktart) : "—"}</div>
               <div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
                 ${allKontaktart.map(chipKontaktart).join("")}
                 ${filters.kontaktart ? `<button class="bbz-kpi-chip" data-action="kpi-filter" data-scope="history-kontaktart" data-value="">Alle</button>` : ""}
@@ -2783,7 +2773,7 @@
             <!-- Lead BBZ-Chips -->
             <div class="bbz-kpi">
               <div class="bbz-kpi-label">Lead BBZ</div>
-              <div class="bbz-kpi-value" style="font-size:18px;margin-top:3px;">${filters.leadbbz ? helpers.escapeHtml(filters.leadbbz) : "—"}</div>
+              <div class="bbz-kpi-value">${filters.leadbbz ? helpers.escapeHtml(filters.leadbbz) : "—"}</div>
               <div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
                 ${allLeadbbz.map(chipLead).join("")}
                 ${filters.leadbbz ? `<button class="bbz-kpi-chip" data-action="kpi-filter" data-scope="history-leadbbz" data-value="">Alle</button>` : ""}
@@ -3514,10 +3504,12 @@
 
     navigate(route) {
       state.filters.route = route;
-      // Beide Selektionen immer zurücksetzen — sauberer Zustand bei jedem Tab-Wechsel
       state.selection.firmId = null;
       state.selection.contactId = null;
       state.modal = null;
+      // radarMode beim Tab-Wechsel zurücksetzen
+      state.filters.firms.radarMode = false;
+      state.filters.history.radarMode = false;
       window.scrollTo(0, 0);
       this.render();
     },
