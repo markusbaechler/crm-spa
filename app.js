@@ -141,7 +141,7 @@
       firms: { search: "", klassifizierung: "", vip: "", onlyPrivat: false, sortBy: "title", sortDir: "asc" },
       contacts: { search: "", archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden, sortBy: "fullName", sortDir: "asc" },
       planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, onlyOverdue: false, groupBy: "none", sortBy: "deadline", sortDir: "asc" },
-      history: { search: "", kontaktart: "", leadbbz: "" },
+      history: { search: "", kontaktart: "", leadbbz: "", groupBy: "date", zeitfenster: "" },
       events: { search: "", onlyWithOpenTasks: false, sortBy: "contactName", sortDir: "asc" }
     },
 
@@ -348,14 +348,23 @@
       return helpers.formatDate(value);
     },
 
-    // Aktivitäts-Signal für Firmenliste:
-    // gibt "" | "cold" (>90 Tage kein Kontakt) | "overdue" (offene überfällige Tasks) zurück
+    // Aktivitäts-Signal für Firmenliste und Pflege-Radar:
+    // gibt "" | "overdue" | "never" | "cold" zurück
+    // "overdue" — offene überfällige Tasks (alle Segmente)
+    // "never"   — A-Kunde, noch kein History-Eintrag
+    // "cold"    — A/B-Kunde, kein Kontakt seit >360 Tagen
+    // ""        — alles OK, oder C-Kunde/keine Klassifizierung
     firmSignal(firm) {
       if (firm.openTasksCount > 0 && firm.tasks.some(t => t.isOpen && t.isOverdue)) return "overdue";
+      const kl = String(firm.klassifizierung || "").toUpperCase();
+      const isA = kl.includes("A");
+      const isB = kl.includes("B");
+      if (!isA && !isB) return "";
+      if (firm.history.length === 0) return isA ? "never" : "";
       const last = helpers.toDate(firm.latestActivity);
-      if (!last) return "cold";
+      if (!last) return "never";
       const diffDays = Math.floor((helpers.todayStart() - last) / 86400000);
-      if (diffDays > 90) return "cold";
+      if (diffDays > 360) return "cold";
       return "";
     },
 
@@ -661,6 +670,8 @@
         if (el.matches("[data-filter='planning-sortdir']")) { state.filters.planning.sortDir = el.value; controller.render(); }
         if (el.matches("[data-filter='history-kontaktart']")) { state.filters.history.kontaktart = el.value; controller.render(); }
         if (el.matches("[data-filter='history-leadbbz']")) { state.filters.history.leadbbz = el.value; controller.render(); }
+        if (el.matches("[data-filter='history-groupby']")) { state.filters.history.groupBy = el.value; controller.render(); }
+        if (el.matches("[data-filter='history-zeitfenster']")) { state.filters.history.zeitfenster = el.value; controller.render(); }
         if (el.matches("[data-filter='events-open']")) { state.filters.events.onlyWithOpenTasks = el.checked; controller.render(); }
         if (el.matches("[data-filter='events-sortby']")) { state.filters.events.sortBy = el.value; controller.render(); }
         if (el.matches("[data-action='task-status-change']")) {
@@ -1627,10 +1638,12 @@
                         const signal = helpers.firmSignal(firm);
                         const signalDot = signal === "overdue"
                           ? `<span class="bbz-signal bbz-signal-red" title="Überfällige Tasks"></span>`
+                          : signal === "never"
+                          ? `<span class="bbz-signal bbz-signal-amber" title="A-Kunde — noch kein Kontakt erfasst"></span>`
                           : signal === "cold"
-                          ? `<span class="bbz-signal bbz-signal-amber" title="Kein Kontakt seit über 90 Tagen"></span>`
+                          ? `<span class="bbz-signal bbz-signal-amber" title="Kein Kontakt seit über 360 Tagen (A/B-Kunde)"></span>`
                           : `<span class="bbz-signal bbz-signal-none"></span>`;
-                        const rowClass = signal === "overdue" ? "bbz-row-alert" : signal === "cold" ? "bbz-row-cold" : "";
+                        const rowClass = signal === "overdue" ? "bbz-row-alert" : (signal === "cold" || signal === "never") ? "bbz-row-cold" : "";
                         return `
                         <tr class="${rowClass}">
                           <td style="width:28px;padding-right:4px;">${signalDot}</td>
@@ -1651,7 +1664,7 @@
             <div class="bbz-cockpit-stack">
               <section class="bbz-section">
                 <div class="bbz-section-header">
-                  <div><div class="bbz-section-title">Aktivitäten</div><div class="bbz-section-subtitle">Firmen mit offenen Tasks nach Fälligkeit</div></div>
+                  <div><div class="bbz-section-title">Offene Tasks</div><div class="bbz-section-subtitle">Fälligkeit nach Firma</div></div>
                   <a class="bbz-link" style="font-size:12px;" data-action="navigate-planning">Alle →</a>
                 </div>
                 <div class="bbz-section-body">
