@@ -3776,7 +3776,13 @@
         : (form.dataset.eventName || "");
 
       let selectedIds = [];
-      try { selectedIds = JSON.parse(form.querySelector("[name='selectedIds']")?.value || "[]"); } catch { /* ignore */ }
+      // Direkt aus State lesen — zuverlässiger als hidden Input,
+      // da DOM-only Updates beim Checkbox-Klick keinen hidden Input pflegen
+      selectedIds = state.modal?.payload?.selected || [];
+      if (!selectedIds.length) {
+        // Fallback: hidden Input (rückwärtskompatibel)
+        try { selectedIds = JSON.parse(form.querySelector("[name='selectedIds']")?.value || "[]"); } catch { /* ignore */ }
+      }
 
       if (!eventName) { ui.setMessage("Bitte eine Kategorie wählen.", "error"); return; }
       if (!selectedIds.length) { ui.setMessage("Keine Kontakte ausgewählt.", "error"); return; }
