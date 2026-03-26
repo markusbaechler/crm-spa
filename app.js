@@ -471,10 +471,12 @@
             state.filters.route = "firms";
             state.selection.firmId = null;
           } else if (scope === "contacts-mode") {
-            // "all" | "history" | "tasks"
-            state.filters.contacts._kpiMode = state.filters.contacts._kpiMode === value ? "all" : value;
+            // direkt route setzen — NICHT controller.navigate() da das _kpiMode zurücksetzt
+            const newMode = state.filters.contacts._kpiMode === value ? "all" : value;
+            state.filters.contacts._kpiMode = newMode;
             state.filters.route = "contacts";
             state.selection.contactId = null;
+            state.modal = null;
           } else if (scope === "navigate") {
             controller.navigate(value);
             return;
@@ -1454,7 +1456,7 @@
       const filteredFirms = state.enriched.firms.filter(firm => {
         const search = filters.search.trim().toLowerCase();
         const searchMatch = !search || [firm.title, firm.ort, firm.klassifizierung, firm.hauptnummer, firm.adresse, firm.land, ...firm.contacts.map(c => c.fullName)].some(v => helpers.textIncludes(v, search));
-        const klassMatch = !filters.klassifizierung || String(firm.klassifizierung || "").toLowerCase() === filters.klassifizierung.toLowerCase();
+        const klassMatch = !filters.klassifizierung || String(firm.klassifizierung || "").toUpperCase().startsWith(filters.klassifizierung.toUpperCase());
         const vipMatch = !filters.vip || (filters.vip === "yes" && firm.vip) || (filters.vip === "no" && !firm.vip);
         return searchMatch && klassMatch && vipMatch;
       });
@@ -1786,13 +1788,49 @@
         return `<th style="cursor:pointer;user-select:none;${active?"color:var(--blue);":""}" data-action="set-sort" data-col="${col}" data-scope="contacts">${label}${icon}</th>`;
       };
 
+      // Counts für KPI-Chips
+      const totalActive   = state.enriched.contacts.filter(c => !c.archiviert).length;
+      const withHistory   = state.enriched.contacts.filter(c => !c.archiviert && state.enriched.history.some(h => h.contactId === c.id)).length;
+      const withOpenTasks = state.enriched.contacts.filter(c => !c.archiviert && state.enriched.tasks.some(t => t.contactId === c.id && t.isOpen)).length;
+      const allOpenTasks  = state.enriched.tasks.filter(t => t.isOpen).length;
+      const overdueTasks  = state.enriched.tasks.filter(t => t.isOpen && t.isOverdue).length;
+
       return `
-        <section class="bbz-section">
+        <div>
+          <div class="bbz-kpis">
+            <!-- Kontakte mit Schnellfilter -->
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">Kontakte</div>
+              <div class="bbz-kpi-value">${totalActive}</div>
+              <div class="bbz-kpi-chips" style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
+                <button class="bbz-kpi-chip ${kpiMode==="history"?"bbz-kpi-chip-active":""}" data-action="kpi-filter" data-scope="contacts-mode" data-value="history">Mit History <span>${withHistory}</span></button>
+                <button class="bbz-kpi-chip ${kpiMode==="tasks"?"bbz-kpi-chip-active":""}" data-action="kpi-filter" data-scope="contacts-mode" data-value="tasks">Offene Tasks <span>${withOpenTasks}</span></button>
+                <button class="bbz-kpi-chip ${kpiMode==="all"||!kpiMode?"bbz-kpi-chip-active":""}" data-action="kpi-filter" data-scope="contacts-mode" data-value="all">Alle</button>
+              </div>
+            </div>
+            <!-- Sichtbar nach Filter -->
+            ${this.kpiBlock("Angezeigt", rows.length, rows.length < totalActive ? `von ${totalActive}` : "alle aktiven")}
+            <!-- Offene Tasks — klickbar zur Planung -->
+            <div class="bbz-kpi bbz-kpi-clickable" data-action="navigate-planning" style="cursor:pointer;">
+              <div class="bbz-kpi-label">Offene Tasks</div>
+              <div class="bbz-kpi-value">${allOpenTasks}</div>
+              ${overdueTasks > 0
+                ? `<div class="bbz-kpi-meta-alert">${overdueTasks} überfällig — zur Planung →</div>`
+                : `<div class="bbz-kpi-meta-ok">keine überfällig — zur Planung →</div>`}
+            </div>
+            <!-- Zurück zum Cockpit -->
+            <div class="bbz-kpi bbz-kpi-clickable" data-action="kpi-filter" data-scope="navigate" data-value="firms" style="cursor:pointer;">
+              <div class="bbz-kpi-label">Firmen-Cockpit</div>
+              <div class="bbz-kpi-value">${state.enriched.firms.length}</div>
+              <div class="bbz-kpi-meta">← zurück zum Cockpit</div>
+            </div>
+          </div>
+          <section class="bbz-section">
           <div class="bbz-section-header">
-            <div><div class="bbz-section-title">Kontakte</div><div class="bbz-section-subtitle">Operative Ansprechpartner ueber alle Firmen</div></div>
+            <div><div class="bbz-section-title">Kontakte</div><div class="bbz-section-subtitle">${kpiMode === "history" ? "Mit History-Einträgen" : kpiMode === "tasks" ? "Mit offenen Tasks" : "Operative Ansprechpartner über alle Firmen"}</div></div>
             <div class="flex items-center gap-2">
               <button class="bbz-dense-toggle" onclick="window.bbzToggleDense && window.bbzToggleDense()" title="Kompakte Ansicht">⇕ Kompakt</button>
-              <button class="bbz-button bbz-button-secondary" data-action="open-history-form">+ Aktivitaet</button>
+              <button class="bbz-button bbz-button-secondary" data-action="open-history-form">+ Aktivität</button>
               <button class="bbz-button bbz-button-primary" data-action="open-contact-form">+ Kontakt</button>
             </div>
           </div>
@@ -1821,7 +1859,8 @@
               </table>
             </div>
           </div>
-        </section>
+          </section>
+        </div>
       `;
     },
 
