@@ -3608,22 +3608,22 @@
         Archiviert:    raw.archiviert
       };
 
-      // Einzelwahl — nur wenn Wert vorhanden
-      if (raw.anrede)   fields.Anrede   = raw.anrede;
-      if (raw.rolle)    fields.Rolle    = raw.rolle;
-      if (raw.leadbbz0) fields.Leadbbz0 = raw.leadbbz0;
+      // Einzelwahl — immer senden, leer = null zum Löschen in SP
+      fields.Anrede   = raw.anrede   || null;
+      fields.Rolle    = raw.rolle    || null;
+      fields.Leadbbz0 = raw.leadbbz0 || null;
 
-      // Optionaler Text — nur wenn befüllt
-      if (raw.vorname.trim())    fields.Vorname    = raw.vorname.trim();
-      if (raw.funktion.trim())   fields.Funktion   = raw.funktion.trim();
-      if (raw.kommentar.trim())  fields.Kommentar  = raw.kommentar.trim();
-      if (raw.email1.trim())     fields.Email1     = raw.email1.trim();
-      if (raw.email2.trim())     fields.Email2     = raw.email2.trim();
-      if (raw.direktwahl.trim()) fields.Direktwahl = raw.direktwahl.trim();
-      if (raw.mobile.trim())     fields.Mobile     = raw.mobile.trim();
+      // Optionaler Text — immer senden, leer = null zum Löschen in SP
+      fields.Vorname    = raw.vorname.trim()    || null;
+      fields.Funktion   = raw.funktion.trim()   || null;
+      fields.Kommentar  = raw.kommentar.trim()  || null;
+      fields.Email1     = raw.email1.trim()     || null;
+      fields.Email2     = raw.email2.trim()     || null;
+      fields.Direktwahl = raw.direktwahl.trim() || null;
+      fields.Mobile     = raw.mobile.trim()     || null;
 
-      // Datum — nur wenn befüllt, SP erwartet volles ISO-8601 Datetime (nicht nur YYYY-MM-DD)
-      if (raw.geburtstag.trim()) fields.Geburtstag = raw.geburtstag.trim() + "T00:00:00Z";
+      // Datum — leer = null zum Löschen
+      fields.Geburtstag = raw.geburtstag.trim() ? raw.geburtstag.trim() + "T00:00:00Z" : null;
 
       // Multi-Choice — @odata.type + Array (befüllen) oder @odata.type + [] (leeren)
       // BESTÄTIGT: @odata.type + Array mit Werten → ✅
