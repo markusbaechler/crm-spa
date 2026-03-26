@@ -889,14 +889,17 @@
           state.auth.isAuthenticated = true;
         }
       } catch (error) {
-        console.warn("handleRedirectPromise Fehler", error);
+        console.warn("handleRedirectPromise Fehler:", error);
+        state.meta.lastError = error;
+        // Nicht fatal — App kann trotzdem mit Cache-Account weitermachen
       }
 
       // Accounts aus Cache nachladen falls kein Redirect-Response
       if (!state.auth.account) {
         const accounts = state.auth.msal.getAllAccounts();
         if (accounts.length > 0) {
-          state.auth.account = accounts[0];
+          // Tenant-Match bevorzugen — verhindert falschen Account bei Multi-Tenant-Umgebungen
+          state.auth.account = accounts.find(a => a.tenantId === CONFIG.graph.tenantId) || accounts[0];
           state.auth.isAuthenticated = true;
         }
       }
@@ -927,7 +930,8 @@
       if (!state.auth.account) {
         const accounts = state.auth.msal.getAllAccounts();
         if (accounts.length > 0) {
-          state.auth.account = accounts[0];
+          // Tenant-Match bevorzugen — verhindert falschen Account bei Multi-Tenant-Umgebungen
+          state.auth.account = accounts.find(a => a.tenantId === CONFIG.graph.tenantId) || accounts[0];
           state.auth.isAuthenticated = true;
         } else {
           throw new Error("Kein angemeldetes Konto gefunden.");
@@ -993,6 +997,7 @@
     },
 
     async loadAll() {
+      if (!state.auth.isAuthenticated) throw new Error("Nicht angemeldet — loadAll() abgebrochen.");
       const [firms, contacts, history, tasks] = await Promise.all([
         this.getListItems(SCHEMA.firms.listTitle),
         this.getListItems(SCHEMA.contacts.listTitle),
@@ -1631,9 +1636,13 @@
         candidates = candidates.filter(c => [c.fullName, c.firmTitle].some(v => helpers.textIncludes(v, s)));
       }
 
-      const previewContacts = candidates.slice(0, 200); // Sicherheits-Cap
-      // Aktuelle selected-Liste auf gültige Kandidaten beschränken
+      const previewContacts = candidates.slice(0, 200);
       const validSelected = selected.filter(id => previewContacts.some(c => c.id === id));
+      // Payload aktualisieren — batch-toggle-all braucht previewContacts im State
+      if (state.modal?.payload) {
+        state.modal.payload.previewContacts = previewContacts;
+        state.modal.payload.selected = validSelected;
+      }
       const allChecked = previewContacts.length > 0 && previewContacts.every(c => validSelected.includes(c.id));
 
       // Segment-Auswahl aus SP-Choices
@@ -3260,8 +3269,7 @@
         await api.initAuth();
 
         if (state.auth.isAuthenticated) {
-          await api.acquireToken();
-          // Choices und Daten beim ersten Laden parallel — Choices nur einmal nötig
+          // acquireToken() wird von graphRequest() intern aufgerufen — kein separater Call nötig
           await Promise.all([api.loadAll(), api.loadColumnChoices()]);
           ui.setMessage("Anmeldung erkannt. Daten wurden geladen.", "success");
         } else {
