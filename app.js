@@ -1104,7 +1104,6 @@
       if (!response.ok) {
         let detail = "";
         try {
-          // Vollständigen Body lesen — gibt bei 400 den exakten SP-Feldnamen
           detail = await response.text();
           console.error(`Graph ${response.status} auf ${options.method || "GET"} ${path}:`, detail);
         } catch { detail = response.statusText; }
@@ -1113,6 +1112,62 @@
 
       if (response.status === 204) return null;
       return await response.json();
+    },
+
+    // Prüft ob Consent für Sites.ReadWrite.All bereits erteilt wurde.
+    // Macht einen einzelnen, sequenziellen Probe-Call auf /sites/{ref} —
+    // bevor Promise.all() 4 parallele Calls startet die alle gleichzeitig
+    // mit 403 scheitern und sich gegenseitig mit interaction_in_progress blockieren.
+    async ensureConsent() {
+      const siteRef = `${CONFIG.sharePoint.siteHostname}:${CONFIG.sharePoint.sitePath}`;
+      const token = await this.acquireToken();
+      const probe = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteRef}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (probe.ok) {
+        // Consent vorhanden — SiteId gleich cachen
+        const data = await probe.json();
+        state.meta.siteId = data.id;
+        return;
+      }
+
+      let detail = "";
+      try { detail = await probe.text(); } catch { detail = probe.statusText; }
+
+      if (probe.status === 403 && detail.includes("accessDenied")) {
+        console.warn("Consent fehlt für Sites.ReadWrite.All — starte Consent-Flow.");
+        const isMobile = window.innerWidth < 768 || /Mobi|Android/i.test(navigator.userAgent);
+        if (isMobile) {
+          await state.auth.msal.loginRedirect({
+            account: state.auth.account,
+            scopes: CONFIG.graph.scopes,
+            prompt: "consent"
+          });
+          return; // Browser navigiert weg
+        } else {
+          const consentResponse = await state.auth.msal.loginPopup({
+            account: state.auth.account,
+            scopes: CONFIG.graph.scopes,
+            prompt: "consent"
+          });
+          if (consentResponse?.account) {
+            state.auth.account = consentResponse.account;
+            state.auth.token = consentResponse.accessToken;
+          }
+          // Zweiter Probe nach Consent — wenn immer noch 403: echter Berechtigungsfehler
+          const probe2 = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteRef}`, {
+            headers: { Authorization: `Bearer ${state.auth.token}` }
+          });
+          if (!probe2.ok) throw new Error("Zugriff auf SharePoint auch nach Consent verweigert. Bitte Administrator kontaktieren.");
+          const data2 = await probe2.json();
+          state.meta.siteId = data2.id;
+          return;
+        }
+      }
+
+      // Anderer Fehler (kein Consent-Problem)
+      throw new Error(`Graph ${probe.status}: ${detail}`);
     },
 
     async getSiteId() {
@@ -3682,12 +3737,23 @@
         ui.setLoading(true);
         ui.setMessage("");
         await api.login();
-        // Choices und Daten beim Login parallel laden
+        // Consent-Probe sequenziell VOR Promise.all() —
+        // verhindert parallele 403-Flut + interaction_in_progress bei fehlendem Consent
+        await api.ensureConsent();
         await Promise.all([api.loadAll(), api.loadColumnChoices()]);
         ui.setMessage("Anmeldung erfolgreich. Daten wurden geladen.", "success");
       } catch (error) {
         console.error(error);
-        ui.setMessage(`Anmeldung fehlgeschlagen: ${error.message}`, "error");
+        // Lesbare Fehlermeldungen statt roher JSON-Blobs
+        let msg = error.message || "Unbekannter Fehler.";
+        if (msg.includes("accessDenied") || msg.includes("Access denied")) {
+          msg = "Zugriff verweigert (403). Fehlende Berechtigung für SharePoint. Bitte erneut anmelden — ein Consent-Dialog sollte erscheinen.";
+        } else if (msg.includes("interaction_in_progress")) {
+          msg = "Ein anderer Login-Vorgang läuft noch. Bitte Seite neu laden.";
+        } else if (msg.includes("Graph 403")) {
+          msg = "Kein Zugriff auf SharePoint. Bitte den Administrator kontaktieren (App-Berechtigung prüfen).";
+        }
+        ui.setMessage(`Anmeldung fehlgeschlagen: ${msg}`, "error");
       } finally {
         ui.setLoading(false);
         this.render();
@@ -3701,6 +3767,8 @@
         ui.setLoading(true);
         ui.setMessage("");
         await api.acquireToken();
+        // Consent-Probe auch bei Refresh — Browser-Profil könnte gewechselt haben
+        await api.ensureConsent();
         // Refresh: Choices ebenfalls neu laden — SP-Schema könnte sich geändert haben
         await Promise.all([api.loadAll(), api.loadColumnChoices()]);
         ui.setMessage("Daten erfolgreich neu geladen.", "success");
