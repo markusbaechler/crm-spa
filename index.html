@@ -634,6 +634,129 @@
       .bbz-cockpit-stack .bbz-section-header .bbz-button-primary { flex: 1; min-width: 0; font-size: 11px; height: 30px; white-space: normal; }
     }
 
+    /* =====================================================
+       MOBILE FIXES v1.3.2
+       ===================================================== */
+    @media (max-width: 640px) {
+
+      /* ── FIX A: Section-Header Action-Gruppe — kein overflow mehr ──
+         Betrifft: Aktivitäten (Select + "+ Aktivität") und alle anderen
+         Section-Headers mit Inline-Flex-Containern. Das bbz-desktop-only
+         Toggle wird ausgeblendet, aber sein Container hat kein width:100%
+         → Select und Button overflowten nach rechts raus.              */
+      .bbz-section-header > div:last-child {
+        width: 100%;
+        min-width: 0;
+        flex-wrap: wrap;
+      }
+      .bbz-section-header > div:last-child > .bbz-select {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .bbz-section-header > div:last-child > .bbz-button-primary {
+        flex-shrink: 0;
+      }
+
+      /* ── FIX B: bbz-filters-3/-4 mit inline style — Grid-Override ──
+         Betrifft: Planung-Filter (grid-template-columns:2fr 1fr 1fr als
+         inline style). CSS-Spezifität reicht nicht — deshalb !important
+         auf den Klassen-Selektoren mit und ohne [style]-Attribut.       */
+      .bbz-filters-3,
+      .bbz-filters-4,
+      .bbz-planning-filters,
+      div.bbz-filters-3[style],
+      div.bbz-filters-4[style] {
+        grid-template-columns: 1fr !important;
+      }
+
+      /* ── FIX C: bbz-checkbox — Touch-Target und Layout ──
+         Betrifft: "Nur offene Tasks" in Planung, "Archivierte ausblenden"
+         in Kontakten. Auf Mobile soll die Checkbox-Zeile eine volle Höhe,
+         sauberes Touch-Target und kein mehrzeiliges Wrapping haben.
+         Nur die display/align/min-height Eigenschaften werden übersteuert —
+         Font und Background kommen vom bestehenden Base-Style.           */
+      .bbz-checkbox {
+        display: flex;
+        align-items: center;
+        min-height: 42px;
+        gap: 10px;
+        white-space: nowrap;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .bbz-checkbox input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+      }
+
+      /* ── FIX D: Modal Bottom-Sheet — Swipe-Handle + Header sticky ──
+         Betrifft: alle Modals (Kontakt, Firma, Aktivität, Task).
+         Schliessen-Button im Header bleibt — aber wird kleiner und
+         bekommt ein Swipe-Handle oben für bessere Mobile-Affordanz.    */
+      .bbz-modal {
+        padding-top: 0;
+      }
+      .bbz-modal::before {
+        content: '';
+        display: block;
+        flex-shrink: 0;
+        width: 36px;
+        height: 4px;
+        background: rgba(0,0,0,0.12);
+        border-radius: 2px;
+        margin: 10px auto 0;
+      }
+      .bbz-modal-header {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        padding: 10px 14px;
+      }
+      /* Header-Schliessen-Button: kompakter und ghosted */
+      .bbz-modal-header > .bbz-button-secondary {
+        height: 28px;
+        padding: 0 10px;
+        font-size: 11px;
+        opacity: 0.65;
+      }
+      /* Footer: Abbrechen-Button ausblenden — Schliessen via Swipe oder
+         Header-Button ist auf Mobile ausreichend; Speichern bekommt
+         volle Breite (bereits via bbz-button-primary flex:1 gesetzt).  */
+      .bbz-modal-footer > .bbz-button-secondary {
+        display: none;
+      }
+      .bbz-modal-footer {
+        gap: 0;
+      }
+
+      /* ── FIX E: KPI-Kacheln auf sehr kleinen Screens ──
+         Betrifft: Events Kachel 3 («Vergangene Teilnahmen»).
+         Unter 380px wird das 2-Spalten-Grid auf 1 Spalte reduziert.   */
+    }
+    @media (max-width: 380px) {
+      .bbz-kpis {
+        grid-template-columns: 1fr !important;
+      }
+    }
+
+    /* ── FIX F: Whitespace — leere Flächen unter kurzen Listen ──
+       Wenn Mobile-Cards nur 1–2 Einträge zeigen, gähnt darunter
+       die leere Section. Min-height entfernen + Body kompakter.   */
+    @media (max-width: 640px) {
+      .bbz-section-body {
+        padding-bottom: 6px;
+      }
+      /* Leere-State-Block: weniger gross auf Mobile */
+      .bbz-empty {
+        padding: 16px 12px;
+        font-size: 12px;
+      }
+      /* KPI-Kacheln: kein übertriebenes Bottom-Margin */
+      .bbz-kpis {
+        margin-bottom: 8px;
+      }
+    }
+
     /* BOTTOM NAV */
     .bbz-bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; z-index: 40; background: var(--dark); border-top: 1px solid rgba(255,255,255,0.07); display: flex; height: 60px; box-shadow: 0 -4px 20px rgba(0,64,120,0.12); }
     .bbz-bottom-btn { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border: none; background: none; color: rgba(255,255,255,0.25); font-family: inherit; font-size: 9px; font-weight: 600; cursor: pointer; padding: 6px 2px; transition: color 0.15s; -webkit-tap-highlight-color: transparent; position: relative; }
