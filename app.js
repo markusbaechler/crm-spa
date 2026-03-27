@@ -1068,7 +1068,16 @@
         state.auth.token = tokenResponse.accessToken;
         return state.auth.token;
       } catch (silentError) {
-        console.warn("Silent token fehlgeschlagen, versuche Popup:", silentError);
+        console.warn("Silent token fehlgeschlagen:", silentError);
+        // Auf Mobile Popup nicht möglich — Redirect verwenden
+        const isMobile = window.innerWidth < 768 || /Mobi|Android/i.test(navigator.userAgent);
+        if (isMobile) {
+          await state.auth.msal.acquireTokenRedirect({
+            account: state.auth.account,
+            scopes: CONFIG.graph.scopes
+          });
+          return state.auth.token; // Seite verlässt — wird nach Redirect neu geladen
+        }
         const tokenResponse = await state.auth.msal.acquireTokenPopup({
           account: state.auth.account,
           scopes: CONFIG.graph.scopes
