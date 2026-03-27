@@ -1016,30 +1016,36 @@
       state.auth.isReady = true;
     },
 
+    // Zentrale Interaktions-Funktion: versucht Popup, fällt bei popup_window_error
+    // automatisch auf Redirect zurück (Popups durch Browser/Policy geblockt).
+    // Gibt null zurück bei Redirect — Browser navigiert weg, kein Code läuft weiter.
+    async msalInteract(request) {
+      const isMobile = window.innerWidth < 768 || /Mobi|Android/i.test(navigator.userAgent);
+      if (isMobile) {
+        await state.auth.msal.loginRedirect(request);
+        return null;
+      }
+      try {
+        return await state.auth.msal.loginPopup(request);
+      } catch (popupErr) {
+        if (popupErr.errorCode === "popup_window_error" || (popupErr.message || "").includes("popup_window")) {
+          console.warn("Popup geblockt — Redirect-Fallback.");
+          await state.auth.msal.loginRedirect(request);
+          return null;
+        }
+        throw popupErr;
+      }
+    },
+
     async login() {
       if (!state.auth.msal) throw new Error("MSAL ist nicht initialisiert.");
-
-      // Mobile: loginRedirect (kein Popup-Support)
-      // Desktop: loginPopup
-      const isMobile = window.innerWidth < 768 || /Mobi|Android/i.test(navigator.userAgent);
-
-      if (isMobile) {
-        // MSAL v3: loginRedirect mit PKCE — kein Hash-Problem mehr
-        await state.auth.msal.loginRedirect({
-          scopes: CONFIG.graph.scopes,
-          prompt: "select_account"
-        });
-        return; // Browser navigiert weg — Code hier wird nicht mehr ausgeführt
-      }
-
-      // Desktop: Popup
-      const loginResponse = await state.auth.msal.loginPopup({
+      const loginResponse = await this.msalInteract({
         scopes: CONFIG.graph.scopes,
         prompt: "select_account"
       });
+      if (loginResponse === null) return; // Redirect — Browser navigiert weg
 
       if (!loginResponse?.account) throw new Error("Keine Kontoinformation aus dem Login erhalten.");
-
       state.auth.account = loginResponse.account;
       state.auth.isAuthenticated = true;
       await this.acquireToken();
@@ -1081,13 +1087,14 @@
           });
           return state.auth.token;
         }
-        // Desktop: Token-Refresh via Popup
-        const tokenResponse = await state.auth.msal.acquireTokenPopup({
+        // Desktop: Token-Refresh via Popup (mit Redirect-Fallback bei geblockten Popups)
+        const interactResponse = await this.msalInteract({
           account: state.auth.account,
           scopes: CONFIG.graph.scopes
         });
-        if (!tokenResponse?.accessToken) throw new Error("Kein Token aus acquireTokenPopup erhalten.");
-        state.auth.token = tokenResponse.accessToken;
+        if (interactResponse === null) return state.auth.token; // Redirect — Browser navigiert weg
+        if (!interactResponse?.accessToken) throw new Error("Kein Token aus acquireTokenPopup erhalten.");
+        state.auth.token = interactResponse.accessToken;
         return state.auth.token;
       }
     },
@@ -1146,11 +1153,12 @@
           });
           return; // Browser navigiert weg
         } else {
-          const consentResponse = await state.auth.msal.loginPopup({
+          const consentResponse = await this.msalInteract({
             account: state.auth.account,
             scopes: CONFIG.graph.scopes,
             prompt: "consent"
           });
+          if (consentResponse === null) return; // Redirect — Browser navigiert weg
           if (consentResponse?.account) {
             state.auth.account = consentResponse.account;
             state.auth.token = consentResponse.accessToken;
