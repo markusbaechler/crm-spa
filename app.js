@@ -813,8 +813,12 @@
       // WICHTIG: Nicht ausführen wenn MSAL gerade einen Auth-Redirect verarbeitet
       // (Hash enthält "code=" oder "error=") — sonst überschreibt replaceState den Auth-Hash
       // und handleRedirectPromise() findet keinen gültigen Hash mehr
+      // MSAL v3 PKCE: Auth-Code kommt als Query-Parameter (?code=) ODER im Hash
+      // Guard: replaceState nicht ausführen wenn MSAL gerade einen Redirect verarbeitet
       const currentHash = window.location.hash;
-      const isMsalRedirect = currentHash.includes("code=") || currentHash.includes("error=") || currentHash.includes("state=");
+      const currentSearch = window.location.search;
+      const isMsalRedirect = currentHash.includes("code=") || currentHash.includes("error=") || currentHash.includes("state=")
+                          || currentSearch.includes("code=") || currentSearch.includes("error=") || currentSearch.includes("state=");
       if (!isMsalRedirect) {
         history.replaceState(
           { route: state.filters.route, firmId: null, contactId: null },
@@ -952,6 +956,7 @@
       state.auth.isReady = false;
       state.auth.msal = null;
 
+      // MSAL v3: PublicClientApplication mit PKCE — löst Hash-Problem auf Mobile
       const msalInstance = new window.msal.PublicClientApplication({
         auth: {
           clientId: CONFIG.graph.clientId,
@@ -959,21 +964,25 @@
           redirectUri: CONFIG.graph.redirectUri
         },
         cache: {
-          // localStorage: persistiert über Redirects — wichtig für loginRedirect Flow
-          // storeAuthStateInCookie: Fallback für Safari ITP und restriktive Browser
           cacheLocation: "localStorage",
           storeAuthStateInCookie: true
+        },
+        system: {
+          allowNativeBroker: false
         }
       });
 
+      // MSAL v3: initialize() verarbeitet Redirect-Response automatisch
       await msalInstance.initialize();
       state.auth.msal = msalInstance;
 
+      // MSAL v3: handleRedirectPromise() nach initialize() aufrufen
       try {
         const redirectResponse = await state.auth.msal.handleRedirectPromise();
         if (redirectResponse?.account) {
           state.auth.account = redirectResponse.account;
           state.auth.isAuthenticated = true;
+          // URL nach Redirect bereinigen
           history.replaceState(
             { route: CONFIG.defaults.route, firmId: null, contactId: null },
             "",
@@ -985,8 +994,7 @@
         state.meta.lastError = error;
       }
 
-      // Accounts aus Cache nachladen — auch wenn handleRedirectPromise null zurückgab
-      // (passiert bei Third-Party-Storage-Beschränkungen in Chrome Android)
+      // Account aus Cache laden
       if (!state.auth.account) {
         const accounts = state.auth.msal.getAllAccounts();
         if (accounts.length > 0) {
@@ -995,41 +1003,26 @@
         }
       }
 
-      // Letzter Fallback: Token aus localStorage direkt lesen (MSAL v2 Key-Pattern)
-      if (!state.auth.account) {
-        try {
-          const keys = Object.keys(localStorage).filter(k => k.includes(CONFIG.graph.clientId) && k.includes("homeAccountId"));
-          if (keys.length > 0) {
-            // MSAL hat Account-Daten — nochmals getAllAccounts versuchen nach kurzer Pause
-            await new Promise(r => setTimeout(r, 200));
-            const retryAccounts = state.auth.msal.getAllAccounts();
-            if (retryAccounts.length > 0) {
-              state.auth.account = retryAccounts.find(a => a.tenantId === CONFIG.graph.tenantId) || retryAccounts[0];
-              state.auth.isAuthenticated = true;
-            }
-          }
-        } catch (_) { /* ignore */ }
-      }
-
       state.auth.isReady = true;
     },
 
     async login() {
       if (!state.auth.msal) throw new Error("MSAL ist nicht initialisiert.");
 
-      // Mobile-Browser blockieren Popups zuverlässig — auf Redirect umschalten
-      // handleRedirectPromise() in initAuth() fängt die Response nach der Rückkehr ab
+      // Mobile: loginRedirect (kein Popup-Support)
+      // Desktop: loginPopup
       const isMobile = window.innerWidth < 768 || /Mobi|Android/i.test(navigator.userAgent);
 
       if (isMobile) {
+        // MSAL v3: loginRedirect mit PKCE — kein Hash-Problem mehr
         await state.auth.msal.loginRedirect({
           scopes: CONFIG.graph.scopes,
           prompt: "select_account"
         });
-        return; // Seite verlässt — kein Code danach ausgeführt
+        return; // Browser navigiert weg — Code hier wird nicht mehr ausgeführt
       }
 
-      // Desktop: Popup wie bisher
+      // Desktop: Popup
       const loginResponse = await state.auth.msal.loginPopup({
         scopes: CONFIG.graph.scopes,
         prompt: "select_account"
@@ -1069,15 +1062,16 @@
         return state.auth.token;
       } catch (silentError) {
         console.warn("Silent token fehlgeschlagen:", silentError);
-        // Auf Mobile Popup nicht möglich — Redirect verwenden
         const isMobile = window.innerWidth < 768 || /Mobi|Android/i.test(navigator.userAgent);
         if (isMobile) {
+          // Mobile: Token-Refresh via Redirect
           await state.auth.msal.acquireTokenRedirect({
             account: state.auth.account,
             scopes: CONFIG.graph.scopes
           });
-          return state.auth.token; // Seite verlässt — wird nach Redirect neu geladen
+          return state.auth.token;
         }
+        // Desktop: Token-Refresh via Popup
         const tokenResponse = await state.auth.msal.acquireTokenPopup({
           account: state.auth.account,
           scopes: CONFIG.graph.scopes
