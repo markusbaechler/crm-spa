@@ -2894,7 +2894,7 @@
               <button class="bbz-button bbz-button-primary" data-action="open-task-form">+ Task</button>
             </div>
             <div class="bbz-section-body">
-              <div class="bbz-filters-3" style="grid-template-columns:2fr 1fr 1fr;">
+              <div class="bbz-filters-3 bbz-planning-filters" style="grid-template-columns:2fr 1fr 1fr;">
                 <input class="bbz-input" data-filter="planning-search" type="text" placeholder="Suche nach Titel, Firma, Kontakt, Status ..." value="${helpers.escapeHtml(filters.search)}" />
                 <select class="bbz-select" data-filter="planning-groupby">
                   <option value="none"    ${filters.groupBy === "none"    ? "selected" : ""}>Keine Gruppierung</option>
@@ -3296,7 +3296,7 @@
                   <div class="bbz-section-title">${filters.radarMode ? "Pflege A/B" : "Aktivitäten"}</div>
                   <div class="bbz-section-subtitle">${filters.radarMode ? `${radarNever.length + radarCold.length + radarOverdue.length} mit Handlungsbedarf · ${radarOk.length} On Track ✓` : filters.groupBy === "firm" ? "Gruppiert nach Firma" : "Chronologische Timeline"}</div>
                 </div>
-                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;min-width:0;width:100%;">
                   <!-- Tab-Bar: nur Desktop (Mobile nutzt bbz-history-tab-bar) -->
                   <div class="bbz-desktop-only" style="display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--panel-2);">
                     <button class="bbz-button" style="height:32px;font-size:12px;border:none;border-radius:0;padding:0 10px;${!filters.radarMode ? "background:var(--panel);color:var(--text);font-weight:700;" : "background:none;color:var(--muted);"}"
@@ -3309,11 +3309,11 @@
                     </button>
                   </div>
                   ${!filters.radarMode ? `
-                  <select class="bbz-select" style="height:32px;font-size:12px;" data-filter="history-groupby">
+                  <select class="bbz-select" style="height:32px;font-size:12px;flex:1;min-width:120px;" data-filter="history-groupby">
                     <option value="date" ${filters.groupBy === "date" ? "selected" : ""}>📅 Nach Datum</option>
                     <option value="firm" ${filters.groupBy === "firm" ? "selected" : ""}>🏢 Nach Firma</option>
                   </select>
-                  <button class="bbz-button bbz-button-primary" style="height:32px;font-size:12px;flex-shrink:0;"
+                  <button class="bbz-button bbz-button-primary" style="height:32px;font-size:12px;flex-shrink:0;white-space:nowrap;"
                     ${activeFirmHasNoContacts
                       ? `disabled title="Zuerst einen Kontakt bei ${helpers.escapeHtml(activeFirm.title)} erfassen"`
                       : `data-action="open-history-form"`}>+ Aktivität</button>` : ""}
