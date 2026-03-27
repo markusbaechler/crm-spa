@@ -890,7 +890,17 @@
       });
 
       if (state.auth.isAuthenticated && state.auth.account) {
-        this.els.authStatus.innerHTML = `<span class="bbz-auth-dot"></span><span>Angemeldet: ${helpers.escapeHtml(state.auth.account.username || state.auth.account.name || "")}</span>`;
+        this.els.authStatus.innerHTML = (() => {
+          const acc = state.auth.account;
+          // MSAL v3: username = UPN/E-Mail, idTokenClaims.preferred_username als Fallback
+          const email = acc.username
+            || acc.idTokenClaims?.preferred_username
+            || acc.idTokenClaims?.email
+            || acc.idTokenClaims?.upn
+            || acc.name
+            || "";
+          return `<span class="bbz-auth-dot"></span><span>Angemeldet: ${helpers.escapeHtml(email)}</span>`;
+        })();
       } else if (state.auth.isReady) {
         this.els.authStatus.innerHTML = `<span class="bbz-auth-dot" style="background:#94a3b8;"></span><span>Nicht angemeldet</span>`;
       } else {
