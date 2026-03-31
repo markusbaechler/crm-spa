@@ -4341,7 +4341,7 @@
       state.selection.firmId = null;
       state.selection.contactId = null;
       state.modal = null;
-      state.filters.firms.radarMode = false;
+      if (route !== "firms") state.filters.firms.radarMode = false;
       state.filters.history.radarMode = false;
       state.filters.events.segment = "";
       state.filters.events.selectedEvent = "";
