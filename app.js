@@ -470,6 +470,30 @@
         const navPlanning = event.target.closest("[data-action='navigate-planning']");
         if (navPlanning) { event.preventDefault(); controller.navigate("planning"); return; }
 
+        // Fokus-Bar: Planung mit vorgesetztem Fälligkeitsfilter
+        const navPlanningFiltered = event.target.closest("[data-action='navigate-planning-filtered']");
+        if (navPlanningFiltered) {
+          event.preventDefault();
+          const faelligkeit = navPlanningFiltered.dataset.faelligkeit || "";
+          state.filters.planning.faelligkeit = faelligkeit;
+          controller.navigate("planning");
+          return;
+        }
+
+        // Fokus-Bar: direkt in Pflege-Radar (Firmen-Ansicht, radarMode an)
+        const navRadar = event.target.closest("[data-action='navigate-radar']");
+        if (navRadar) {
+          event.preventDefault();
+          state.filters.firms.radarMode = true;
+          state.filters.firms.search = "";
+          state.filters.firms.klassifizierung = "";
+          state.filters.firms.vip = "";
+          state.filters.firms.onlyPrivat = false;
+          state.selection.firmId = null;
+          controller.navigate("firms");
+          return;
+        }
+
         // KPI-Schnellfilter — setzt Filter und navigiert bei Bedarf
         const kpiFilter = event.target.closest("[data-action='kpi-filter']");
         if (kpiFilter) {
@@ -1976,63 +2000,73 @@
       // On Track: A/B-Kunden mit letztem Kontakt <90 Tage, keine überfälligen Tasks
       const onTrackCount = state.enriched.firms.filter(f => helpers.firmSignal(f) === "ok").length;
 
-      // Fokus-Bar: überfällige + diese Woche fällig
-      const in7     = new Date(today); in7.setDate(in7.getDate() + 7);
-      const thisWeek = allOpenTasks.filter(t => { const d = helpers.toDate(t.deadline); return d && d >= today && d <= in7; });      const focusTasks = [...overdueTasks, ...thisWeek.filter(t => !t.isOverdue)]
-        .sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline))
-        .slice(0, 5);
+      // Fokus-Bar: Zeitfenster-Counts
+      const in7   = new Date(today); in7.setDate(in7.getDate() + 7);
+      const in30  = new Date(today); in30.setDate(in30.getDate() + 30);
+      const overdueCount  = overdueTasks.length;
+      const weekCount     = allOpenTasks.filter(t => { const d = helpers.toDate(t.deadline); return d && d > today && d <= in7; }).length;
+      const monthCount    = allOpenTasks.filter(t => { const d = helpers.toDate(t.deadline); return d && d > in7 && d <= in30; }).length;
 
-      // Fokus-Bar HTML — neues Design
+      // Nächste Aufgabe: erste überfällige, sonst nächste nach Deadline
+      const nextTask = overdueTasks.length > 0
+        ? overdueTasks.sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline))[0]
+        : allOpenTasks.filter(t => helpers.toDate(t.deadline)).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline))[0] || null;
+
+      // Radar-Zahlen
+      const radarHandlungsbedarf = radarRows.filter(f => helpers.firmSignal(f) !== "ok").length;
+
+      // Fokus-Bar HTML — 2×2 Grid (Desktop) / 2×2 Grid (Mobile)
       const focusBarHtml = (() => {
-        if (focusTasks.length === 0) {
-          return `<div class="bbz-focus-bar">
-            <div class="bbz-focus-inner">
-              <div class="bbz-focus-stat">
-                <div class="bbz-focus-stat-label">Dringend heute</div>
-                <div class="bbz-focus-number bbz-focus-number-ok">0</div>
-                <div class="bbz-focus-stat-sub">alles erledigt</div>
-              </div>
-              <div class="bbz-focus-divider"></div>
-              <div class="bbz-focus-ok">
-                <div class="bbz-focus-ok-icon">
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#22d98a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
-                </div>
-                <div class="bbz-focus-ok-text">Heute geschafft.</div>
-                <div class="bbz-focus-ok-sub">Keine offenen Tasks mehr.</div>
-              </div>
-              <div class="bbz-focus-divider"></div>
-              <div class="bbz-focus-cta">
-                <a class="bbz-focus-all-link" data-action="navigate-planning">Zur Planung →</a>
-              </div>
-            </div>
+        // Kachel-Helper: klickbar, mit Label, Zahl, Sub-Text
+        const tile = (label, num, numClass, sub, subClass, action, faelligkeit = "") => {
+          const actionAttr = action === "planning"
+            ? `data-action="navigate-planning-filtered" data-faelligkeit="${faelligkeit}"`
+            : action === "radar"
+            ? `data-action="navigate-radar"`
+            : `data-action="navigate-planning"`;
+          return `<div class="bbz-focus-tile" ${actionAttr}>
+            <div class="bbz-focus-stat-label">${label}</div>
+            <div class="bbz-focus-number ${numClass}">${num}</div>
+            <div class="bbz-focus-stat-sub ${subClass}">${sub}</div>
           </div>`;
-        }
-        const taskItems = focusTasks.map(t => {
-          const isOd = t.isOverdue;
-          return `<div class="bbz-focus-task" data-action="navigate-planning">
-            <div class="${isOd ? "bbz-focus-bar-red" : "bbz-focus-bar-amber"}"></div>
-            <span class="bbz-focus-firm">${helpers.escapeHtml(t.firmTitle || t.contactName || "—")}</span>
-            <span class="bbz-focus-desc">${helpers.escapeHtml(t.title)}</span>
-            <span class="bbz-focus-due ${isOd ? "bbz-focus-due-red" : "bbz-focus-due-amber"}">${isOd ? "überfällig" : helpers.relativeDate(t.deadline)}</span>
-          </div>`;
-        }).join("");
-        const urgentCount = overdueTasks.length;
-        const moreCount = Math.max(0, overdueTasks.length + thisWeek.length - focusTasks.length);
-        return `<div class="bbz-focus-bar">
-          <div class="bbz-focus-inner">
-            <div class="bbz-focus-stat">
-              <div class="bbz-focus-stat-label">Dringend heute</div>
-              <div class="bbz-focus-number${urgentCount > 0 ? " bbz-focus-number-alert" : ""}">${urgentCount > 0 ? urgentCount : focusTasks.length}</div>
-              <div class="bbz-focus-stat-sub">${urgentCount > 0 ? "überfällige Tasks" : "Tasks diese Woche"}</div>
-            </div>
-            <div class="bbz-focus-divider"></div>
-            <div class="bbz-focus-tasks">${taskItems}</div>
-            <div class="bbz-focus-divider"></div>
-            <div class="bbz-focus-cta">
-              <a class="bbz-focus-all-link" data-action="navigate-planning">Alle ${allOpenTasks.length} Tasks →</a>
-              ${moreCount > 0 ? `<span style="font-size:10px;color:rgba(255,255,255,0.2);">+${moreCount} weitere</span>` : ""}
-            </div>
+        };
+
+        // Radar-Kachel (4. Slot)
+        const radarTile = `<div class="bbz-focus-tile" data-action="navigate-radar">
+          <div class="bbz-focus-stat-label">Pflege A/B</div>
+          <div style="display:flex;gap:6px;align-items:center;margin:6px 0 4px;">
+            <span class="bbz-focus-radar-pill bbz-focus-radar-pill-alert">${radarHandlungsbedarf} ⚠</span>
+            <span class="bbz-focus-radar-pill bbz-focus-radar-pill-ok">${onTrackCount} ✓</span>
           </div>
+          <div class="bbz-focus-stat-sub bbz-focus-sub-muted">Radar →</div>
+        </div>`;
+
+        // Nächste Aufgabe Footer-Bar (Desktop: rechte Spalte; Mobile: unterste Zeile)
+        const nextTaskHtml = nextTask
+          ? `<div class="bbz-focus-next" ${nextTask.firmId ? `data-action="open-firm" data-id="${nextTask.firmId}"` : `data-action="navigate-planning"`}>
+              <div class="bbz-focus-next-label">Nächste Aufgabe</div>
+              <div class="bbz-focus-next-content">
+                <div class="${nextTask.isOverdue ? "bbz-focus-bar-red" : "bbz-focus-bar-amber"}"></div>
+                <span class="bbz-focus-firm">${helpers.escapeHtml(nextTask.firmTitle || nextTask.contactName || "—")}</span>
+                <span class="bbz-focus-desc">${helpers.escapeHtml(nextTask.title)}</span>
+                <span class="bbz-focus-due ${nextTask.isOverdue ? "bbz-focus-due-red" : "bbz-focus-due-amber"}">${nextTask.isOverdue ? "überfällig" : helpers.relativeDate(nextTask.deadline)}</span>
+              </div>
+            </div>`
+          : `<div class="bbz-focus-next bbz-focus-next-ok">
+              <div class="bbz-focus-ok-icon" style="width:28px;height:28px;">
+                <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
+              </div>
+              <span class="bbz-focus-ok-text" style="font-size:12px;">Heute geschafft — keine offenen Tasks.</span>
+            </div>`;
+
+        return `<div class="bbz-focus-bar">
+          <div class="bbz-focus-grid">
+            ${tile("Überfällig", overdueCount, overdueCount > 0 ? "bbz-focus-number-alert" : "bbz-focus-number-ok", overdueCount > 0 ? "Tasks" : "alles erledigt", overdueCount > 0 ? "bbz-focus-sub-red" : "bbz-focus-sub-green", "planning", "overdue")}
+            ${tile("Diese Woche", weekCount, weekCount > 0 ? "bbz-focus-number-amber" : "bbz-focus-number-ok", weekCount > 0 ? "bis Freitag fällig" : "keine Tasks", weekCount > 0 ? "bbz-focus-sub-amber" : "bbz-focus-sub-green", "planning", "week")}
+            ${tile("Nächste 30 Tage", monthCount, "bbz-focus-number-white", monthCount > 0 ? "in Planung" : "keine Tasks", "bbz-focus-sub-muted", "planning", "month")}
+            ${radarTile}
+          </div>
+          ${nextTaskHtml}
         </div>`;
       })();
 
