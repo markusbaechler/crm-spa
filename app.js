@@ -1339,7 +1339,12 @@
         event: helpers.normalizeChoiceList(this.getField(item, f.event)),
         // FIX: eventhistory konsistent als Array normalisieren (wie sgf und event)
         eventhistory: helpers.normalizeChoiceList(this.getField(item, f.eventhistory)),
-        archiviert: helpers.bool(this.getField(item, f.archiviert))
+        archiviert: helpers.bool(this.getField(item, f.archiviert)),
+        // SP-Metadaten (Datenqualität) — direkt am Item-Objekt, nicht in fields
+        spCreated: item?.createdDateTime || "",
+        spModified: item?.lastModifiedDateTime || "",
+        spCreatedBy: item?.createdBy?.user?.displayName || "",
+        spModifiedBy: item?.lastModifiedBy?.user?.displayName || ""
       };
     },
 
@@ -2749,6 +2754,11 @@
                 ${ui.kv("Direktwahl", helpers.escapeHtml(contact.direktwahl) || '<span class="bbz-muted">—</span>')}
                 ${ui.kv("Mobile", helpers.escapeHtml(contact.mobile) || '<span class="bbz-muted">—</span>')}
                 ${ui.kv("Geburtstag", helpers.formatDate(contact.geburtstag) || '<span class="bbz-muted">—</span>')}
+                ${(contact.spCreated || contact.spModified) ? `
+                <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--line-2);">
+                  ${contact.spCreated ? `<div style="font-size:11px;color:var(--subtle);line-height:1.6;"><span style="color:var(--muted);min-width:90px;display:inline-block;">Erstellt</span>${helpers.formatDateTime(contact.spCreated)}${contact.spCreatedBy ? ` · ${helpers.escapeHtml(contact.spCreatedBy)}` : ""}</div>` : ""}
+                  ${contact.spModified ? `<div style="font-size:11px;color:var(--subtle);line-height:1.6;"><span style="color:var(--muted);min-width:90px;display:inline-block;">Geändert</span>${helpers.formatDateTime(contact.spModified)}${contact.spModifiedBy ? ` · ${helpers.escapeHtml(contact.spModifiedBy)}` : ""}</div>` : ""}
+                </div>` : ""}
               </div>
             </section>
             <section class="bbz-section">
