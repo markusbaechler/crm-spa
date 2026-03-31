@@ -195,6 +195,12 @@
 
     toDate(value) {
       if (!value) return null;
+      // ISO-Datum ohne Uhrzeit (z.B. "2026-03-30") wird von JS als UTC interpretiert,
+      // was in CH (UTC+1) einen Tag früher ergibt. Daher lokal parsen.
+      if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+        const [y, m, day] = value.trim().split("-").map(Number);
+        return new Date(y, m - 1, day);
+      }
       const d = new Date(value);
       return Number.isNaN(d.getTime()) ? null : d;
     },
@@ -2015,9 +2021,8 @@
       // Radar-Zahlen
       const radarHandlungsbedarf = radarRows.filter(f => helpers.firmSignal(f) !== "ok").length;
 
-      // Fokus-Bar HTML — 2×2 Grid (Desktop) / 2×2 Grid (Mobile)
+      // Fokus-Bar HTML — 2×2 Grid (Desktop 4-spaltig / Mobile 2×2)
       const focusBarHtml = (() => {
-        // Kachel-Helper: klickbar, mit Label, Zahl, Sub-Text
         const tile = (label, num, numClass, sub, subClass, action, faelligkeit = "") => {
           const actionAttr = action === "planning"
             ? `data-action="navigate-planning-filtered" data-faelligkeit="${faelligkeit}"`
@@ -2031,7 +2036,6 @@
           </div>`;
         };
 
-        // Radar-Kachel (4. Slot)
         const radarTile = `<div class="bbz-focus-tile" data-action="navigate-radar">
           <div class="bbz-focus-stat-label">Pflege A/B</div>
           <div style="display:flex;gap:6px;align-items:center;margin:6px 0 4px;">
@@ -2041,7 +2045,6 @@
           <div class="bbz-focus-stat-sub bbz-focus-sub-muted">Radar →</div>
         </div>`;
 
-        // Nächste Aufgabe Footer-Bar (Desktop: rechte Spalte; Mobile: unterste Zeile)
         const nextTaskHtml = nextTask
           ? `<div class="bbz-focus-next" ${nextTask.firmId ? `data-action="open-firm" data-id="${nextTask.firmId}"` : `data-action="navigate-planning"`}>
               <div class="bbz-focus-next-label">Nächste Aufgabe</div>
@@ -2053,10 +2056,10 @@
               </div>
             </div>`
           : `<div class="bbz-focus-next bbz-focus-next-ok">
-              <div class="bbz-focus-ok-icon" style="width:28px;height:28px;">
+              <div class="bbz-focus-ok-icon">
                 <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
               </div>
-              <span class="bbz-focus-ok-text" style="font-size:12px;">Heute geschafft — keine offenen Tasks.</span>
+              <span class="bbz-focus-ok-text">Heute geschafft — keine offenen Tasks.</span>
             </div>`;
 
         return `<div class="bbz-focus-bar">
