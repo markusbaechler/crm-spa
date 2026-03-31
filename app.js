@@ -474,7 +474,6 @@
         const navPlanning = event.target.closest("[data-action='navigate-planning']");
         if (navPlanning) { event.preventDefault(); controller.navigate("planning"); return; }
 
-        // Fokus-Bar: Planung mit vorgesetztem Fälligkeitsfilter
         const navPlanningFiltered = event.target.closest("[data-action='navigate-planning-filtered']");
         if (navPlanningFiltered) {
           event.preventDefault();
@@ -483,7 +482,6 @@
           return;
         }
 
-        // Fokus-Bar + Radar-Kacheln: direkt in Pflege-Radar navigieren, optional Signal-Filter
         const navRadar = event.target.closest("[data-action='navigate-radar']");
         if (navRadar) {
           event.preventDefault();
@@ -511,7 +509,7 @@
             state.selection.firmId = null;
           } else if (scope === "firms-radar") {
             state.filters.firms.radarMode = !state.filters.firms.radarMode;
-            state.filters.firms.radarSignal = ""; // Signal-Filter immer zurücksetzen
+            state.filters.firms.radarSignal = "";
             if (state.filters.firms.radarMode) {
               state.filters.firms.search = "";
               state.filters.firms.klassifizierung = "";
@@ -1990,7 +1988,6 @@
         if (!kl.includes("A") && !kl.includes("B")) return false;
         const sig = helpers.firmSignal(f);
         if (!sig) return false;
-        // Signal-Filter aus Kachel-Klick
         if (filters.radarSignal && sig !== filters.radarSignal) return false;
         const search = filters.search.trim().toLowerCase();
         return !search || helpers.textIncludes(f.title, search);
@@ -2010,30 +2007,27 @@
       // Fokus-Bar: Zeitfenster-Counts
       const in7   = new Date(today); in7.setDate(in7.getDate() + 7);
       const in30  = new Date(today); in30.setDate(in30.getDate() + 30);
-      const overdueCount  = overdueTasks.length;
-      const weekCount     = allOpenTasks.filter(t => { const d = helpers.toDate(t.deadline); return d && d > today && d <= in7; }).length;
-      const monthCount    = allOpenTasks.filter(t => { const d = helpers.toDate(t.deadline); return d && d > in7 && d <= in30; }).length;
+      const overdueCount = overdueTasks.length;
+      const weekCount    = allOpenTasks.filter(t => { const d = helpers.toDate(t.deadline); return d && d > today && d <= in7; }).length;
+      const monthCount   = allOpenTasks.filter(t => { const d = helpers.toDate(t.deadline); return d && d > in7 && d <= in30; }).length;
 
       const nextTask = overdueTasks.length > 0
         ? overdueTasks.sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline))[0]
         : allOpenTasks.filter(t => helpers.toDate(t.deadline)).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline))[0] || null;
 
-      const radarHandlungsbedarf = radarRows.filter(f => helpers.firmSignal(f) !== "ok").length;
+      const radarHandlungsbedarf = radarNeverCount + radarColdCount + radarOverdueCount;
 
       const focusBarHtml = (() => {
         const tile = (label, num, numClass, sub, subClass, action, faelligkeit = "") => {
-          const actionAttr = action === "planning"
+          const attr = action === "planning"
             ? `data-action="navigate-planning-filtered" data-faelligkeit="${faelligkeit}"`
-            : action === "radar"
-            ? `data-action="navigate-radar"`
-            : `data-action="navigate-planning"`;
-          return `<div class="bbz-focus-tile" ${actionAttr}>
+            : action === "radar" ? `data-action="navigate-radar"` : `data-action="navigate-planning"`;
+          return `<div class="bbz-focus-tile" ${attr}>
             <div class="bbz-focus-stat-label">${label}</div>
             <div class="bbz-focus-number ${numClass}">${num}</div>
             <div class="bbz-focus-stat-sub ${subClass}">${sub}</div>
           </div>`;
         };
-
         const radarTile = `<div class="bbz-focus-tile" data-action="navigate-radar">
           <div class="bbz-focus-stat-label">Pflege A/B</div>
           <div style="display:flex;gap:6px;align-items:center;margin:6px 0 4px;">
@@ -2042,7 +2036,6 @@
           </div>
           <div class="bbz-focus-stat-sub bbz-focus-sub-muted">Radar →</div>
         </div>`;
-
         const nextTaskHtml = nextTask
           ? `<div class="bbz-focus-next" ${nextTask.firmId ? `data-action="open-firm" data-id="${nextTask.firmId}"` : `data-action="navigate-planning"`}>
               <div class="bbz-focus-next-label">Nächste Aufgabe</div>
@@ -2054,12 +2047,9 @@
               </div>
             </div>`
           : `<div class="bbz-focus-next bbz-focus-next-ok">
-              <div class="bbz-focus-ok-icon">
-                <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
-              </div>
+              <div class="bbz-focus-ok-icon"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg></div>
               <span class="bbz-focus-ok-text">Heute geschafft — keine offenen Tasks.</span>
             </div>`;
-
         return `<div class="bbz-focus-bar">
           <div class="bbz-focus-grid">
             ${tile("Überfällig", overdueCount, overdueCount > 0 ? "bbz-focus-number-alert" : "bbz-focus-number-ok", overdueCount > 0 ? "Tasks" : "alles erledigt", overdueCount > 0 ? "bbz-focus-sub-red" : "bbz-focus-sub-green", "planning", "overdue")}
@@ -2077,23 +2067,23 @@
           <div class="bbz-kpis">
             ${filters.radarMode ? `
             <!-- Radar-Modus KPIs — klickbar als Signal-Filter -->
-            <div class="bbz-kpi bbz-kpi-red bbz-kpi-clickable" style="cursor:pointer;${filters.radarSignal === 'never' ? 'box-shadow:inset 0 0 0 2px var(--red);' : ''}" data-action="navigate-radar" data-signal="${filters.radarSignal === 'never' ? '' : 'never'}">
-              <div class="bbz-kpi-label">Nie kontaktiert${filters.radarSignal === 'never' ? ' ×' : ''}</div>
+            <div class="bbz-kpi bbz-kpi-red bbz-kpi-clickable" style="cursor:pointer;${filters.radarSignal === "never" ? "box-shadow:inset 0 0 0 2px var(--red);" : ""}" data-action="navigate-radar" data-signal="${filters.radarSignal === "never" ? "" : "never"}">
+              <div class="bbz-kpi-label">Nie kontaktiert${filters.radarSignal === "never" ? " ×" : ""}</div>
               <div class="bbz-kpi-value bbz-kpi-value-red">${radarNeverCount}</div>
               <div class="bbz-kpi-meta">A-Kunden ohne History</div>
             </div>
-            <div class="bbz-kpi bbz-kpi-amber bbz-kpi-clickable" style="cursor:pointer;${filters.radarSignal === 'cold' ? 'box-shadow:inset 0 0 0 2px #d48000;' : ''}" data-action="navigate-radar" data-signal="${filters.radarSignal === 'cold' ? '' : 'cold'}">
-              <div class="bbz-kpi-label">Eingeschlafen${filters.radarSignal === 'cold' ? ' ×' : ''}</div>
+            <div class="bbz-kpi bbz-kpi-amber bbz-kpi-clickable" style="cursor:pointer;${filters.radarSignal === "cold" ? "box-shadow:inset 0 0 0 2px #d48000;" : ""}" data-action="navigate-radar" data-signal="${filters.radarSignal === "cold" ? "" : "cold"}">
+              <div class="bbz-kpi-label">Eingeschlafen${filters.radarSignal === "cold" ? " ×" : ""}</div>
               <div class="bbz-kpi-value bbz-kpi-value-amber">${radarColdCount}</div>
               <div class="bbz-kpi-meta">&gt;360 Tage kein Kontakt</div>
             </div>
-            <div class="bbz-kpi bbz-kpi-red bbz-kpi-clickable" style="cursor:pointer;${filters.radarSignal === 'overdue' ? 'box-shadow:inset 0 0 0 2px var(--red);' : ''}" data-action="navigate-radar" data-signal="${filters.radarSignal === 'overdue' ? '' : 'overdue'}">
-              <div class="bbz-kpi-label">Überfällige Tasks${filters.radarSignal === 'overdue' ? ' ×' : ''}</div>
+            <div class="bbz-kpi bbz-kpi-red bbz-kpi-clickable" style="cursor:pointer;${filters.radarSignal === "overdue" ? "box-shadow:inset 0 0 0 2px var(--red);" : ""}" data-action="navigate-radar" data-signal="${filters.radarSignal === "overdue" ? "" : "overdue"}">
+              <div class="bbz-kpi-label">Überfällige Tasks${filters.radarSignal === "overdue" ? " ×" : ""}</div>
               <div class="bbz-kpi-value bbz-kpi-value-red">${radarOverdueCount}</div>
               <div class="bbz-kpi-meta">A/B-Kunden betroffen</div>
             </div>
-            <div class="bbz-kpi bbz-kpi-green bbz-kpi-clickable" style="cursor:pointer;${filters.radarSignal === 'ok' ? 'box-shadow:inset 0 0 0 2px var(--green);' : ''}" data-action="navigate-radar" data-signal="${filters.radarSignal === 'ok' ? '' : 'ok'}">
-              <div class="bbz-kpi-label">On Track ✓${filters.radarSignal === 'ok' ? ' ×' : ''}</div>
+            <div class="bbz-kpi bbz-kpi-green bbz-kpi-clickable" style="cursor:pointer;${filters.radarSignal === "ok" ? "box-shadow:inset 0 0 0 2px var(--green);" : ""}" data-action="navigate-radar" data-signal="${filters.radarSignal === "ok" ? "" : "ok"}">
+              <div class="bbz-kpi-label">On Track ✓${filters.radarSignal === "ok" ? " ×" : ""}</div>
               <div class="bbz-kpi-value bbz-kpi-value-green">${onTrackCount}</div>
               <div class="bbz-kpi-meta bbz-kpi-meta-ok">Kontakt &lt;90 Tage</div>
             </div>
@@ -2164,10 +2154,11 @@
               <div class="bbz-section-header">
                 <div>
                   <div class="bbz-section-title">${filters.radarMode ? "Pflege-Radar A & B Kunden" : "Firmen-Cockpit"}</div>
-                  <div class="bbz-section-subtitle">${filters.radarMode ? `${radarRows.length} Einträge${filters.radarSignal ? ` · Filter: ${filters.radarSignal === "never" ? "Nie kontaktiert" : filters.radarSignal === "cold" ? "Eingeschlafen" : filters.radarSignal === "overdue" ? "Überfällige Tasks" : "On Track"} ×` : ` · ${radarRows.filter(f => helpers.firmSignal(f) !== "ok").length} Handlungsbedarf · ${onTrackCount} On Track`}` : "Segment, Tasks und Fristen auf einen Blick"}</div>
+                  <div class="bbz-section-subtitle">${filters.radarMode
+                    ? `${radarRows.length} Einträge${filters.radarSignal ? ` · Filter: ${filters.radarSignal === "never" ? "Nie kontaktiert" : filters.radarSignal === "cold" ? "Eingeschlafen" : filters.radarSignal === "overdue" ? "Überfällige Tasks" : "On Track"} ×` : ` · ${radarHandlungsbedarf} Handlungsbedarf · ${onTrackCount} On Track`}`
+                    : "Segment, Tasks und Fristen auf einen Blick"}</div>
                 </div>
                 <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-                  <!-- Tab-Bar: nur Desktop -->
                   <div class="bbz-desktop-only" style="display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--panel-2);">
                     <button class="bbz-button" style="height:32px;font-size:12px;border:none;border-radius:0;${!filters.radarMode ? "background:var(--blue);color:#fff;font-weight:700;" : "background:none;color:var(--muted);"}"
                       data-action="kpi-filter" data-scope="firms-radar" ${!filters.radarMode ? "disabled" : ""}>
@@ -2175,7 +2166,7 @@
                     </button>
                     <button class="bbz-button" style="height:32px;font-size:12px;border:none;border-radius:0;${filters.radarMode ? "background:var(--blue);color:#fff;font-weight:700;" : "background:none;color:var(--muted);"}"
                       data-action="kpi-filter" data-scope="firms-radar" ${filters.radarMode ? "disabled" : ""}>
-                      Pflege A/B ${radarRows.length > 0 ? `<span style="background:rgba(255,255,255,0.25);color:#fff;border-radius:999px;padding:1px 6px;font-size:11px;margin-left:4px;">${filters.radarSignal ? radarRows.length : radarNeverCount + radarColdCount + radarOverdueCount}</span>` : ""}
+                      Pflege A/B ${radarNeverCount + radarColdCount + radarOverdueCount > 0 ? `<span style="background:rgba(255,255,255,0.25);color:#fff;border-radius:999px;padding:1px 6px;font-size:11px;margin-left:4px;">${filters.radarSignal ? radarRows.length : radarNeverCount + radarColdCount + radarOverdueCount}</span>` : ""}
                     </button>
                   </div>
                   ${!filters.radarMode ? `<button class="bbz-button bbz-button-primary" data-action="open-firm-form">+ Firma</button>` : ""}
