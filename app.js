@@ -724,6 +724,92 @@
           return;
         }
 
+        // Event Einladungsliste öffnen
+        const openEventEinladung = event.target.closest("[data-action='open-event-einladung']");
+        if (openEventEinladung) {
+          state.modal = {
+            type: "event-einladung",
+            payload: {
+              eventName: openEventEinladung.dataset.eventName || "",
+              listLabel: openEventEinladung.dataset.listLabel || "Einladungsliste",
+              filterSeg: "", filterSearch: ""
+            }
+          };
+          controller.render();
+          return;
+        }
+
+        // Event Nachbearbeitung öffnen
+        const openEventNachbearbeitung = event.target.closest("[data-action='open-event-nachbearbeitung']");
+        if (openEventNachbearbeitung) {
+          const evName = openEventNachbearbeitung.dataset.eventName || "";
+          // Ersten passenden Eventhistory-Choice vorselektieren
+          const histChoices = state.meta.choices?.[CONFIG.lists.contacts]?.["Eventhistory"] || [];
+          state.modal = {
+            type: "event-nachbearbeitung",
+            payload: {
+              eventName: evName,
+              checkedIds: [],
+              selectedVersion: histChoices[0] || "",
+              filterSearch: ""
+            }
+          };
+          controller.render();
+          return;
+        }
+
+        // Event Nachbearbeitung: Checkbox togglen
+        const nbToggle = event.target.closest("[data-action='event-nb-toggle']");
+        if (nbToggle && state.modal?.payload) {
+          const cid = Number(nbToggle.dataset.contactId);
+          const ids = state.modal.payload.checkedIds;
+          const idx = ids.indexOf(cid);
+          if (idx === -1) ids.push(cid); else ids.splice(idx, 1);
+          nbToggle.classList.toggle("checked", ids.includes(cid));
+          nbToggle.closest("tr").style.background = ids.includes(cid) ? "#f0fdf4" : "";
+          // Save-Button + Stats live aktualisieren ohne full re-render
+          const saveBtn = document.querySelector("[data-action='event-nb-save']");
+          if (saveBtn) {
+            saveBtn.textContent = `✓ Teilnahmen speichern (${ids.length})`;
+            saveBtn.disabled = ids.length === 0 || !state.modal.payload.selectedVersion;
+          }
+          const markedStat = document.querySelector("[data-nb-marked]");
+          if (markedStat) markedStat.textContent = ids.length;
+          return;
+        }
+
+        // Event Nachbearbeitung: Speichern
+        const nbSave = event.target.closest("[data-action='event-nb-save']");
+        if (nbSave) {
+          controller.handleEventNachbearbeitungSave();
+          return;
+        }
+
+        // Event Einladungsliste: Kontakt entfernen
+        const evRemove = event.target.closest("[data-action='event-remove-contact']");
+        if (evRemove) {
+          controller.handleEventRemoveContact(
+            evRemove.dataset.eventName,
+            Number(evRemove.dataset.contactId)
+          );
+          return;
+        }
+
+        // Event Stats-Bar Filter
+        const evStatFilter = event.target.closest("[data-action='event-stat-filter']");
+        if (evStatFilter && state.modal?.type === "event-einladung") {
+          state.modal.payload.filterSeg = evStatFilter.dataset.seg || "";
+          controller.render();
+          return;
+        }
+
+        // Event Excel-Export
+        const evExport = event.target.closest("[data-action='event-export-excel']");
+        if (evExport) {
+          controller.handleEventExcelExport(evExport.dataset.eventName);
+          return;
+        }
+
         // Hilfsfunktion: Zähler, Submit-Button und Alle-Checkbox synchronisieren
         const syncBatchUI = (sel) => {
           const payload = state.modal?.payload;
@@ -862,6 +948,8 @@
         if (el.matches("[data-filter='history-search']")) { state.filters.history.search = el.value; debouncedRender(); }
         if (el.matches("[data-filter='events-search']")) { state.filters.events.search = el.value; debouncedRender(); }
         if (el.matches("[data-filter='batch-search']") && state.modal?.payload) { state.modal.payload.filterSearch = el.value; state.modal.payload.selected = []; debouncedRender(); }
+        if (el.matches("[data-filter='event-einladung-search']") && state.modal?.payload) { state.modal.payload.filterSearch = el.value; debouncedRender(); }
+        if (el.matches("[data-filter='event-nb-search']") && state.modal?.payload) { state.modal.payload.filterSearch = el.value; debouncedRender(); }
         if (el.matches("[data-filter='batch-eventhistory-category-text']") && state.modal?.payload) { state.modal.payload.selectedHistoryCategory = el.value; state.modal.payload.selected = []; debouncedRender(); }
       });
 
@@ -885,6 +973,14 @@
         if (el.matches("[data-filter='batch-leadbbz']") && state.modal?.payload) { state.modal.payload.filterLeadbbz = el.value; state.modal.payload.selected = []; controller.render(); }
         if (el.matches("[data-filter='batch-sgf']") && state.modal?.payload) { state.modal.payload.filterSgf = el.value; state.modal.payload.selected = []; controller.render(); }
         if (el.matches("[data-filter='batch-eventhistory-category']") && state.modal?.payload) { state.modal.payload.selectedHistoryCategory = el.value; state.modal.payload.selected = []; controller.render(); }
+        // Event Einladungs-Modal Filter
+        if (el.matches("[data-filter='event-einladung-seg']") && state.modal?.payload) { state.modal.payload.filterSeg = el.value; controller.render(); }
+        // Event Nachbearbeitungs-Modal: Version wählen
+        if (el.matches("[data-filter='event-nb-version']") && state.modal?.payload) {
+          state.modal.payload.selectedVersion = el.value;
+          const saveBtn = document.querySelector("[data-action='event-nb-save']");
+          if (saveBtn) saveBtn.disabled = state.modal.payload.checkedIds.length === 0;
+        }
         if (el.matches("[data-action='task-status-change']")) {
           controller.handleTaskStatusChange(Number(el.dataset.taskId), el.value);
         }
@@ -1514,6 +1610,8 @@
       if (state.modal?.type === "history") modalHtml = views.renderHistoryForm(state.modal.payload);
       if (state.modal?.type === "task")    modalHtml = views.renderTaskForm(state.modal.payload);
       if (state.modal?.type === "batch-event") modalHtml = views.renderBatchEventForm(state.modal.payload);
+      if (state.modal?.type === "event-einladung") modalHtml = views.renderEventEinladungModal(state.modal.payload);
+      if (state.modal?.type === "event-nachbearbeitung") modalHtml = views.renderEventNachbearbeitungModal(state.modal.payload);
       return viewHtml + modalHtml;
     },
 
@@ -3564,183 +3662,350 @@
     },
 
     events() {
-      const filters = state.filters.events;
-      const evtSortBy  = filters.sortBy  || "contactName";
-      const evtSortDir = filters.sortDir === "asc" ? 1 : -1;
-      const allGroups  = state.enriched.events;
+      // Events mit Nachbearbeitung — hardcodiert, bei neuem Anlass hier ergänzen
+      const EVENTS_MIT_NACHBEARBEITUNG = ["BOL", "SummerConv."];
 
-      // Segment-Chips (auf Events-Kachel)
-      const segChip = (label, val) => {
-        const active = filters.segment === val;
-        const cnt = val === ""
-          ? allGroups.reduce((s, g) => s + g.contacts.length, 0)
-          : allGroups.reduce((s, g) => s + g.contacts.filter(c => c.segment.startsWith(val)).length, 0);
-        return `<button class="bbz-kpi-chip ${active ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="events-segment" data-value="${helpers.escapeHtml(val)}">${helpers.escapeHtml(label || "Alle")} <span>${cnt}</span></button>`;
-      };
+      const allGroups = state.enriched.events;
+      const totalActiveContacts = state.enriched.contacts.filter(c => !c.archiviert).length;
 
-      // Event-Filter-Chips auf Anmeldungen-Kachel — ein Chip pro Event-Gruppe
-      const evtChip = (group) => {
-        const active = filters.selectedEvent === group.name;
-        return `<button class="bbz-kpi-chip ${active ? "bbz-kpi-chip-active" : ""}"
-          data-action="kpi-filter" data-scope="events-selected" data-value="${helpers.escapeHtml(group.name)}"
-          title="${helpers.escapeHtml(group.name)}">
-          ${helpers.escapeHtml(group.name)} <span>${group.contactCount}</span>
-        </button>`;
-      };
+      const cardHtml = allGroups.map(group => {
+        const isAnlass = EVENTS_MIT_NACHBEARBEITUNG.includes(group.name);
+        const listLabel = isAnlass ? "Einladungsliste" : "Versandliste";
+        const typeBadge = isAnlass
+          ? `<span class="bbz-pill bbz-pill-a" style="font-size:10px;padding:2px 7px;">Anlass</span>`
+          : `<span class="bbz-pill" style="font-size:10px;padding:2px 7px;background:#f3e8ff;color:#6d1fb8;">Versand</span>`;
 
-      // Gruppen filtern und aufbereiten
-      const groups = allGroups.map(group => {
-        // selectedEvent-Filter: wenn gesetzt, nur diese Gruppe zeigen
-        if (filters.selectedEvent && group.name !== filters.selectedEvent) return null;
-        const filtered = group.contacts.filter(item => {
-          const search = filters.search.trim().toLowerCase();
-          const searchMatch = !search || [group.name, item.contactName, item.firmTitle, item.rolle, item.funktion].some(v => helpers.textIncludes(v, search));
-          const segMatch = !filters.segment || item.segment.startsWith(filters.segment);
-          return searchMatch && segMatch && (!filters.onlyWithOpenTasks || item.openTasksCount > 0);
-        });
-        if (!filtered.length) return null;
-        const sorted = [...filtered].sort((a, b) => {
-          if (evtSortBy === "firmTitle") return String(a.firmTitle||"").localeCompare(String(b.firmTitle||""), "de") * evtSortDir;
-          return String(a.contactName||"").localeCompare(String(b.contactName||""), "de") * evtSortDir;
-        });
-        const cntA = group.contacts.filter(c => c.segment.startsWith("A")).length;
-        const cntB = group.contacts.filter(c => c.segment.startsWith("B")).length;
-        const cntC = group.contacts.filter(c => c.segment.startsWith("C")).length;
-        return { ...group, contacts: sorted, cntA, cntB, cntC };
-      }).filter(Boolean);
+        const contacts = group.contacts;
+        const firmIds = new Set(contacts.map(c => c.firmId).filter(Boolean));
+        const cntFirmen = firmIds.size;
+        const cntA = contacts.filter(c => c.segment.startsWith("A")).length;
+        const cntB = contacts.filter(c => c.segment.startsWith("B")).length;
+        const cntC = contacts.filter(c => c.segment.startsWith("C")).length;
+        const cntRest = contacts.length - cntA - cntB - cntC;
+        const pct = totalActiveContacts > 0 ? Math.round((contacts.length / totalActiveContacts) * 100) : 0;
 
-      const totalGroups   = allGroups.length;
-      const totalContacts = allGroups.reduce((sum, e) => sum + e.contactCount, 0);
+        return `
+          <div class="bbz-event-card">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;">
+              <div style="font-size:15px;font-weight:700;letter-spacing:-0.02em;">${helpers.escapeHtml(group.name)}</div>
+              ${typeBadge}
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+              <div class="bbz-event-stat">
+                <div class="bbz-event-stat-label">Firmen</div>
+                <div class="bbz-event-stat-value">${cntFirmen}</div>
+              </div>
+              <div class="bbz-event-stat">
+                <div class="bbz-event-stat-label">Kontakte</div>
+                <div class="bbz-event-stat-value">${contacts.length}</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px;">
+              ${cntA ? `<span class="bbz-pill bbz-pill-a" style="font-size:11px;">A: ${cntA}</span>` : ""}
+              ${cntB ? `<span class="bbz-pill bbz-pill-b" style="font-size:11px;">B: ${cntB}</span>` : ""}
+              ${cntC ? `<span class="bbz-pill bbz-pill-c" style="font-size:11px;">C: ${cntC}</span>` : ""}
+              ${cntRest > 0 ? `<span class="bbz-pill" style="font-size:11px;background:#f3e8ff;color:#6d1fb8;">Übrige: ${cntRest}</span>` : ""}
+            </div>
+            <div style="padding-top:10px;border-top:1px solid var(--line-2);">
+              <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">
+                Reichweite: <strong style="color:var(--blue);">${pct}%</strong> aller aktiven Kontakte
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <button class="bbz-button bbz-button-primary" style="height:30px;font-size:11px;font-weight:700;"
+                  data-action="open-event-einladung" data-event-name="${helpers.escapeHtml(group.name)}" data-list-label="${helpers.escapeHtml(listLabel)}">
+                  ${helpers.escapeHtml(listLabel)}
+                </button>
+                ${isAnlass ? `
+                <button class="bbz-button" style="height:30px;font-size:11px;font-weight:700;background:#edf7f1;border-color:#a8dbb8;color:var(--green);"
+                  data-action="open-event-nachbearbeitung" data-event-name="${helpers.escapeHtml(group.name)}">
+                  Nachbearbeitung
+                </button>` : ""}
+              </div>
+            </div>
+          </div>`;
+      }).join("");
 
       return `
         <div>
-          <div class="bbz-kpis">
-
-            <!-- Kachel 1: Events mit Segment-Chips -->
-            <div class="bbz-kpi bbz-kpi-blue">
-              <div class="bbz-kpi-label">Events</div>
-              <div class="bbz-kpi-value">${totalGroups}</div>
-              <div class="bbz-kpi-chips" style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
-                ${segChip("A", "A")}${segChip("B", "B")}${segChip("C", "C")}${segChip("Alle", "")}
-              </div>
-            </div>
-
-            <!-- Kachel 2: Anmeldungen mit Event-Filter-Chips -->
-            <div class="bbz-kpi bbz-kpi-blue">
-              <div class="bbz-kpi-label">Anmeldungen</div>
-              <div class="bbz-kpi-value">${totalContacts}</div>
-              <div class="bbz-kpi-chips" style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
-                ${allGroups.map(g => evtChip(g)).join("")}
-                ${filters.selectedEvent ? `<button class="bbz-kpi-chip" data-action="kpi-filter" data-scope="events-selected" data-value="" style="opacity:0.6;">× Alle</button>` : ""}
-              </div>
-            </div>
-
-            <!-- Kachel 3: Event Nachbearbeitung -->
-            <div class="bbz-kpi bbz-kpi-blue" style="display:flex;flex-direction:column;justify-content:space-between;">
-              <div>
-                <div class="bbz-kpi-label">Event Nachbearbeitung</div>
-                <div style="font-size:15px;font-weight:700;margin-top:4px;letter-spacing:-0.02em;line-height:1.3;">Vergangene Teilnahmen</div>
-              </div>
-              <button class="bbz-button bbz-button-primary" style="margin-top:10px;"
-                data-action="open-batch-event" data-event-name="" data-mode="eventhistory">
-                Teilnahmen pflegen
-              </button>
-            </div>
-
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-bottom:20px;">
+            ${cardHtml || ui.emptyBlock("Keine Events vorhanden.")}
           </div>
-          <section class="bbz-section">
-            <div class="bbz-section-header">
-              <div>
-                <div class="bbz-section-title">Events</div>
-                <div class="bbz-section-subtitle">${filters.selectedEvent ? `Gefiltert: ${helpers.escapeHtml(filters.selectedEvent)}` : "Anmeldungen nach Event-Kategorie"}</div>
-              </div>
-            </div>
-            <div class="bbz-section-body">
-              <div class="bbz-filters-3">
-                <input class="bbz-input" data-filter="events-search" type="text" placeholder="Suche nach Kontakt, Firma ..." value="${helpers.escapeHtml(filters.search)}" />
-                <select class="bbz-select" data-filter="events-sortby">
-                  <option value="contactName" ${(filters.sortBy||"contactName") === "contactName" ? "selected" : ""}>Sortierung: Kontakt A–Z</option>
-                  <option value="firmTitle"   ${(filters.sortBy||"") === "firmTitle"   ? "selected" : ""}>Sortierung: Firma A–Z</option>
-                </select>
-                <label class="bbz-checkbox"><input type="checkbox" data-filter="events-open" ${filters.onlyWithOpenTasks ? "checked" : ""} /> Nur mit offenen Tasks</label>
-              </div>
-              ${groups.length ? `<div class="bbz-cockpit-stack">${groups.map(group => {
-                const segBadges = [
-                  group.cntA ? `<span class="bbz-pill bbz-pill-a" style="font-size:11px;padding:1px 6px;">A ${group.cntA}</span>` : "",
-                  group.cntB ? `<span class="bbz-pill bbz-pill-b" style="font-size:11px;padding:1px 6px;">B ${group.cntB}</span>` : "",
-                  group.cntC ? `<span class="bbz-pill bbz-pill-c" style="font-size:11px;padding:1px 6px;">C ${group.cntC}</span>` : ""
-                ].filter(Boolean).join("");
-                return `
-                <section class="bbz-section" style="box-shadow:none;">
-                  <div class="bbz-section-header">
-                    <div>
-                      <div class="bbz-section-title" style="font-size:15px;font-weight:700;letter-spacing:-0.02em;display:flex;align-items:center;gap:8px;">
-                        ${helpers.escapeHtml(group.name)}
-                        <span style="display:flex;gap:4px;align-items:center;">${segBadges}</span>
-                      </div>
-                      <div class="bbz-section-subtitle">${group.contacts.length} Kontakte · ${group.contacts.reduce((sum, c) => sum + c.openTasksCount, 0)} offene Tasks</div>
-                    </div>
-                    <button class="bbz-button bbz-button-primary" style="height:30px;font-size:12px;"
-                      data-action="open-batch-event" data-event-name="${helpers.escapeHtml(group.name)}" data-mode="anmelden">
-                      + Kontakte hinzufügen
-                    </button>
-                  </div>
-                  <div class="bbz-section-body" style="padding:0;">
-                    <!-- Desktop: Tabelle -->
-                    <div class="bbz-table-wrap bbz-desktop-only" style="border:none;border-radius:0;">
-                      <table class="bbz-table">
-                        <thead><tr>
-                          <th></th><th>Kontakt</th><th>Firma</th><th>Segment</th><th>Funktion / Rolle</th><th>Letzte Aktivität</th><th>Tasks</th><th></th>
-                        </tr></thead>
-                        <tbody>
-                          ${group.contacts.map(item => {
-                            const segBadge = item.segment
-                              ? `<span class="${helpers.firmBadgeClass(item.segment)}">${helpers.escapeHtml(item.segment)}</span>`
-                              : '<span class="bbz-muted">—</span>';
-                            return `
-                              <tr>
-                                <td style="width:36px;">${helpers.avatarHtml({ vorname: (item.contactName||"").split(" ")[0]||"", nachname: (item.contactName||"").split(" ").slice(-1)[0]||"" })}</td>
-                                <td><a class="bbz-link" data-action="open-contact" data-id="${item.contactId}">${helpers.escapeHtml(item.contactName)}</a><div class="bbz-subtext">${item.email1 ? helpers.escapeHtml(item.email1) : "—"}</div></td>
-                                <td>${item.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${item.firmId}">${helpers.escapeHtml(item.firmTitle||"Firma")}</a>` : '<span class="bbz-muted">—</span>'}</td>
-                                <td>${segBadge}</td>
-                                <td>${helpers.escapeHtml(helpers.joinNonEmpty([item.funktion, item.rolle], " · "))||'<span class="bbz-muted">—</span>'}</td>
-                                <td>${item.latestHistoryDate ? `<span title="${helpers.formatDate(item.latestHistoryDate)}">${helpers.relativeDate(item.latestHistoryDate)}</span>${item.latestHistoryType ? `<div class="bbz-subtext">${helpers.escapeHtml(item.latestHistoryType)}</div>` : ""}` : '<span class="bbz-muted">—</span>'}</td>
-                                <td>${item.openTasksCount > 0 ? `<span class="bbz-status-chip bbz-status-open">${item.openTasksCount} offen</span>` : '<span class="bbz-muted">—</span>'}</td>
-                                <td style="white-space:nowrap;"><button class="bbz-button bbz-button-secondary" style="height:26px;font-size:12px;padding:0 9px;" data-action="open-history-form" data-contact-id="${item.contactId}">+ Aktivität</button></td>
-                              </tr>`;
-                          }).join("")}
-                        </tbody>
-                      </table>
-                    </div>
-                    <!-- Mobile: Card-List -->
-                    <div class="bbz-mobile-only bbz-card-list">
-                      ${group.contacts.map(item => `
-                        <div class="bbz-list-card">
-                          ${helpers.avatarHtml({ vorname: (item.contactName||"").split(" ")[0]||"", nachname: (item.contactName||"").split(" ").slice(-1)[0]||"" })}
-                          <div class="bbz-list-card-body">
-                            <div class="bbz-list-card-title">
-                              <a class="bbz-link" data-action="open-contact" data-id="${item.contactId}">${helpers.escapeHtml(item.contactName)}</a>
-                            </div>
-                            <div class="bbz-list-card-sub">
-                              ${item.firmTitle ? helpers.escapeHtml(item.firmTitle) : "—"}
-                              ${item.segment ? ` · <span class="${helpers.firmBadgeClass(item.segment)}">${helpers.escapeHtml(item.segment)}</span>` : ""}
-                              ${item.latestHistoryDate ? ` · ${helpers.relativeDate(item.latestHistoryDate)}` : ""}
-                            </div>
-                          </div>
-                          <div class="bbz-list-card-right">
-                            ${item.openTasksCount > 0 ? `<span class="bbz-status-chip bbz-status-open">${item.openTasksCount}</span>` : ""}
-                            <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:11px;padding:0 8px;" data-action="open-history-form" data-contact-id="${item.contactId}">+ Aktivität</button>
-                          </div>
-                        </div>`).join("")}
-                    </div>
-                  </div>
-                </section>`;
-              }).join("")}</div>`
-              : ui.emptyBlock("Keine Event-Daten für die aktuelle Filterung gefunden.")}
-            </div>
-          </section>
         </div>
       `;
+    },
+
+    // Modal: Einladungsliste / Versandliste
+    renderEventEinladungModal(payload = {}) {
+      const { eventName = "", listLabel = "Einladungsliste" } = payload;
+      const group = state.enriched.events.find(g => g.name === eventName);
+      if (!group) return "";
+
+      const contacts = group.contacts;
+      const firmIds = new Set(contacts.map(c => c.firmId).filter(Boolean));
+      const cntA = contacts.filter(c => c.segment.startsWith("A")).length;
+      const cntB = contacts.filter(c => c.segment.startsWith("B")).length;
+      const cntC = contacts.filter(c => c.segment.startsWith("C")).length;
+      const totalActive = state.enriched.contacts.filter(c => !c.archiviert).length;
+      const pct = totalActive > 0 ? Math.round((contacts.length / totalActive) * 100) : 0;
+
+      const filterSeg = payload.filterSeg || "";
+      const filterSearch = payload.filterSearch || "";
+
+      let filtered = contacts;
+      if (filterSeg) filtered = filtered.filter(c => c.segment.startsWith(filterSeg));
+      if (filterSearch.trim()) {
+        const s = filterSearch.trim().toLowerCase();
+        filtered = filtered.filter(c => helpers.textIncludes(c.contactName, s) || helpers.textIncludes(c.firmTitle, s));
+      }
+
+      const rowsHtml = filtered.length ? filtered.map(item => {
+        const av = helpers.avatarHtml({ vorname: (item.contactName||"").split(" ")[0]||"", nachname: (item.contactName||"").split(" ").slice(-1)[0]||"" });
+        return `
+          <tr>
+            <td>
+              <div style="display:flex;align-items:center;gap:0;">
+                ${av}
+                <div>
+                  <div style="font-weight:600;font-size:13px;">${helpers.escapeHtml(item.contactName)}</div>
+                  <div style="font-size:11px;color:var(--muted);">${helpers.escapeHtml(item.firmTitle||"—")}</div>
+                </div>
+              </div>
+            </td>
+            <td class="bbz-desktop-only" style="font-size:11px;color:var(--subtle);">${helpers.escapeHtml(item.funktion||item.rolle||"—")}</td>
+            <td>${item.segment ? `<span class="${helpers.firmBadgeClass(item.segment)}">${helpers.escapeHtml(item.segment)}</span>` : '<span class="bbz-muted">—</span>'}</td>
+            <td class="bbz-desktop-only">${item.leadbbz ? helpers.leadbbzBadgeHtml(item.leadbbz) : '<span class="bbz-muted">—</span>'}</td>
+            <td>
+              <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:11px;padding:0 8px;color:var(--red);border-color:#f2b8ba;background:var(--red-soft);"
+                data-action="event-remove-contact" data-event-name="${helpers.escapeHtml(eventName)}" data-contact-id="${item.contactId}">✕</button>
+            </td>
+          </tr>`;
+      }).join("") : `<tr><td colspan="5">${ui.emptyBlock("Keine Kontakte für diese Filterung.")}</td></tr>`;
+
+      return `
+        <div class="bbz-modal-backdrop show">
+          <div class="bbz-modal" style="max-width:860px;width:95vw;">
+            <!-- Header -->
+            <div class="bbz-modal-header">
+              <div style="width:32px;height:32px;border-radius:var(--r-md);background:var(--blue-light);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;">📋</div>
+              <div style="flex:1;min-width:0;">
+                <div class="bbz-modal-title">${helpers.escapeHtml(eventName)} — ${helpers.escapeHtml(listLabel)}</div>
+                <div style="font-size:11px;color:var(--muted);margin-top:1px;">Kontakte verwalten · Excel-Export</div>
+              </div>
+              <button class="bbz-button bbz-button-secondary" style="height:28px;width:28px;padding:0;" data-close-modal>✕</button>
+            </div>
+
+            <!-- Stats Bar -->
+            <div style="display:flex;background:var(--dark);flex-shrink:0;overflow-x:auto;">
+              <div class="bbz-event-stat-bar" data-action="event-stat-filter" data-event-name="${helpers.escapeHtml(eventName)}" data-seg="">
+                <div class="bbz-event-stat-bar-label">Firmen</div>
+                <div class="bbz-event-stat-bar-value" style="color:#60a5fa;">${firmIds.size}</div>
+                <div class="bbz-event-stat-bar-hint">alle</div>
+              </div>
+              <div class="bbz-event-stat-bar" data-action="event-stat-filter" data-event-name="${helpers.escapeHtml(eventName)}" data-seg="">
+                <div class="bbz-event-stat-bar-label">Einladungen</div>
+                <div class="bbz-event-stat-bar-value" style="color:#fff;">${contacts.length}</div>
+                <div class="bbz-event-stat-bar-hint">alle</div>
+              </div>
+              <div class="bbz-event-stat-bar bbz-desktop-only" data-action="event-stat-filter" data-event-name="${helpers.escapeHtml(eventName)}" data-seg="A">
+                <div class="bbz-event-stat-bar-label">A-Kunden</div>
+                <div class="bbz-event-stat-bar-value" style="color:#60a5fa;">${cntA}</div>
+                <div class="bbz-event-stat-bar-hint">filtern</div>
+              </div>
+              <div class="bbz-event-stat-bar bbz-desktop-only" data-action="event-stat-filter" data-event-name="${helpers.escapeHtml(eventName)}" data-seg="B">
+                <div class="bbz-event-stat-bar-label">B-Kunden</div>
+                <div class="bbz-event-stat-bar-value" style="color:#fbbf24;">${cntB}</div>
+                <div class="bbz-event-stat-bar-hint">filtern</div>
+              </div>
+              <div class="bbz-event-stat-bar bbz-desktop-only" data-action="event-stat-filter" data-event-name="${helpers.escapeHtml(eventName)}" data-seg="C">
+                <div class="bbz-event-stat-bar-label">C-Kunden</div>
+                <div class="bbz-event-stat-bar-value" style="color:rgba(255,255,255,0.4);">${cntC}</div>
+                <div class="bbz-event-stat-bar-hint">filtern</div>
+              </div>
+              <div class="bbz-event-stat-bar">
+                <div class="bbz-event-stat-bar-label">Reichweite</div>
+                <div class="bbz-event-stat-bar-value" style="color:#22d98a;">${pct}%</div>
+                <div class="bbz-event-stat-bar-hint">gesamt</div>
+              </div>
+            </div>
+
+            <!-- Filter -->
+            <div style="display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line-2);flex-shrink:0;flex-wrap:wrap;">
+              <input class="bbz-input" style="flex:1;min-width:120px;height:30px;" data-filter="event-einladung-search"
+                type="text" placeholder="Name oder Firma …" value="${helpers.escapeHtml(filterSearch)}" />
+              <select class="bbz-select" style="height:30px;" data-filter="event-einladung-seg">
+                <option value="" ${!filterSeg ? "selected" : ""}>— Segment —</option>
+                <option value="A" ${filterSeg==="A" ? "selected" : ""}>A</option>
+                <option value="B" ${filterSeg==="B" ? "selected" : ""}>B</option>
+                <option value="C" ${filterSeg==="C" ? "selected" : ""}>C</option>
+              </select>
+            </div>
+
+            <!-- Tabelle -->
+            <div class="bbz-modal-body" style="padding:0;flex:1;overflow-y:auto;min-height:0;">
+              <div class="bbz-table-wrap" style="border:none;border-radius:0;">
+                <table class="bbz-table">
+                  <thead><tr>
+                    <th>Kontakt</th>
+                    <th class="bbz-desktop-only">Funktion</th>
+                    <th>Seg.</th>
+                    <th class="bbz-desktop-only">Lead BBZ</th>
+                    <th></th>
+                  </tr></thead>
+                  <tbody>${rowsHtml}</tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="bbz-modal-footer" style="display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-top:1px solid var(--line);background:var(--panel-2);flex-shrink:0;gap:8px;flex-wrap:wrap;">
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="bbz-button bbz-button-primary"
+                  data-action="open-batch-event" data-event-name="${helpers.escapeHtml(eventName)}" data-mode="anmelden">
+                  + Einladen
+                </button>
+                <button class="bbz-button" data-action="event-export-excel" data-event-name="${helpers.escapeHtml(eventName)}">
+                  ↓ Excel
+                </button>
+              </div>
+              <button class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
+            </div>
+          </div>
+        </div>`;
+    },
+
+    // Modal: Nachbearbeitung (Teilnahme markieren)
+    renderEventNachbearbeitungModal(payload = {}) {
+      const { eventName = "" } = payload;
+      const group = state.enriched.events.find(g => g.name === eventName);
+      if (!group) return "";
+
+      const contacts = group.contacts;
+      const firmIds = new Set(contacts.map(c => c.firmId).filter(Boolean));
+      const totalActive = state.enriched.contacts.filter(c => !c.archiviert).length;
+      const pct = totalActive > 0 ? Math.round((contacts.length / totalActive) * 100) : 0;
+
+      const checkedIds = payload.checkedIds || [];
+      const selectedVersion = payload.selectedVersion || "";
+
+      // Eventhistory Choices aus SP laden
+      const histChoices = state.meta.choices?.[CONFIG.lists.contacts]?.["Eventhistory"] || [];
+
+      const filterSearch = payload.filterSearch || "";
+      let filtered = contacts;
+      if (filterSearch.trim()) {
+        const s = filterSearch.trim().toLowerCase();
+        filtered = filtered.filter(c => helpers.textIncludes(c.contactName, s) || helpers.textIncludes(c.firmTitle, s));
+      }
+
+      const rowsHtml = filtered.map(item => {
+        const isChecked = checkedIds.includes(item.contactId);
+        const av = helpers.avatarHtml({ vorname: (item.contactName||"").split(" ")[0]||"", nachname: (item.contactName||"").split(" ").slice(-1)[0]||"" });
+        const histBadges = helpers.toArray(item.eventhistory)
+          .filter(Boolean)
+          .map(h => `<span class="bbz-pill" style="font-size:10px;background:#edf7f1;color:var(--green);border:1px solid #a8dbb8;margin-right:2px;">${helpers.escapeHtml(h)}</span>`).join("");
+        return `
+          <tr style="${isChecked ? "background:#f0fdf4;" : ""}">
+            <td style="text-align:center;">
+              <button class="bbz-event-check-btn ${isChecked ? "checked" : ""}"
+                data-action="event-nb-toggle" data-contact-id="${item.contactId}">✓</button>
+            </td>
+            <td>
+              <div style="display:flex;align-items:center;">
+                ${av}
+                <div>
+                  <div style="font-weight:600;font-size:13px;">${helpers.escapeHtml(item.contactName)}</div>
+                  <div style="font-size:11px;color:var(--muted);">${helpers.escapeHtml(item.firmTitle||"—")}</div>
+                </div>
+              </div>
+            </td>
+            <td class="bbz-desktop-only" style="font-size:11px;color:var(--subtle);">${helpers.escapeHtml(item.funktion||item.rolle||"—")}</td>
+            <td>${item.segment ? `<span class="${helpers.firmBadgeClass(item.segment)}">${helpers.escapeHtml(item.segment)}</span>` : '<span class="bbz-muted">—</span>'}</td>
+            <td class="bbz-desktop-only">${histBadges || '<span class="bbz-muted">—</span>'}</td>
+          </tr>`;
+      }).join("") || `<tr><td colspan="5">${ui.emptyBlock("Keine Kontakte gefunden.")}</td></tr>`;
+
+      const versionOptions = histChoices.length
+        ? histChoices.map(c => `<option value="${helpers.escapeHtml(c)}" ${selectedVersion===c?"selected":""}>${helpers.escapeHtml(c)}</option>`).join("")
+        : `<option value="${helpers.escapeHtml(selectedVersion)}">${helpers.escapeHtml(selectedVersion||"—")}</option>`;
+
+      return `
+        <div class="bbz-modal-backdrop show">
+          <div class="bbz-modal" style="max-width:860px;width:95vw;">
+            <!-- Header -->
+            <div class="bbz-modal-header">
+              <div style="width:32px;height:32px;border-radius:var(--r-md);background:#edf7f1;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;">✅</div>
+              <div style="flex:1;min-width:0;">
+                <div class="bbz-modal-title">${helpers.escapeHtml(eventName)} — Nachbearbeitung</div>
+                <div style="font-size:11px;color:var(--muted);margin-top:1px;">Wer war dabei? Teilnahme in Eventhistory speichern.</div>
+              </div>
+              <button class="bbz-button bbz-button-secondary" style="height:28px;width:28px;padding:0;" data-close-modal>✕</button>
+            </div>
+
+            <!-- Stats Bar -->
+            <div style="display:flex;background:var(--dark);flex-shrink:0;overflow-x:auto;">
+              <div class="bbz-event-stat-bar">
+                <div class="bbz-event-stat-bar-label">Firmen</div>
+                <div class="bbz-event-stat-bar-value" style="color:#60a5fa;">${firmIds.size}</div>
+                <div class="bbz-event-stat-bar-hint">gesamt</div>
+              </div>
+              <div class="bbz-event-stat-bar">
+                <div class="bbz-event-stat-bar-label">Eingeladen</div>
+                <div class="bbz-event-stat-bar-value" style="color:#fff;">${contacts.length}</div>
+                <div class="bbz-event-stat-bar-hint">total</div>
+              </div>
+              <div class="bbz-event-stat-bar">
+                <div class="bbz-event-stat-bar-label">Markiert</div>
+                <div class="bbz-event-stat-bar-value" style="color:#22d98a;" data-nb-marked>${checkedIds.length}</div>
+                <div class="bbz-event-stat-bar-hint">dabei</div>
+              </div>
+              <div class="bbz-event-stat-bar bbz-desktop-only">
+                <div class="bbz-event-stat-bar-label">Ausstehend</div>
+                <div class="bbz-event-stat-bar-value" style="color:#fbbf24;">${contacts.length - checkedIds.length}</div>
+                <div class="bbz-event-stat-bar-hint">offen</div>
+              </div>
+              <div class="bbz-event-stat-bar">
+                <div class="bbz-event-stat-bar-label">Reichweite</div>
+                <div class="bbz-event-stat-bar-value" style="color:#22d98a;">${pct}%</div>
+                <div class="bbz-event-stat-bar-hint">gesamt</div>
+              </div>
+            </div>
+
+            <!-- Version + Filter -->
+            <div style="display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line-2);background:var(--panel-2);flex-shrink:0;flex-wrap:wrap;align-items:center;">
+              <span style="font-size:12px;font-weight:600;color:var(--muted);">Eventhistory-Wert:</span>
+              <select class="bbz-select" style="height:28px;font-weight:700;color:var(--green);background:#edf7f1;border-color:#a8dbb8;"
+                data-filter="event-nb-version">${versionOptions}</select>
+              <span style="font-size:11px;color:var(--subtle);">← Einmal wählen, dann Checkboxen setzen</span>
+              <input class="bbz-input" style="flex:1;min-width:120px;height:28px;margin-left:auto;" data-filter="event-nb-search"
+                type="text" placeholder="Name oder Firma …" value="${helpers.escapeHtml(filterSearch)}" />
+            </div>
+
+            <!-- Tabelle -->
+            <div class="bbz-modal-body" style="padding:0;flex:1;overflow-y:auto;min-height:0;">
+              <div class="bbz-table-wrap" style="border:none;border-radius:0;">
+                <table class="bbz-table">
+                  <thead><tr>
+                    <th style="width:44px;">Dabei</th>
+                    <th>Kontakt</th>
+                    <th class="bbz-desktop-only">Funktion</th>
+                    <th>Seg.</th>
+                    <th class="bbz-desktop-only">Bereits dabei</th>
+                  </tr></thead>
+                  <tbody>${rowsHtml}</tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="bbz-modal-footer" style="display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-top:1px solid var(--line);background:var(--panel-2);flex-shrink:0;gap:8px;flex-wrap:wrap;">
+              <button class="bbz-button bbz-button-primary" ${checkedIds.length === 0 || !selectedVersion ? "disabled" : ""}
+                data-action="event-nb-save" data-event-name="${helpers.escapeHtml(eventName)}">
+                ✓ Teilnahmen speichern (${checkedIds.length})
+              </button>
+              <button class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
+            </div>
+          </div>
+        </div>`;
     }
   };
 
@@ -4379,6 +4644,95 @@
     render() {
       ui.renderShell();
       ui.renderView(views.renderRoute());
+    },
+
+    // Event Nachbearbeitung: Teilnahmen speichern
+    async handleEventNachbearbeitungSave() {
+      const p = state.modal?.payload;
+      if (!p) return;
+      const { eventName, checkedIds, selectedVersion } = p;
+      if (!checkedIds.length || !selectedVersion) return;
+
+      ui.setLoading(true);
+      ui.setMessage("");
+      let ok = 0, fail = 0;
+      try {
+        const results = await Promise.allSettled(checkedIds.map(async cid => {
+          const contact = state.enriched.contacts.find(c => c.id === cid);
+          if (!contact) throw new Error(`Kontakt ${cid} nicht gefunden`);
+          const currentHist = helpers.toArray(contact.eventhistory);
+          if (currentHist.includes(selectedVersion)) return; // bereits gesetzt
+          const patchFields = {
+            "Eventhistory@odata.type": "Collection(Edm.String)",
+            "Eventhistory": [...currentHist, selectedVersion]
+          };
+          await api.patchItem(SCHEMA.contacts.listTitle, Number(cid), patchFields);
+        }));
+        results.forEach(r => r.status === "fulfilled" ? ok++ : fail++);
+        const msg = fail === 0
+          ? `✓ ${ok} Teilnahme(n) als «${selectedVersion}» gespeichert.`
+          : `${ok} gespeichert, ${fail} fehlgeschlagen.`;
+        ui.setMessage(msg, fail === 0 ? "success" : "warning");
+        await api.loadAll();
+        this.closeModal();
+      } catch (error) {
+        console.error("handleEventNachbearbeitungSave:", error);
+        ui.setMessage(`Fehler: ${error.message}`, "error");
+      } finally {
+        ui.setLoading(false);
+        this.render();
+      }
+    },
+
+    // Event Einladungsliste: Kontakt entfernen
+    async handleEventRemoveContact(eventName, contactId) {
+      if (!confirm(`Kontakt aus Event «${eventName}» entfernen?`)) return;
+      const contact = state.enriched.contacts.find(c => c.id === contactId);
+      if (!contact) return;
+      const currentEvent = helpers.toArray(contact.event).filter(e => e !== eventName);
+      ui.setLoading(true);
+      try {
+        await api.patchItem(SCHEMA.contacts.listTitle, contactId, {
+          "Event@odata.type": "Collection(Edm.String)",
+          "Event": currentEvent
+        });
+        ui.setMessage(`Kontakt aus «${eventName}» entfernt.`, "success");
+        await api.loadAll();
+        // Modal-Payload aktualisieren damit der refreshte Stand stimmt
+        if (state.modal?.payload) {
+          state.modal.payload.filterSearch = state.modal.payload.filterSearch || "";
+        }
+      } catch (error) {
+        console.error("handleEventRemoveContact:", error);
+        ui.setMessage(`Fehler: ${error.message}`, "error");
+      } finally {
+        ui.setLoading(false);
+        this.render();
+      }
+    },
+
+    // Event Excel-Export
+    handleEventExcelExport(eventName) {
+      const group = state.enriched.events.find(g => g.name === eventName);
+      if (!group) return;
+      try {
+        const rows = group.contacts.map(c => ({
+          "Name":      c.contactName || "",
+          "Firma":     c.firmTitle   || "",
+          "Funktion":  c.funktion    || c.rolle || "",
+          "Segment":   c.segment     || "",
+          "Lead BBZ":  c.leadbbz     || "",
+          "Email":     c.email1      || ""
+        }));
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, eventName.substring(0, 31));
+        XLSX.writeFile(wb, `${eventName}_Liste.xlsx`);
+        ui.setMessage(`Excel-Export «${eventName}» erstellt.`, "success");
+      } catch (error) {
+        console.error("handleEventExcelExport:", error);
+        ui.setMessage("Excel-Export fehlgeschlagen. XLSX-Bibliothek verfügbar?", "error");
+      }
     }
   };
 
