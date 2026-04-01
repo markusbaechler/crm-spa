@@ -150,11 +150,11 @@
     .bbz-table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); -webkit-overflow-scrolling: touch; }
     .bbz-table { width: 100%; min-width: 700px; border-collapse: separate; border-spacing: 0; }
     .bbz-table th { position: sticky; top: 0; z-index: 2; background: var(--panel-2); color: var(--subtle); font-size: 10px; font-weight: 700; text-align: left; padding: 8px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; letter-spacing: 0.05em; text-transform: uppercase; }
-    .bbz-table td { padding: 9px 14px; font-size: 12px; color: #3d5168; border-bottom: 1px solid var(--line-2); vertical-align: middle; background: var(--panel); }
+    .bbz-table td { padding: 9px 14px; font-size: 12px; color: #3d5168; border-bottom: none; vertical-align: middle; background: var(--panel); }
     body.bbz-dense .bbz-table td { padding: 5px 14px; }
-    .bbz-table tbody tr { transition: background 0.1s; cursor: pointer; }
+    .bbz-table tbody tr { transition: background 0.1s; cursor: pointer; border-bottom: 1px solid var(--line-2); }
     .bbz-table tbody tr:hover td { background: var(--blue-soft); }
-    .bbz-table tbody tr:last-child td { border-bottom: none; }
+    .bbz-table tbody tr:last-child { border-bottom: none; }
     .bbz-dense-toggle { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); color: var(--subtle); font-family: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
     body.bbz-dense .bbz-dense-toggle { background: var(--blue-light); color: var(--blue); border-color: #a8c8e0; }
     tr.bbz-row-alert td { background: #fef9f9 !important; }
