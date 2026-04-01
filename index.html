@@ -48,7 +48,7 @@
     #app-shell { max-width: 1440px; margin: 0 auto; }
 
     /* HEADER */
-    .bbz-header { background: #ffffff; height: 64px; display: flex; align-items: center; padding: 0 24px; gap: 0; position: relative; border-bottom: 1px solid #e4eaf2; }
+    .bbz-header { background: #ffffff; height: 64px; display: flex; align-items: center; padding: 0 24px; gap: 0; position: relative; border-bottom: 1px solid #dde6f0; box-shadow: 0 2px 8px rgba(0,64,120,0.08); }
     /* header::after removed */
     .bbz-brand { display: flex; align-items: center; flex-shrink: 0; margin-right: 28px; height: 44px; }
     .bbz-brand img { height: 38px; width: auto; display: block; }
@@ -234,8 +234,8 @@
 
     /* FOCUS BAR */
     /* ── FOKUS-BAR ── */
-    .bbz-focus-bar { background: var(--dark); border-radius: var(--r-xl); margin-bottom: 14px; position: relative; overflow: hidden; }
-    .bbz-focus-bar::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--blue), #0d6e6a, var(--blue)); background-size: 200% 100%; animation: bbzshimmer 4s linear infinite; }
+    .bbz-focus-bar { background: #0d1f35; border-radius: var(--r-xl); margin-bottom: 14px; position: relative; overflow: hidden; }
+    .bbz-focus-bar::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, #004078, #0d6e6a, #004078); background-size: 200% 100%; animation: bbzshimmer 4s linear infinite; }
     @keyframes bbzshimmer { 0%{background-position:200% 0;} 100%{background-position:-200% 0;} }
     .bbz-focus-grid { display: grid; grid-template-columns: repeat(4, 1fr); }
     .bbz-focus-tile { padding: 16px 20px; display: flex; flex-direction: column; justify-content: center; cursor: pointer; border-right: 1px solid rgba(255,255,255,0.07); transition: background 0.12s; }
