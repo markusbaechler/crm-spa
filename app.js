@@ -3763,11 +3763,11 @@
         return `
           <tr>
             <td>
-              <div style="display:flex;align-items:center;gap:0;">
+              <div style="display:flex;align-items:center;gap:10px;">
                 ${av}
-                <div>
-                  <div style="font-weight:600;font-size:13px;">${helpers.escapeHtml(item.contactName)}</div>
-                  <div style="font-size:11px;color:var(--muted);">${helpers.escapeHtml(item.firmTitle||"—")}</div>
+                <div style="min-width:0;">
+                  <div style="font-weight:600;font-size:13px;line-height:1.3;">${helpers.escapeHtml(item.contactName)}</div>
+                  <div style="font-size:11px;color:var(--muted);line-height:1.3;">${helpers.escapeHtml(item.firmTitle||"—")}</div>
                 </div>
               </div>
             </td>
