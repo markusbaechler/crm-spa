@@ -452,17 +452,10 @@
         min-width: 0;
         width: 100%;
       }
-      /* Batch-Tabelle Mobile: Kontakt(1) + Seg(3) + Lead BBZ(4) + X(5) — Funktion(2) weg */
-      .bbz-modal-body .bbz-table th:nth-child(1),
-      .bbz-modal-body .bbz-table td:nth-child(1) { display: table-cell; width: auto; }
-      .bbz-modal-body .bbz-table th:nth-child(2),
-      .bbz-modal-body .bbz-table td:nth-child(2) { display: none; }
-      .bbz-modal-body .bbz-table th:nth-child(3),
-      .bbz-modal-body .bbz-table td:nth-child(3) { display: table-cell; width: 44px; }
-      .bbz-modal-body .bbz-table th:nth-child(4),
-      .bbz-modal-body .bbz-table td:nth-child(4) { display: table-cell; width: 80px; }
-      .bbz-modal-body .bbz-table th:nth-child(5),
-      .bbz-modal-body .bbz-table td:nth-child(5) { display: table-cell; width: 44px; text-align: right; }
+      /* Batch-Tabelle Mobile: bbz-desktop-only blendet Funktion+Lead BBZ aus
+         Spaltenbreiten fixieren damit Seg. und X nicht zu breit werden */
+      .bbz-modal-body .bbz-table td:nth-child(3) { width: 52px; text-align: center; }
+      .bbz-modal-body .bbz-table td:nth-child(5) { width: 44px; text-align: right; }
     }
 
     /* --- TABELLEN: Generelle Mobile-Sichtbarkeit --- */
