@@ -3772,7 +3772,7 @@
               </div>
             </td>
             <td class="bbz-desktop-only" style="font-size:11px;color:var(--subtle);">${helpers.escapeHtml(item.funktion||item.rolle||"—")}</td>
-            <td>${item.segment ? `<span class="${helpers.firmBadgeClass(item.segment)}">${helpers.escapeHtml(item.segment)}</span>` : '<span class="bbz-muted">—</span>'}</td>
+            <td>${item.segment ? `<span class="${helpers.firmBadgeClass(item.segment)}">${helpers.escapeHtml(item.segment.charAt(0))}</span>` : '<span class="bbz-muted">—</span>'}</td>
             <td class="bbz-desktop-only">${item.leadbbz ? helpers.leadbbzBadgeHtml(item.leadbbz) : '<span class="bbz-muted">—</span>'}</td>
             <td>
               <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:11px;padding:0 8px;color:var(--red);border-color:#f2b8ba;background:var(--red-soft);"
@@ -3796,43 +3796,28 @@
 
             <!-- Stats Bar -->
             <div style="display:flex;background:var(--dark);flex-shrink:0;overflow-x:auto;">
-              <div class="bbz-event-stat-bar" data-action="event-stat-filter" data-event-name="${helpers.escapeHtml(eventName)}" data-seg="">
-                <div class="bbz-event-stat-bar-label">Firmen</div>
-                <div class="bbz-event-stat-bar-value" style="color:#60a5fa;">${firmIds.size}</div>
-                <div class="bbz-event-stat-bar-hint">alle</div>
-              </div>
-              <div class="bbz-event-stat-bar" data-action="event-stat-filter" data-event-name="${helpers.escapeHtml(eventName)}" data-seg="">
-                <div class="bbz-event-stat-bar-label">Einladungen</div>
-                <div class="bbz-event-stat-bar-value" style="color:#fff;">${contacts.length}</div>
-                <div class="bbz-event-stat-bar-hint">alle</div>
-              </div>
-              <div class="bbz-event-stat-bar bbz-desktop-only" data-action="event-stat-filter" data-event-name="${helpers.escapeHtml(eventName)}" data-seg="A">
-                <div class="bbz-event-stat-bar-label">A-Kunden</div>
-                <div class="bbz-event-stat-bar-value" style="color:#60a5fa;">${cntA}</div>
-                <div class="bbz-event-stat-bar-hint">filtern</div>
-              </div>
-              <div class="bbz-event-stat-bar bbz-desktop-only" data-action="event-stat-filter" data-event-name="${helpers.escapeHtml(eventName)}" data-seg="B">
-                <div class="bbz-event-stat-bar-label">B-Kunden</div>
-                <div class="bbz-event-stat-bar-value" style="color:#fbbf24;">${cntB}</div>
-                <div class="bbz-event-stat-bar-hint">filtern</div>
-              </div>
-              <div class="bbz-event-stat-bar bbz-desktop-only" data-action="event-stat-filter" data-event-name="${helpers.escapeHtml(eventName)}" data-seg="C">
-                <div class="bbz-event-stat-bar-label">C-Kunden</div>
-                <div class="bbz-event-stat-bar-value" style="color:rgba(255,255,255,0.4);">${cntC}</div>
-                <div class="bbz-event-stat-bar-hint">filtern</div>
-              </div>
-              <div class="bbz-event-stat-bar">
-                <div class="bbz-event-stat-bar-label">Reichweite</div>
-                <div class="bbz-event-stat-bar-value" style="color:#22d98a;">${pct}%</div>
-                <div class="bbz-event-stat-bar-hint">gesamt</div>
-              </div>
+              ${[
+                { label:"Firmen",     value:firmIds.size,  color:"#60a5fa", hint:"alle",    seg:"",  always:true  },
+                { label:"Einladungen",value:contacts.length,color:"#fff",  hint:"alle",    seg:"",  always:true  },
+                { label:"A-Kunden",   value:cntA,          color:"#60a5fa", hint:"filtern", seg:"A", always:false },
+                { label:"B-Kunden",   value:cntB,          color:"#fbbf24", hint:"filtern", seg:"B", always:false },
+                { label:"C-Kunden",   value:cntC,          color:"rgba(255,255,255,0.38)", hint:"filtern", seg:"C", always:false },
+                { label:"Reichweite", value:pct+"%",       color:"#22d98a", hint:"gesamt",  seg:"",  always:true  }
+              ].map(s => `
+                <div style="flex:1;min-width:72px;padding:10px 12px;border-right:1px solid rgba(255,255,255,0.07);text-align:center;cursor:pointer;${!s.always ? "display:none;" : ""}"
+                  class="${s.always ? "" : "bbz-desktop-only-flex"}"
+                  data-action="event-stat-filter" data-event-name="${helpers.escapeHtml(eventName)}" data-seg="${s.seg}">
+                  <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:0.09em;margin-bottom:3px;white-space:nowrap;">${s.label}</div>
+                  <div style="font-size:17px;font-weight:700;letter-spacing:-0.04em;color:${s.color};">${s.value}</div>
+                  <div style="font-size:9px;color:rgba(255,255,255,0.18);margin-top:2px;">${s.hint}</div>
+                </div>`).join("")}
             </div>
 
             <!-- Filter -->
-            <div style="display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line-2);flex-shrink:0;flex-wrap:wrap;">
-              <input class="bbz-input" style="flex:1;min-width:120px;height:30px;" data-filter="event-einladung-search"
+            <div style="display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line-2);flex-shrink:0;align-items:center;">
+              <input class="bbz-input" style="flex:1;min-width:0;height:30px;" data-filter="event-einladung-search"
                 type="text" placeholder="Name oder Firma …" value="${helpers.escapeHtml(filterSearch)}" />
-              <select class="bbz-select" style="height:30px;" data-filter="event-einladung-seg">
+              <select class="bbz-select" style="height:30px;flex-shrink:0;width:130px;" data-filter="event-einladung-seg">
                 <option value="" ${!filterSeg ? "selected" : ""}>— Segment —</option>
                 <option value="A" ${filterSeg==="A" ? "selected" : ""}>A</option>
                 <option value="B" ${filterSeg==="B" ? "selected" : ""}>B</option>
