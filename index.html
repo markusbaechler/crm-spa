@@ -509,30 +509,6 @@
         flex-wrap: wrap;
       }
 
-      /* Event-spezifische Desktop/Mobile-Helfer */
-      .bbz-desktop-only-flex { display:none !important; }
-      @media (min-width: 768px) { .bbz-desktop-only-flex { display:block !important; } }
-
-      /* Event Dashboard Kacheln */
-      .bbz-event-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-xl); padding: 16px; box-shadow: var(--shadow-sm); transition: box-shadow 0.15s, border-color 0.15s; }
-      .bbz-event-card:hover { box-shadow: var(--shadow); border-color: #c2d8ee; }
-      .bbz-event-stat { background: var(--panel-2); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 8px 10px; }
-      .bbz-event-stat-label { font-size: 9px; font-weight: 700; color: var(--subtle); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 2px; }
-      .bbz-event-stat-value { font-size: 20px; font-weight: 700; letter-spacing: -0.04em; }
-
-      /* Event Stats-Bar im Modal */
-      .bbz-event-stat-bar { flex: 1; min-width: 70px; padding: 10px 12px; border-right: 1px solid rgba(255,255,255,0.07); text-align: center; cursor: pointer; transition: background 0.15s; position: relative; }
-      .bbz-event-stat-bar:last-child { border-right: none; }
-      .bbz-event-stat-bar:hover { background: rgba(255,255,255,0.06); }
-      .bbz-event-stat-bar-label { font-size: 9px; font-weight: 700; color: rgba(255,255,255,0.25); text-transform: uppercase; letter-spacing: 0.09em; margin-bottom: 2px; white-space: nowrap; }
-      .bbz-event-stat-bar-value { font-size: 17px; font-weight: 700; letter-spacing: -0.04em; }
-      .bbz-event-stat-bar-hint { font-size: 9px; color: rgba(255,255,255,0.18); margin-top: 2px; }
-
-      /* Event Nachbearbeitung: Checkbox-Button */
-      .bbz-event-check-btn { width: 30px; height: 30px; border-radius: var(--r-sm); border: 2px solid var(--line); background: var(--panel); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 16px; color: transparent; transition: all 0.15s; flex-shrink: 0; font-family: inherit; }
-      .bbz-event-check-btn:hover { border-color: #a8dbb8; background: #edf7f1; color: #b2d8c0; }
-      .bbz-event-check-btn.checked { border-color: var(--green); background: #edf7f1; color: var(--green); }
-
       /* Events: kompakte Card-Darstellung */
       .bbz-event-group-card {
         border: 1px solid var(--line);
@@ -805,6 +781,18 @@
     .bbz-animate-up-2 { animation: bbz-up 0.35s ease 0.10s both; }
     .bbz-animate-up-3 { animation: bbz-up 0.35s ease 0.15s both; }
     .bbz-animate-up-4 { animation: bbz-up 0.35s ease 0.20s both; }
+
+    /* ── Event Dashboard & Modal ───────────────────────────── */
+    .bbz-desktop-only-flex { display: none !important; }
+    @media (min-width: 768px) { .bbz-desktop-only-flex { display: block !important; } }
+    .bbz-event-card { background: var(--panel); border: 1px solid #d0dcea; border-radius: var(--r-xl); padding: 16px; box-shadow: 0 2px 8px rgba(0,64,120,0.09); transition: box-shadow 0.15s, border-color 0.15s; }
+    .bbz-event-card:hover { box-shadow: var(--shadow); border-color: #c2d8ee; }
+    .bbz-event-stat { background: var(--panel-2); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 8px 10px; }
+    .bbz-event-stat-label { font-size: 9px; font-weight: 700; color: var(--subtle); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 2px; }
+    .bbz-event-stat-value { font-size: 20px; font-weight: 700; letter-spacing: -0.04em; }
+    .bbz-event-check-btn { width: 30px; height: 30px; border-radius: var(--r-sm); border: 2px solid var(--line); background: var(--panel); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 16px; color: transparent; transition: all 0.15s; flex-shrink: 0; font-family: inherit; }
+    .bbz-event-check-btn:hover { border-color: #a8dbb8; background: #edf7f1; color: #b2d8c0; }
+    .bbz-event-check-btn.checked { border-color: var(--green); background: #edf7f1; color: var(--green); }
   </style>
 </head>
 <body>
