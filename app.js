@@ -3761,8 +3761,8 @@
       const rowsHtml = filtered.length ? filtered.map(item => {
         const av = helpers.avatarHtml({ vorname: (item.contactName||"").split(" ")[0]||"", nachname: (item.contactName||"").split(" ").slice(-1)[0]||"" });
         return `
-          <tr style="vertical-align:middle;">
-            <td style="vertical-align:middle;padding:10px 14px;">
+          <tr>
+            <td>
               <div style="display:flex;align-items:center;gap:10px;">
                 ${av}
                 <div style="min-width:0;">
@@ -3771,10 +3771,10 @@
                 </div>
               </div>
             </td>
-            <td class="bbz-desktop-only" style="vertical-align:middle;padding:10px 14px;font-size:12px;color:var(--subtle);">${helpers.escapeHtml(item.funktion||item.rolle||"—")}</td>
-            <td style="vertical-align:middle;padding:10px 14px;">${item.segment ? `<span class="${helpers.firmBadgeClass(item.segment)}">${helpers.escapeHtml(item.segment.charAt(0))}</span>` : '<span class="bbz-muted">—</span>'}</td>
-            <td class="bbz-desktop-only" style="vertical-align:middle;padding:10px 14px;">${item.leadbbz ? helpers.leadbbzBadgeHtml(item.leadbbz) : '<span class="bbz-muted">—</span>'}</td>
-            <td style="vertical-align:middle;padding:10px 14px;text-align:right;">
+            <td class="bbz-desktop-only" style="font-size:12px;color:var(--subtle);">${helpers.escapeHtml(item.funktion||item.rolle||"—")}</td>
+            <td>${item.segment ? `<span class="${helpers.firmBadgeClass(item.segment)}">${helpers.escapeHtml(item.segment.charAt(0))}</span>` : '<span class="bbz-muted">—</span>'}</td>
+            <td class="bbz-desktop-only">${item.leadbbz ? helpers.leadbbzBadgeHtml(item.leadbbz) : '<span class="bbz-muted">—</span>'}</td>
+            <td style="text-align:right;">
               <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:11px;padding:0 8px;color:var(--red);border-color:#f2b8ba;background:var(--red-soft);"
                 data-action="event-remove-contact" data-event-name="${helpers.escapeHtml(eventName)}" data-contact-id="${item.contactId}">✕</button>
             </td>
@@ -3889,12 +3889,12 @@
           .filter(Boolean)
           .map(h => `<span class="bbz-pill" style="font-size:10px;background:#edf7f1;color:var(--green);border:1px solid #a8dbb8;margin-right:2px;">${helpers.escapeHtml(h)}</span>`).join("");
         return `
-          <tr style="vertical-align:middle;${isChecked ? "background:#f0fdf4;" : ""}">
-            <td style="vertical-align:middle;padding:10px 14px;text-align:center;width:40px;">
+          <tr style="${isChecked ? "background:#f0fdf4;" : ""}">
+            <td style="text-align:center;width:40px;">
               <button class="bbz-event-check-btn ${isChecked ? "checked" : ""}"
                 data-action="event-nb-toggle" data-contact-id="${item.contactId}">✓</button>
             </td>
-            <td style="vertical-align:middle;padding:10px 14px;">
+            <td>
               <div style="display:flex;align-items:center;gap:10px;">
                 ${av}
                 <div style="min-width:0;">
@@ -3903,9 +3903,9 @@
                 </div>
               </div>
             </td>
-            <td class="bbz-desktop-only" style="vertical-align:middle;padding:10px 14px;font-size:12px;color:var(--subtle);">${helpers.escapeHtml(item.funktion||item.rolle||"—")}</td>
-            <td style="vertical-align:middle;padding:10px 14px;">${item.segment ? `<span class="${helpers.firmBadgeClass(item.segment)}">${helpers.escapeHtml(item.segment)}</span>` : '<span class="bbz-muted">—</span>'}</td>
-            <td class="bbz-desktop-only" style="vertical-align:middle;padding:10px 14px;">${histBadges || '<span class="bbz-muted">—</span>'}</td>
+            <td class="bbz-desktop-only" style="font-size:12px;color:var(--subtle);">${helpers.escapeHtml(item.funktion||item.rolle||"—")}</td>
+            <td>${item.segment ? `<span class="${helpers.firmBadgeClass(item.segment)}">${helpers.escapeHtml(item.segment)}</span>` : '<span class="bbz-muted">—</span>'}</td>
+            <td class="bbz-desktop-only">${histBadges || '<span class="bbz-muted">—</span>'}</td>
           </tr>`;
       }).join("") || `<tr><td colspan="5">${ui.emptyBlock("Keine Kontakte gefunden.")}</td></tr>`;
 
