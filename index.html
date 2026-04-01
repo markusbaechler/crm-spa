@@ -509,6 +509,10 @@
         flex-wrap: wrap;
       }
 
+      /* Event-spezifische Desktop/Mobile-Helfer */
+      .bbz-desktop-only-flex { display:none !important; }
+      @media (min-width: 768px) { .bbz-desktop-only-flex { display:block !important; } }
+
       /* Event Dashboard Kacheln */
       .bbz-event-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-xl); padding: 16px; box-shadow: var(--shadow-sm); transition: box-shadow 0.15s, border-color 0.15s; }
       .bbz-event-card:hover { box-shadow: var(--shadow); border-color: #c2d8ee; }
