@@ -3762,19 +3762,19 @@
         const av = helpers.avatarHtml({ vorname: (item.contactName||"").split(" ")[0]||"", nachname: (item.contactName||"").split(" ").slice(-1)[0]||"" });
         return `
           <tr>
-            <td>
+            <td style="min-width:180px;max-width:260px;">
               <div style="display:flex;align-items:center;gap:10px;">
                 ${av}
-                <div style="min-width:0;">
-                  <div style="font-weight:600;font-size:13px;line-height:1.35;">${helpers.escapeHtml(item.contactName)}</div>
-                  <div style="font-size:11px;color:var(--muted);line-height:1.35;margin-top:1px;">${helpers.escapeHtml(item.firmTitle||"—")}</div>
+                <div style="min-width:0;overflow:hidden;">
+                  <div style="font-weight:600;font-size:13px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${helpers.escapeHtml(item.contactName)}</div>
+                  <div style="font-size:11px;color:var(--muted);line-height:1.35;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${helpers.escapeHtml(item.firmTitle||"—")}</div>
                 </div>
               </div>
             </td>
-            <td class="bbz-desktop-only" style="font-size:12px;color:var(--subtle);">${helpers.escapeHtml(item.funktion||item.rolle||"—")}</td>
-            <td>${item.segment ? `<span class="${helpers.firmBadgeClass(item.segment)}">${helpers.escapeHtml(item.segment.charAt(0))}</span>` : '<span class="bbz-muted">—</span>'}</td>
-            <td class="bbz-desktop-only">${item.leadbbz ? helpers.leadbbzBadgeHtml(item.leadbbz) : '<span class="bbz-muted">—</span>'}</td>
-            <td style="text-align:right;">
+            <td class="bbz-desktop-only" style="font-size:12px;color:var(--subtle);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${helpers.escapeHtml(item.funktion||item.rolle||"—")}</td>
+            <td style="white-space:nowrap;">${item.segment ? `<span class="${helpers.firmBadgeClass(item.segment)}">${helpers.escapeHtml(item.segment.charAt(0))}</span>` : '<span class="bbz-muted">—</span>'}</td>
+            <td class="bbz-desktop-only" style="white-space:nowrap;">${item.leadbbz ? helpers.leadbbzBadgeHtml(item.leadbbz) : '<span class="bbz-muted">—</span>'}</td>
+            <td style="text-align:right;white-space:nowrap;">
               <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:11px;padding:0 8px;color:var(--red);border-color:#f2b8ba;background:var(--red-soft);"
                 data-action="event-remove-contact" data-event-name="${helpers.escapeHtml(eventName)}" data-contact-id="${item.contactId}">✕</button>
             </td>
@@ -3890,22 +3890,22 @@
           .map(h => `<span class="bbz-pill" style="font-size:10px;background:#edf7f1;color:var(--green);border:1px solid #a8dbb8;margin-right:2px;">${helpers.escapeHtml(h)}</span>`).join("");
         return `
           <tr style="${isChecked ? "background:#f0fdf4;" : ""}">
-            <td style="text-align:center;width:40px;">
+            <td style="text-align:center;width:40px;white-space:nowrap;">
               <button class="bbz-event-check-btn ${isChecked ? "checked" : ""}"
                 data-action="event-nb-toggle" data-contact-id="${item.contactId}">✓</button>
             </td>
-            <td>
+            <td style="min-width:180px;max-width:260px;">
               <div style="display:flex;align-items:center;gap:10px;">
                 ${av}
-                <div style="min-width:0;">
-                  <div style="font-weight:600;font-size:13px;line-height:1.35;">${helpers.escapeHtml(item.contactName)}</div>
-                  <div style="font-size:11px;color:var(--muted);line-height:1.35;margin-top:1px;">${helpers.escapeHtml(item.firmTitle||"—")}</div>
+                <div style="min-width:0;overflow:hidden;">
+                  <div style="font-weight:600;font-size:13px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${helpers.escapeHtml(item.contactName)}</div>
+                  <div style="font-size:11px;color:var(--muted);line-height:1.35;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${helpers.escapeHtml(item.firmTitle||"—")}</div>
                 </div>
               </div>
             </td>
-            <td class="bbz-desktop-only" style="font-size:12px;color:var(--subtle);">${helpers.escapeHtml(item.funktion||item.rolle||"—")}</td>
-            <td>${item.segment ? `<span class="${helpers.firmBadgeClass(item.segment)}">${helpers.escapeHtml(item.segment)}</span>` : '<span class="bbz-muted">—</span>'}</td>
-            <td class="bbz-desktop-only">${histBadges || '<span class="bbz-muted">—</span>'}</td>
+            <td class="bbz-desktop-only" style="font-size:12px;color:var(--subtle);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${helpers.escapeHtml(item.funktion||item.rolle||"—")}</td>
+            <td style="white-space:nowrap;">${item.segment ? `<span class="${helpers.firmBadgeClass(item.segment)}">${helpers.escapeHtml(item.segment)}</span>` : '<span class="bbz-muted">—</span>'}</td>
+            <td class="bbz-desktop-only" style="white-space:nowrap;">${histBadges || '<span class="bbz-muted">—</span>'}</td>
           </tr>`;
       }).join("") || `<tr><td colspan="5">${ui.emptyBlock("Keine Kontakte gefunden.")}</td></tr>`;
 
