@@ -3727,7 +3727,7 @@
 
       return `
         <div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-bottom:20px;">
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;">
             ${cardHtml || ui.emptyBlock("Keine Events vorhanden.")}
           </div>
         </div>
