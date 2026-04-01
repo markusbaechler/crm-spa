@@ -3761,20 +3761,20 @@
       const rowsHtml = filtered.length ? filtered.map(item => {
         const av = helpers.avatarHtml({ vorname: (item.contactName||"").split(" ")[0]||"", nachname: (item.contactName||"").split(" ").slice(-1)[0]||"" });
         return `
-          <tr>
-            <td>
+          <tr style="vertical-align:middle;">
+            <td style="vertical-align:middle;padding:10px 14px;">
               <div style="display:flex;align-items:center;gap:10px;">
                 ${av}
                 <div style="min-width:0;">
-                  <div style="font-weight:600;font-size:13px;line-height:1.3;">${helpers.escapeHtml(item.contactName)}</div>
-                  <div style="font-size:11px;color:var(--muted);line-height:1.3;">${helpers.escapeHtml(item.firmTitle||"—")}</div>
+                  <div style="font-weight:600;font-size:13px;line-height:1.35;">${helpers.escapeHtml(item.contactName)}</div>
+                  <div style="font-size:11px;color:var(--muted);line-height:1.35;margin-top:1px;">${helpers.escapeHtml(item.firmTitle||"—")}</div>
                 </div>
               </div>
             </td>
-            <td class="bbz-desktop-only" style="font-size:11px;color:var(--subtle);">${helpers.escapeHtml(item.funktion||item.rolle||"—")}</td>
-            <td>${item.segment ? `<span class="${helpers.firmBadgeClass(item.segment)}">${helpers.escapeHtml(item.segment.charAt(0))}</span>` : '<span class="bbz-muted">—</span>'}</td>
-            <td class="bbz-desktop-only">${item.leadbbz ? helpers.leadbbzBadgeHtml(item.leadbbz) : '<span class="bbz-muted">—</span>'}</td>
-            <td>
+            <td class="bbz-desktop-only" style="vertical-align:middle;padding:10px 14px;font-size:12px;color:var(--subtle);">${helpers.escapeHtml(item.funktion||item.rolle||"—")}</td>
+            <td style="vertical-align:middle;padding:10px 14px;">${item.segment ? `<span class="${helpers.firmBadgeClass(item.segment)}">${helpers.escapeHtml(item.segment.charAt(0))}</span>` : '<span class="bbz-muted">—</span>'}</td>
+            <td class="bbz-desktop-only" style="vertical-align:middle;padding:10px 14px;">${item.leadbbz ? helpers.leadbbzBadgeHtml(item.leadbbz) : '<span class="bbz-muted">—</span>'}</td>
+            <td style="vertical-align:middle;padding:10px 14px;text-align:right;">
               <button class="bbz-button bbz-button-secondary" style="height:26px;font-size:11px;padding:0 8px;color:var(--red);border-color:#f2b8ba;background:var(--red-soft);"
                 data-action="event-remove-contact" data-event-name="${helpers.escapeHtml(eventName)}" data-contact-id="${item.contactId}">✕</button>
             </td>
@@ -3795,7 +3795,7 @@
             </div>
 
             <!-- Stats Bar -->
-            <div style="display:flex;background:var(--dark);flex-shrink:0;overflow-x:auto;">
+            <div style="display:flex;background:#0d1f35;flex-shrink:0;overflow-x:auto;">
               ${[
                 { label:"Firmen",     value:firmIds.size,  color:"#60a5fa", hint:"alle",    seg:"",  always:true  },
                 { label:"Einladungen",value:contacts.length,color:"#fff",  hint:"alle",    seg:"",  always:true  },
@@ -3889,23 +3889,23 @@
           .filter(Boolean)
           .map(h => `<span class="bbz-pill" style="font-size:10px;background:#edf7f1;color:var(--green);border:1px solid #a8dbb8;margin-right:2px;">${helpers.escapeHtml(h)}</span>`).join("");
         return `
-          <tr style="${isChecked ? "background:#f0fdf4;" : ""}">
-            <td style="text-align:center;">
+          <tr style="vertical-align:middle;${isChecked ? "background:#f0fdf4;" : ""}">
+            <td style="vertical-align:middle;padding:10px 14px;text-align:center;width:40px;">
               <button class="bbz-event-check-btn ${isChecked ? "checked" : ""}"
                 data-action="event-nb-toggle" data-contact-id="${item.contactId}">✓</button>
             </td>
-            <td>
-              <div style="display:flex;align-items:center;">
+            <td style="vertical-align:middle;padding:10px 14px;">
+              <div style="display:flex;align-items:center;gap:10px;">
                 ${av}
-                <div>
-                  <div style="font-weight:600;font-size:13px;">${helpers.escapeHtml(item.contactName)}</div>
-                  <div style="font-size:11px;color:var(--muted);">${helpers.escapeHtml(item.firmTitle||"—")}</div>
+                <div style="min-width:0;">
+                  <div style="font-weight:600;font-size:13px;line-height:1.35;">${helpers.escapeHtml(item.contactName)}</div>
+                  <div style="font-size:11px;color:var(--muted);line-height:1.35;margin-top:1px;">${helpers.escapeHtml(item.firmTitle||"—")}</div>
                 </div>
               </div>
             </td>
-            <td class="bbz-desktop-only" style="font-size:11px;color:var(--subtle);">${helpers.escapeHtml(item.funktion||item.rolle||"—")}</td>
-            <td>${item.segment ? `<span class="${helpers.firmBadgeClass(item.segment)}">${helpers.escapeHtml(item.segment)}</span>` : '<span class="bbz-muted">—</span>'}</td>
-            <td class="bbz-desktop-only">${histBadges || '<span class="bbz-muted">—</span>'}</td>
+            <td class="bbz-desktop-only" style="vertical-align:middle;padding:10px 14px;font-size:12px;color:var(--subtle);">${helpers.escapeHtml(item.funktion||item.rolle||"—")}</td>
+            <td style="vertical-align:middle;padding:10px 14px;">${item.segment ? `<span class="${helpers.firmBadgeClass(item.segment)}">${helpers.escapeHtml(item.segment)}</span>` : '<span class="bbz-muted">—</span>'}</td>
+            <td class="bbz-desktop-only" style="vertical-align:middle;padding:10px 14px;">${histBadges || '<span class="bbz-muted">—</span>'}</td>
           </tr>`;
       }).join("") || `<tr><td colspan="5">${ui.emptyBlock("Keine Kontakte gefunden.")}</td></tr>`;
 
@@ -3927,7 +3927,7 @@
             </div>
 
             <!-- Stats Bar -->
-            <div style="display:flex;background:var(--dark);flex-shrink:0;overflow-x:auto;">
+            <div style="display:flex;background:#0d1f35;flex-shrink:0;overflow-x:auto;">
               <div class="bbz-event-stat-bar">
                 <div class="bbz-event-stat-bar-label">Firmen</div>
                 <div class="bbz-event-stat-bar-value" style="color:#60a5fa;">${firmIds.size}</div>
