@@ -969,7 +969,13 @@
       const currentSearch = window.location.search;
       const isMsalRedirect = currentHash.includes("code=") || currentHash.includes("error=") || currentHash.includes("state=")
                           || currentSearch.includes("code=") || currentSearch.includes("error=") || currentSearch.includes("state=");
-      if (!isMsalRedirect) {
+      // Bekannte App-Routen aus dem Hash lesen — verhindert Ueberschreiben von #admin etc.
+      const knownRoutes = ["firms","contacts","planning","history","events","birthdays","admin"];
+      const hashRoute = currentHash.replace("#", "").split("-")[0];
+      if (!isMsalRedirect && knownRoutes.includes(hashRoute)) {
+        state.filters.route = hashRoute;
+        history.replaceState({ route: hashRoute, firmId: null, contactId: null }, "", currentHash);
+      } else if (!isMsalRedirect) {
         history.replaceState(
           { route: state.filters.route, firmId: null, contactId: null },
           "",
