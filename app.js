@@ -491,6 +491,14 @@
       if (this.els.btnLogin) this.els.btnLogin.addEventListener("click", () => controller.handleLogin());
       if (this.els.btnRefresh) this.els.btnRefresh.addEventListener("click", () => controller.handleRefresh());
 
+      // Admin-Panel: Doppelklick auf den Auth-Status-Bereich (unsichtbar für normale User)
+      if (this.els.authStatus) {
+        this.els.authStatus.addEventListener("dblclick", () => {
+          controller.navigate("admin");
+        });
+        this.els.authStatus.title = "";  // kein Tooltip-Hinweis
+      }
+
       this.els.navButtons.forEach(btn => {
         btn.addEventListener("click", () => controller.navigate(btn.dataset.route));
       });
@@ -1340,7 +1348,13 @@
 
     async getListItems(listTitle) {
       const siteId = await this.getSiteId();
-      const data = await this.graphRequest(`/sites/${siteId}/lists/${encodeURIComponent(listTitle)}/items?expand=fields&top=5000`);
+      // Wichtig: expand=fields UND fields=createdBy,lastModifiedBy,createdDateTime,lastModifiedDateTime
+      // liefert SP-Metadaten auf Item-Ebene (nicht in fields{}) — nötig für Admin-Auswertungen
+      const url = `/sites/${siteId}/lists/${encodeURIComponent(listTitle)}/items`
+        + `?expand=fields`
+        + `&$select=id,createdDateTime,lastModifiedDateTime,createdBy,lastModifiedBy,fields`
+        + `&top=5000`;
+      const data = await this.graphRequest(url);
       return data.value || [];
     },
 
@@ -1466,6 +1480,8 @@
         eventhistory: helpers.normalizeChoiceList(this.getField(item, f.eventhistory)),
         archiviert: helpers.bool(this.getField(item, f.archiviert)),
         // SP-Metadaten (Datenqualität) — direkt am Item-Objekt, nicht in fields
+        spCreated: item?.createdDateTime || "",
+        spCreatedBy: item?.createdBy?.user?.displayName || "",
         spModified: item?.lastModifiedDateTime || "",
         spModifiedBy: item?.lastModifiedBy?.user?.displayName || ""
       };
@@ -1482,7 +1498,12 @@
         typ: this.getField(item, f.typ) || "",
         notizen: this.getField(item, f.notizen) || "",
         projektbezug: this.getField(item, f.projektbezug) || "",
-        leadbbz: this.getField(item, f.leadbbz) || ""
+        leadbbz: this.getField(item, f.leadbbz) || "",
+        // SP-Metadaten für Admin-Auswertungen
+        spCreated: item?.createdDateTime || "",
+        spCreatedBy: item?.createdBy?.user?.displayName || "",
+        spModified: item?.lastModifiedDateTime || "",
+        spModifiedBy: item?.lastModifiedBy?.user?.displayName || ""
       };
     },
 
@@ -1495,7 +1516,12 @@
         kontaktLookupId: Number(this.getField(item, f.kontaktLookupId)) || null,
         deadline: this.getField(item, f.deadline) || "",
         status: this.getField(item, f.status) || "",
-        leadbbz: this.getField(item, f.leadbbz) || ""
+        leadbbz: this.getField(item, f.leadbbz) || "",
+        // SP-Metadaten für Admin-Auswertungen
+        spCreated: item?.createdDateTime || "",
+        spCreatedBy: item?.createdBy?.user?.displayName || "",
+        spModified: item?.lastModifiedDateTime || "",
+        spModifiedBy: item?.lastModifiedBy?.user?.displayName || ""
       };
     }
   };
@@ -1630,6 +1656,7 @@
         case "history": viewHtml = this.historyView(); break;
         case "events": viewHtml = this.events(); break;
         case "birthdays": viewHtml = this.birthdayView(); break;
+        case "admin": viewHtml = this.adminPanel(); break;
         default: viewHtml = this.firms();
       }
 
@@ -2187,6 +2214,262 @@
         </div>
       `;
     },
+
+    // ── ADMIN PANEL ─────────────────────────────────────────────────────────
+    // Zugang: URL-Hash #admin oder Klick auf Versions-Badge im Auth-Bereich
+    // Nicht in der Navigation sichtbar — nur für Administratoren gedacht
+    adminPanel() {
+      if (!state.auth.isAuthenticated) {
+        return `<section class="bbz-section"><div class="bbz-section-body"><div class="bbz-empty">Bitte zuerst anmelden.</div></div></section>`;
+      }
+
+      const contacts  = state.enriched.contacts;
+      const history   = state.enriched.history;
+      const tasks     = state.enriched.tasks;
+      const now       = new Date();
+
+      // ── Hilfsfunktion: User-Statistiken aus einem Array berechnen ────────
+      const userStats = (items, nameField = "spCreatedBy") => {
+        const map = new Map();
+        for (const item of items) {
+          const user = item[nameField] || "Unbekannt";
+          if (!map.has(user)) map.set(user, { count: 0, latest: "" });
+          const entry = map.get(user);
+          entry.count++;
+          const ts = item.spCreated || item.spModified || "";
+          if (ts && (!entry.latest || ts > entry.latest)) entry.latest = ts;
+        }
+        return [...map.entries()]
+          .map(([name, d]) => ({ name, count: d.count, latest: d.latest }))
+          .sort((a, b) => b.count - a.count);
+      };
+
+      // ── 1. Kontakterfassungen pro User ───────────────────────────────────
+      const contactCreations = userStats(contacts, "spCreatedBy");
+      const contactMutations = userStats(contacts, "spModifiedBy");
+
+      // ── 2. Aktivitätenerfassungen (History) pro User ─────────────────────
+      const historyCreations = userStats(history, "spCreatedBy");
+
+      // ── 3. Aufgabenerfassungen pro User ──────────────────────────────────
+      const taskCreations = userStats(tasks, "spCreatedBy");
+
+      // ── 4. Datenqualität: Kontakte mit fehlenden Pflichtfeldern ──────────
+      const activeContacts = contacts.filter(c => !c.archiviert);
+      const missingEmail   = activeContacts.filter(c => !c.email1 && !c.email2);
+      const missingPhone   = activeContacts.filter(c => !c.direktwahl && !c.mobile);
+      const missingFunktion = activeContacts.filter(c => !c.funktion);
+      const missingLeadbbz = activeContacts.filter(c => !c.leadbbz0);
+      const missingSgf     = activeContacts.filter(c => !c.sgf || c.sgf.length === 0);
+
+      // ── 5. Letzte Aktivität pro User (History-Datum, nicht SP-Datum) ─────
+      const activityByUser = new Map();
+      for (const h of history) {
+        const user = h.spCreatedBy || "Unbekannt";
+        if (!activityByUser.has(user)) activityByUser.set(user, { count: 0, latest: "" });
+        const e = activityByUser.get(user);
+        e.count++;
+        if (h.datum && (!e.latest || h.datum > e.latest)) e.latest = h.datum;
+      }
+      const activityStats = [...activityByUser.entries()]
+        .map(([name, d]) => ({ name, count: d.count, latest: d.latest }))
+        .sort((a, b) => b.count - a.count);
+
+      // ── 6. Letzte 30 Erfassungen / Mutationen (Kontakte) ─────────────────
+      const recentContacts = [...contacts]
+        .filter(c => c.spCreated)
+        .sort((a, b) => (b.spCreated > a.spCreated ? 1 : -1))
+        .slice(0, 30);
+      const recentMutations = [...contacts]
+        .filter(c => c.spModified && c.spModified !== c.spCreated)
+        .sort((a, b) => (b.spModified > a.spModified ? 1 : -1))
+        .slice(0, 20);
+
+      // ── 7. Letzte 30 History-Einträge (Aktivitäten) ──────────────────────
+      const recentHistory = [...history]
+        .filter(h => h.spCreated)
+        .sort((a, b) => (b.spCreated > a.spCreated ? 1 : -1))
+        .slice(0, 30);
+
+      // ── 8. Letzte 20 Tasks ───────────────────────────────────────────────
+      const recentTasks = [...tasks]
+        .filter(t => t.spCreated)
+        .sort((a, b) => (b.spCreated > a.spCreated ? 1 : -1))
+        .slice(0, 20);
+
+      // ── Render-Helfer ────────────────────────────────────────────────────
+      const adminTable = (headers, rows, emptyText = "Keine Daten.") => {
+        if (!rows.length) return `<div class="bbz-empty">${emptyText}</div>`;
+        return `
+          <div class="bbz-table-wrap" style="display:block;overflow-x:auto;">
+            <table class="bbz-table" style="width:100%;font-size:12px;">
+              <thead><tr>${headers.map(h => `<th style="text-align:left;padding:6px 10px;background:var(--panel-2);border-bottom:1px solid var(--line);font-weight:600;white-space:nowrap;">${helpers.escapeHtml(h)}</th>`).join("")}</tr></thead>
+              <tbody>${rows.map((cells, i) => `<tr style="background:${i%2===0?"var(--panel)":"var(--panel-2)"};">${cells.map(c => `<td style="padding:5px 10px;border-bottom:1px solid var(--line-2);white-space:nowrap;">${c}</td>`).join("")}</tr>`).join("")}</tbody>
+            </table>
+          </div>`;
+      };
+
+      const dqRow = (label, items, fieldHint) => {
+        const pct = activeContacts.length > 0 ? Math.round((items.length / activeContacts.length) * 100) : 0;
+        const color = pct === 0 ? "var(--green)" : pct < 20 ? "var(--amber)" : "var(--red)";
+        return `
+          <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line-2);">
+            <div style="flex:1;font-size:13px;">${helpers.escapeHtml(label)}</div>
+            <div style="font-size:11px;color:var(--muted);">${helpers.escapeHtml(fieldHint)}</div>
+            <div style="font-weight:700;color:${color};min-width:32px;text-align:right;">${items.length}</div>
+            <div style="font-size:11px;color:var(--muted);min-width:36px;text-align:right;">${pct}%</div>
+          </div>`;
+      };
+
+      const sec = (title, subtitle, body) => `
+        <section class="bbz-section" style="margin-bottom:12px;">
+          <div class="bbz-section-header">
+            <div>
+              <div class="bbz-section-title">${helpers.escapeHtml(title)}</div>
+              ${subtitle ? `<div class="bbz-section-subtitle">${helpers.escapeHtml(subtitle)}</div>` : ""}
+            </div>
+          </div>
+          <div class="bbz-section-body" style="padding:10px 14px 12px;">${body}</div>
+        </section>`;
+
+      return `
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+            <div>
+              <div style="font-size:16px;font-weight:700;color:var(--blue);">⚙ Admin-Panel</div>
+              <div style="font-size:11px;color:var(--muted);">Nutzungsstatistiken · Datenqualität · Aktivitäten — nur für Administratoren</div>
+            </div>
+            <button class="bbz-button bbz-button-secondary" data-action="kpi-filter" data-scope="navigate" data-value="firms">← Zurück</button>
+          </div>
+
+          <div class="bbz-kpis" style="margin-bottom:12px;">
+            ${this.kpiBlock("Firmen", state.enriched.firms.length, "")}
+            ${this.kpiBlock("Kontakte (aktiv)", activeContacts.length, `${contacts.filter(c=>c.archiviert).length} archiviert`)}
+            ${this.kpiBlock("Aktivitäten", history.length, "")}
+            ${this.kpiBlock("Aufgaben", tasks.length, `${tasks.filter(t=>t.isOpen).length} offen`)}
+          </div>
+
+          ${sec("Kontakterfassungen pro User", `${contacts.length} Kontakte total`,
+            adminTable(
+              ["User", "Erfassungen", "Letzte Erfassung"],
+              contactCreations.map(u => [
+                helpers.escapeHtml(u.name),
+                String(u.count),
+                u.latest ? helpers.formatDateTime(u.latest) : "—"
+              ])
+            )
+          )}
+
+          ${sec("Kontaktmutationen pro User", "Letzte Änderung pro User (inkl. eigene Erfassungen)",
+            adminTable(
+              ["User", "Mutationen", "Letzte Mutation"],
+              contactMutations.map(u => [
+                helpers.escapeHtml(u.name),
+                String(u.count),
+                u.latest ? helpers.formatDateTime(u.latest) : "—"
+              ])
+            )
+          )}
+
+          ${sec("Aktivitäten pro User", `${history.length} History-Einträge — erfasst via SP-Metadaten`,
+            adminTable(
+              ["User", "Aktivitäten erfasst", "Letzte Erfassung"],
+              historyCreations.map(u => [
+                helpers.escapeHtml(u.name),
+                String(u.count),
+                u.latest ? helpers.formatDateTime(u.latest) : "—"
+              ])
+            )
+          )}
+
+          ${sec("Aktivitäten-Statistik (nach Datum-Feld)", "Ausgewertet nach dem Aktivitätsdatum im History-Eintrag",
+            adminTable(
+              ["User", "Aktivitäten", "Letztes Datum"],
+              activityStats.map(u => [
+                helpers.escapeHtml(u.name),
+                String(u.count),
+                u.latest ? helpers.formatDate(u.latest) : "—"
+              ])
+            )
+          )}
+
+          ${sec("Aufgaben pro User", `${tasks.length} Tasks total`,
+            adminTable(
+              ["User", "Aufgaben erfasst", "Letzte Erfassung"],
+              taskCreations.map(u => [
+                helpers.escapeHtml(u.name),
+                String(u.count),
+                u.latest ? helpers.formatDateTime(u.latest) : "—"
+              ])
+            )
+          )}
+
+          ${sec("Datenqualität — fehlende Felder", `Aktive Kontakte: ${activeContacts.length}`,
+            `<div style="margin-bottom:6px;font-size:11px;color:var(--muted);">Zeigt Anzahl aktiver Kontakte mit fehlendem Feld — 0 ist das Ziel.</div>
+            ${dqRow("Keine E-Mail-Adresse", missingEmail, "Email1 / Email2")}
+            ${dqRow("Keine Telefonnummer", missingPhone, "Direktwahl / Mobile")}
+            ${dqRow("Keine Funktion/Rolle", missingFunktion, "Funktion")}
+            ${dqRow("Kein Lead BBZ", missingLeadbbz, "Leadbbz0")}
+            ${dqRow("Kein SGF", missingSgf, "SGF (Multi-Choice)")}`
+          )}
+
+          ${sec("Letzte 30 Kontakterfassungen", "Neueste zuerst",
+            adminTable(
+              ["Kontakt", "Firma", "Erfasst von", "Datum"],
+              recentContacts.map(c => [
+                `<a class="bbz-link" data-action="open-contact" data-id="${c.id}">${helpers.escapeHtml(c.fullName || c.nachname)}</a>`,
+                helpers.escapeHtml(c.firmTitle || "—"),
+                helpers.escapeHtml(c.spCreatedBy || "—"),
+                c.spCreated ? helpers.formatDateTime(c.spCreated) : "—"
+              ])
+            )
+          )}
+
+          ${sec("Letzte 20 Kontaktmutationen", "Neueste zuerst — nur Items mit Mutation nach Erfassung",
+            adminTable(
+              ["Kontakt", "Firma", "Mutiert von", "Datum"],
+              recentMutations.map(c => [
+                `<a class="bbz-link" data-action="open-contact" data-id="${c.id}">${helpers.escapeHtml(c.fullName || c.nachname)}</a>`,
+                helpers.escapeHtml(c.firmTitle || "—"),
+                helpers.escapeHtml(c.spModifiedBy || "—"),
+                c.spModified ? helpers.formatDateTime(c.spModified) : "—"
+              ])
+            )
+          )}
+
+          ${sec("Letzte 30 Aktivitäten (History)", "Neueste zuerst — nach Erfassungszeitpunkt",
+            adminTable(
+              ["Titel", "Kontakt", "Typ", "Erfasst von", "Erfasst am"],
+              recentHistory.map(h => [
+                helpers.escapeHtml(h.title || "—"),
+                helpers.escapeHtml(h.contactName || "—"),
+                helpers.escapeHtml(h.typ || "—"),
+                helpers.escapeHtml(h.spCreatedBy || "—"),
+                h.spCreated ? helpers.formatDateTime(h.spCreated) : "—"
+              ])
+            )
+          )}
+
+          ${sec("Letzte 20 Aufgaben", "Neueste zuerst — nach Erfassungszeitpunkt",
+            adminTable(
+              ["Titel", "Kontakt", "Status", "Erfasst von", "Erfasst am"],
+              recentTasks.map(t => [
+                helpers.escapeHtml(t.title || "—"),
+                helpers.escapeHtml(t.contactName || "—"),
+                helpers.escapeHtml(t.status || "—"),
+                helpers.escapeHtml(t.spCreatedBy || "—"),
+                t.spCreated ? helpers.formatDateTime(t.spCreated) : "—"
+              ])
+            )
+          )}
+
+          <div style="font-size:11px;color:var(--muted);text-align:center;padding:12px 0 4px;">
+            bbz CRM Admin-Panel · Daten aus SharePoint · Stand: ${new Date().toLocaleString("de-CH")}
+          </div>
+        </div>
+      `;
+    },
+    // ── ENDE ADMIN PANEL ────────────────────────────────────────────────────
 
     firms() {
       const filters = state.filters.firms;
