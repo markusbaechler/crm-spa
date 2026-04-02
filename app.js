@@ -359,8 +359,8 @@
 
     // Geburtstage: gibt Kontakte mit Geburtstag in den nächsten `days` Tagen zurück
     // Jahresunabhängig — nur Monat und Tag werden verglichen
-    // Gibt Array zurück, sortiert nach nächstem Geburtstag (aufsteigend)
-    // Jeder Eintrag: { contact, daysUntil, nextBirthday (Date), age (number|null) }
+    // contacts-Parameter optional — wenn nicht gesetzt, alle nicht-archivierten Kontakte
+    // Rückgabe: [{ contact, daysUntil, nextBirthday (Date), age (number|null) }], aufsteigend sortiert
     upcomingBirthdays(days = 30, contacts = null) {
       const today = helpers.todayStart();
       const source = contacts || state.enriched.contacts.filter(c => !c.archiviert);
@@ -369,20 +369,16 @@
         if (!c.geburtstag) continue;
         const bDay = helpers.toDate(c.geburtstag);
         if (!bDay) continue;
-        // Nächsten Geburtstag im laufenden oder nächsten Jahr berechnen
         let next = new Date(today.getFullYear(), bDay.getMonth(), bDay.getDate());
         if (next < today) next = new Date(today.getFullYear() + 1, bDay.getMonth(), bDay.getDate());
         const daysUntil = Math.round((next - today) / 86400000);
         if (daysUntil > days) continue;
-        const age = next.getFullYear() > bDay.getFullYear()
-          ? next.getFullYear() - bDay.getFullYear()
-          : null;
+        const age = next.getFullYear() - bDay.getFullYear();
         result.push({ contact: c, daysUntil, nextBirthday: next, age });
       }
       return result.sort((a, b) => a.daysUntil - b.daysUntil);
     },
 
-    // Geburtstags-Label: "Heute", "Morgen", "In 3 Tagen", Datum ab 7 Tagen
     birthdayLabel(daysUntil, nextBirthday) {
       if (daysUntil === 0) return "Heute";
       if (daysUntil === 1) return "Morgen";
@@ -1633,6 +1629,7 @@
         case "planning": viewHtml = this.planning(); break;
         case "history": viewHtml = this.historyView(); break;
         case "events": viewHtml = this.events(); break;
+        case "birthdays": viewHtml = this.birthdayView(); break;
         default: viewHtml = this.firms();
       }
 
@@ -2087,6 +2084,110 @@
       `;
     },
 
+    birthdayView() {
+      const allActive   = state.enriched.contacts.filter(c => !c.archiviert);
+      const withBday    = allActive.filter(c => c.geburtstag);
+      const total       = allActive.length;
+      const covered     = withBday.length;
+      const pct         = total > 0 ? Math.round((covered / total) * 100) : 0;
+      const pctStyle    = pct >= 80 ? "color:var(--green);" : pct >= 50 ? "color:var(--amber);" : "color:var(--red);";
+
+      // Alle Geburtstage des Jahres sortiert nach Monat/Tag
+      const today = helpers.todayStart();
+      const allYearBdays = withBday.map(c => {
+        const bDay = helpers.toDate(c.geburtstag);
+        if (!bDay) return null;
+        let next = new Date(today.getFullYear(), bDay.getMonth(), bDay.getDate());
+        if (next < today) next = new Date(today.getFullYear() + 1, bDay.getMonth(), bDay.getDate());
+        const daysUntil = Math.round((next - today) / 86400000);
+        const age = next.getFullYear() - bDay.getFullYear();
+        return { contact: c, daysUntil, nextBirthday: next, age };
+      }).filter(Boolean).sort((a, b) => a.daysUntil - b.daysUntil);
+
+      // Gruppen
+      const gToday = allYearBdays.filter(b => b.daysUntil === 0);
+      const gWeek  = allYearBdays.filter(b => b.daysUntil > 0 && b.daysUntil <= 7);
+      const g30    = allYearBdays.filter(b => b.daysUntil > 7 && b.daysUntil <= 30);
+      const gRest  = allYearBdays.filter(b => b.daysUntil > 30);
+
+      const monthNames = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+
+      const bdayRow = (b) => {
+        const lbl = helpers.birthdayLabel(b.daysUntil, b.nextBirthday);
+        const lblStyle = b.daysUntil === 0
+          ? "background:var(--blue-light);border-color:#a8c8e0;color:var(--blue);"
+          : b.daysUntil <= 7
+          ? "background:#fff9eb;border-color:#f4dfab;color:var(--amber);"
+          : "";
+        const dateStr = b.nextBirthday.toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit" });
+        return `
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line-2);">
+            ${helpers.avatarHtml(b.contact)}
+            <div style="flex:1;min-width:0;">
+              <a class="bbz-link" data-action="open-contact" data-id="${b.contact.id}" style="font-size:13px;font-weight:600;">${helpers.escapeHtml(b.contact.fullName || b.contact.nachname)}</a>
+              <div style="font-size:12px;color:var(--muted);">${helpers.escapeHtml(b.contact.firmTitle || "—")}${b.contact.funktion ? ` · ${helpers.escapeHtml(b.contact.funktion)}` : ""}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+              <span class="bbz-chip" style="font-size:11px;${lblStyle}">${helpers.escapeHtml(lbl)}</span>
+              <div style="font-size:11px;color:var(--muted);margin-top:3px;">${dateStr} · wird ${b.age}</div>
+            </div>
+          </div>`;
+      };
+
+      const section = (title, items, emptyText = "") => {
+        if (!items.length && !emptyText) return "";
+        return `
+          <section class="bbz-section" style="margin-bottom:12px;">
+            <div class="bbz-section-header">
+              <div><div class="bbz-section-title">${title}</div></div>
+              <span style="font-size:12px;color:var(--muted);">${items.length} ${items.length === 1 ? "Kontakt" : "Kontakte"}</span>
+            </div>
+            <div class="bbz-section-body">
+              ${items.length ? items.map(bdayRow).join("") : `<div class="bbz-empty">${emptyText}</div>`}
+            </div>
+          </section>`;
+      };
+
+      // Restliche Geburtstage nach Monat gruppieren
+      const byMonth = {};
+      for (const b of gRest) {
+        const key = b.nextBirthday.getMonth();
+        if (!byMonth[key]) byMonth[key] = [];
+        byMonth[key].push(b);
+      }
+      const restByMonthHtml = Object.entries(byMonth).sort((a, b) => {
+        // Monate ab heute aufsteigend
+        const todayMonth = today.getMonth();
+        const ma = ((Number(a[0]) - todayMonth + 12) % 12);
+        const mb = ((Number(b[0]) - todayMonth + 12) % 12);
+        return ma - mb;
+      }).map(([m, items]) => section(monthNames[Number(m)], items)).join("");
+
+      return `
+        <div>
+          <div class="bbz-kpis">
+            ${this.kpiBlock("Geburtstage erfasst", covered, `von ${total} aktiven Kontakten`)}
+            <div class="bbz-kpi">
+              <div class="bbz-kpi-label">Erfassungsquote</div>
+              <div class="bbz-kpi-value" style="${pctStyle}">${pct}%</div>
+              <div class="bbz-kpi-meta">${pct >= 80 ? "Sehr gut ✓" : pct >= 50 ? "Ausbaufähig" : "Viele fehlen noch"}</div>
+            </div>
+            ${this.kpiBlock("Heute", gToday.length, gToday.length > 0 ? gToday.map(b => helpers.escapeHtml(b.contact.fullName || b.contact.nachname)).join(", ") : "—", gToday.length > 0 ? "ok" : "")}
+            ${this.kpiBlock("Diese Woche", gWeek.length, gWeek.length > 0 ? "in den nächsten 7 Tagen" : "keine", "")}
+          </div>
+          <div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+            <button class="bbz-button bbz-button-secondary" data-action="kpi-filter" data-scope="navigate" data-value="firms">← Zurück zum Cockpit</button>
+            <span style="font-size:12px;color:var(--muted);">${allYearBdays.length} Geburtstage total · sortiert nach nächstem Datum</span>
+          </div>
+          ${gToday.length ? section("Heute 🎂", gToday) : ""}
+          ${gWeek.length  ? section("Diese Woche", gWeek) : ""}
+          ${g30.length    ? section("Nächste 30 Tage", g30) : ""}
+          ${restByMonthHtml}
+          ${!allYearBdays.length ? `<section class="bbz-section"><div class="bbz-section-body"><div class="bbz-empty">Keine Geburtstage erfasst. Trage Geburtstage in den Kontakt-Stammdaten ein.</div></div></section>` : ""}
+        </div>
+      `;
+    },
+
     firms() {
       const filters = state.filters.firms;
       const filteredFirms = state.enriched.firms.filter(firm => {
@@ -2283,40 +2384,37 @@
               </div>
             </div>
             ${(() => {
-              // Geburtstags-Kachel — nur wenn Geburtstage in den nächsten 30 Tagen
-              const bdays = helpers.upcomingBirthdays(30);
-              if (!bdays.length) return "";
-              const todayBdays  = bdays.filter(b => b.daysUntil === 0);
-              const weekBdays   = bdays.filter(b => b.daysUntil > 0 && b.daysUntil <= 7);
-              const preview     = bdays.slice(0, 2);
-              const moreCount   = bdays.length - preview.length;
+              // Geburtstags-Kachel — nur sichtbar wenn Geburtstage in 30 Tagen anstehen
+              const bdays30 = helpers.upcomingBirthdays(30);
+              if (!bdays30.length) return "";
+              const todayBdays = bdays30.filter(b => b.daysUntil === 0);
+              const weekBdays  = bdays30.filter(b => b.daysUntil > 0 && b.daysUntil <= 7);
+              const preview    = bdays30.slice(0, 2);
+              const moreCount  = bdays30.length - preview.length;
               const urgentStyle = todayBdays.length > 0
-                ? "background:var(--blue-soft);border:1.5px solid var(--blue);"
+                ? "border-color:var(--blue);border-width:1.5px;"
                 : "";
-              return `
-              <div class="bbz-kpi bbz-kpi-blue" style="cursor:default;${urgentStyle}">
+              return `<div class="bbz-kpi bbz-kpi-blue bbz-kpi-clickable" data-action="kpi-filter" data-scope="navigate" data-value="birthdays" style="cursor:pointer;${urgentStyle}">
                 <div class="bbz-kpi-label">Geburtstage</div>
-                <div class="bbz-kpi-value">${bdays.length}</div>
+                <div class="bbz-kpi-value">${bdays30.length}</div>
                 <div class="bbz-kpi-meta" style="margin-bottom:6px;">nächste 30 Tage</div>
                 ${(todayBdays.length > 0 || weekBdays.length > 0) ? `
                 <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;">
-                  ${todayBdays.length  ? `<span class="bbz-kpi-chip" style="background:var(--blue-light);border-color:#a8c8e0;color:var(--blue);">${todayBdays.length === 1 ? "1 heute" : todayBdays.length + " heute"}</span>` : ""}
-                  ${weekBdays.length   ? `<span class="bbz-kpi-chip" style="background:#fff9eb;border-color:#f4dfab;color:var(--amber);">+${weekBdays.length} diese Woche</span>` : ""}
+                  ${todayBdays.length ? `<span class="bbz-kpi-chip" style="background:var(--blue-light);border-color:#a8c8e0;color:var(--blue);">${todayBdays.length === 1 ? "1 heute" : todayBdays.length + " heute"}</span>` : ""}
+                  ${weekBdays.length  ? `<span class="bbz-kpi-chip" style="background:#fff9eb;border-color:#f4dfab;color:var(--amber);">+${weekBdays.length} diese Woche</span>` : ""}
                 </div>` : ""}
                 <div style="display:flex;flex-direction:column;gap:4px;">
                   ${preview.map(b => {
-                    const name = helpers.escapeHtml(b.contact.fullName || b.contact.nachname);
+                    const name  = helpers.escapeHtml(b.contact.fullName || b.contact.nachname);
                     const label = helpers.birthdayLabel(b.daysUntil, b.nextBirthday);
-                    const labelStyle = b.daysUntil === 0
-                      ? "color:var(--blue);font-weight:600;"
-                      : "color:var(--muted);";
+                    const lStyle = b.daysUntil === 0 ? "color:var(--blue);font-weight:600;" : "color:var(--muted);";
                     return `<div style="display:flex;align-items:center;gap:6px;font-size:12px;">
                       ${helpers.avatarHtml(b.contact)}
                       <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}</span>
-                      <span style="font-size:11px;white-space:nowrap;${labelStyle}">${helpers.escapeHtml(label)}</span>
+                      <span style="font-size:11px;white-space:nowrap;${lStyle}">${helpers.escapeHtml(label)}</span>
                     </div>`;
                   }).join("")}
-                  ${moreCount > 0 ? `<div style="font-size:11px;color:var(--subtle);padding-top:2px;">+${moreCount} weitere</div>` : ""}
+                  ${moreCount > 0 ? `<div style="font-size:11px;color:var(--subtle);padding-top:2px;">+${moreCount} weitere →</div>` : ""}
                 </div>
               </div>`;
             })()}
@@ -2595,13 +2693,11 @@
                     const todayCount = bdays.filter(b => b.daysUntil === 0).length;
                     const label = todayCount > 0
                       ? (bdays.length === 1 ? `Geburtstag heute` : `${bdays.length} Geburtstage, ${todayCount} heute`)
-                      : (bdays.length === 1 ? `Geburtstag in ${bdays[0].daysUntil} Tagen` : `${bdays.length} Geburtstage bald`);
+                      : (bdays.length === 1 ? `Geburtstag in ${bdays[0].daysUntil} ${bdays[0].daysUntil === 1 ? "Tag" : "Tagen"}` : `${bdays.length} Geburtstage bald`);
                     const pillStyle = todayCount > 0
                       ? "background:rgba(255,255,255,0.22);border:0.5px solid rgba(255,255,255,0.45);color:#fff;"
                       : "background:rgba(255,200,80,0.18);border:0.5px solid rgba(255,200,80,0.45);color:#ffe08a;";
-                    return `<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:500;${pillStyle}">
-                      🎂 ${helpers.escapeHtml(label)}
-                    </span>`;
+                    return `<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:500;${pillStyle}">🎂 ${helpers.escapeHtml(label)}</span>`;
                   })()}
                 </div>
               </div>
@@ -2642,18 +2738,20 @@
                     <tbody>
                       ${firm.contacts.length ? firm.contacts.map(c => {
                         const bdays = helpers.upcomingBirthdays(30, [c]);
-                        const bday = bdays[0] || null;
-                        const bdayHtml = bday
+                        const b = bdays[0] || null;
+                        const bdayHtml = b
                           ? (() => {
-                              const label = helpers.birthdayLabel(bday.daysUntil, bday.nextBirthday);
-                              const style = bday.daysUntil === 0
+                              const lbl = helpers.birthdayLabel(b.daysUntil, b.nextBirthday);
+                              const s = b.daysUntil === 0
                                 ? "background:var(--blue-light);border-color:#a8c8e0;color:var(--blue);"
-                                : bday.daysUntil <= 7
+                                : b.daysUntil <= 7
                                 ? "background:#fff9eb;border-color:#f4dfab;color:var(--amber);"
                                 : "";
-                              return `<span class="bbz-chip" style="${style}">${helpers.escapeHtml(label)}</span>`;
+                              return `<span class="bbz-chip" style="${s}">${helpers.escapeHtml(lbl)}</span>`;
                             })()
-                          : (c.geburtstag ? `<span class="bbz-muted" style="font-size:11px;">${helpers.formatDate(c.geburtstag)}</span>` : '<span class="bbz-muted">—</span>');
+                          : (c.geburtstag
+                              ? `<span class="bbz-muted" style="font-size:11px;">${helpers.formatDate(c.geburtstag)}</span>`
+                              : '<span class="bbz-muted">—</span>');
                         return `
                         <tr>
                           <td style="width:36px;padding-right:0;">${helpers.avatarHtml(c)}</td>
@@ -2663,7 +2761,8 @@
                           <td>${c.email1 ? `<a class="bbz-link" href="mailto:${helpers.escapeHtml(c.email1)}">${helpers.escapeHtml(c.email1)}</a>` : '<span class="bbz-muted">—</span>'}</td>
                           <td>${helpers.escapeHtml(helpers.joinNonEmpty([c.direktwahl, c.mobile], " / ")) || '<span class="bbz-muted">—</span>'}</td>
                           <td>${bdayHtml}</td>
-                        </tr>`}).join("") : `<tr><td colspan="7">${ui.emptyBlock("Keine Kontakte vorhanden.", "open-contact-form", "+ Ersten Kontakt hinzufügen")}</td></tr>`}
+                        </tr>`}).join("")
+                      : `<tr><td colspan="7">${ui.emptyBlock("Keine Kontakte vorhanden.", "open-contact-form", "+ Ersten Kontakt hinzufügen")}</td></tr>`}
                     </tbody>
                   </table>
                 </div>
@@ -2671,14 +2770,14 @@
                 <div class="bbz-card-list bbz-mobile-only">
                   ${firm.contacts.length ? firm.contacts.map(c => {
                     const bdays = helpers.upcomingBirthdays(30, [c]);
-                    const bday = bdays[0] || null;
-                    const bdayBadge = bday
+                    const b = bdays[0] || null;
+                    const bdayBadge = b
                       ? (() => {
-                          const label = helpers.birthdayLabel(bday.daysUntil, bday.nextBirthday);
-                          const style = bday.daysUntil === 0
+                          const lbl = helpers.birthdayLabel(b.daysUntil, b.nextBirthday);
+                          const s = b.daysUntil === 0
                             ? "background:var(--blue-light);border-color:#a8c8e0;color:var(--blue);"
                             : "background:#fff9eb;border-color:#f4dfab;color:var(--amber);";
-                          return `<span class="bbz-chip" style="font-size:10px;${style}">🎂 ${helpers.escapeHtml(label)}</span>`;
+                          return `<span class="bbz-chip" style="font-size:10px;${s}">🎂 ${helpers.escapeHtml(lbl)}</span>`;
                         })()
                       : "";
                     return `
