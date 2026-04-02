@@ -197,15 +197,14 @@
     toDate(value) {
       if (!value) return null;
       const s = typeof value === "string" ? value.trim() : null;
-      // Reines Datum YYYY-MM-DD — als lokales Datum interpretieren (kein UTC-Shift)
-      if (s && /^\d{4}-\d{2}-\d{2}$/.test(s)) {
-        const [y, m, day] = s.split("-").map(Number);
-        return new Date(y, m - 1, day);
-      }
-      // ISO-Timestamp mit Mitternacht UTC (z.B. 2026-04-02T00:00:00Z aus SharePoint-Datumsfeldern)
-      // In CH (UTC+1/+2) wuerde new Date() das als Vortag interpretieren — deshalb Datum-Teil extrahieren
-      if (s && /^\d{4}-\d{2}-\d{2}T00:00:00/.test(s)) {
-        const [y, m, day] = s.substring(0, 10).split("-").map(Number);
+      if (!s) return null;
+      // Alle ISO-Datumsstrings aus SharePoint (YYYY-MM-DD oder YYYY-MM-DDT...)
+      // werden als lokales Datum interpretiert — der Datums-Teil (YYYY-MM-DD) wird
+      // direkt verwendet ohne UTC-Konvertierung, da SP Datumsfelder ohne Uhrzeit speichert
+      // und der UTC-Shift in CH (UTC+1/+2) sonst den Tag verschiebt.
+      const dateOnly = /^(\d{4}-\d{2}-\d{2})/.exec(s);
+      if (dateOnly) {
+        const [y, m, day] = dateOnly[1].split("-").map(Number);
         return new Date(y, m - 1, day);
       }
       const d = new Date(value);
