@@ -142,7 +142,8 @@
       contacts: { search: "", archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden, sortBy: "fullName", sortDir: "asc" },
       planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, groupBy: "none", sortBy: "deadline", sortDir: "asc", segment: "", leadbbz: "", faelligkeit: "" },
       history: { search: "", kontaktart: "", leadbbz: "", groupBy: "date", zeitfenster: "", radarMode: false },
-      events: { search: "", onlyWithOpenTasks: false, sortBy: "contactName", sortDir: "asc", segment: "", selectedEvent: "" }
+      events: { search: "", onlyWithOpenTasks: false, sortBy: "contactName", sortDir: "asc", segment: "", selectedEvent: "" },
+      admin: { zeitfenster: "30" }
     },
 
     selection: {
@@ -195,8 +196,16 @@
 
     toDate(value) {
       if (!value) return null;
-      if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
-        const [y, m, day] = value.trim().split("-").map(Number);
+      const s = typeof value === "string" ? value.trim() : null;
+      // Reines Datum YYYY-MM-DD — als lokales Datum interpretieren (kein UTC-Shift)
+      if (s && /^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        const [y, m, day] = s.split("-").map(Number);
+        return new Date(y, m - 1, day);
+      }
+      // ISO-Timestamp mit Mitternacht UTC (z.B. 2026-04-02T00:00:00Z aus SharePoint-Datumsfeldern)
+      // In CH (UTC+1/+2) wuerde new Date() das als Vortag interpretieren — deshalb Datum-Teil extrahieren
+      if (s && /^\d{4}-\d{2}-\d{2}T00:00:00/.test(s)) {
+        const [y, m, day] = s.substring(0, 10).split("-").map(Number);
         return new Date(y, m - 1, day);
       }
       const d = new Date(value);
@@ -844,6 +853,15 @@
         const evExport = event.target.closest("[data-action='event-export-excel']");
         if (evExport) {
           controller.handleEventExcelExport(evExport.dataset.eventName);
+          return;
+        }
+
+        // Admin-Panel: Zeitfilter umschalten
+        const adminZf = event.target.closest("[data-action='admin-zeitfilter']");
+        if (adminZf) {
+          if (!state.filters.admin) state.filters.admin = { zeitfenster: "30" };
+          state.filters.admin.zeitfenster = adminZf.dataset.zf || "30";
+          controller.render();
           return;
         }
 
@@ -2222,27 +2240,40 @@
     },
 
     // ── ADMIN PANEL ─────────────────────────────────────────────────────────
-    // Zugang: URL-Hash #admin oder Klick auf Versions-Badge im Auth-Bereich
+    // Zugang: URL-Hash #admin oder Doppelklick auf Auth-Status oben rechts
     // Nicht in der Navigation sichtbar — nur für Administratoren gedacht
     adminPanel() {
       if (!state.auth.isAuthenticated) {
         return `<section class="bbz-section"><div class="bbz-section-body"><div class="bbz-empty">Bitte zuerst anmelden.</div></div></section>`;
       }
 
+      // ── Zeitfilter aus State lesen (default: 30 Tage) ────────────────────
+      const adminFilter = state.filters.admin || { zeitfenster: "30" };
+      const zf = adminFilter.zeitfenster || "30";
+      const now = new Date();
+      let cutoff = null;
+      if (zf !== "all") {
+        cutoff = new Date(now);
+        cutoff.setDate(cutoff.getDate() - Number(zf));
+      }
+      const inWindow = (ts) => !cutoff || (ts && new Date(ts) >= cutoff);
+
       const contacts  = state.enriched.contacts;
       const history   = state.enriched.history;
       const tasks     = state.enriched.tasks;
-      const now       = new Date();
 
-      // ── Hilfsfunktion: User-Statistiken aus einem Array berechnen ────────
-      const userStats = (items, nameField = "spCreatedBy") => {
+      // ── Hilfsfunktion: User-Statistiken — gefiltert nach Zeitfenster ─────
+      // nameField: welches Feld den User-Namen enthält
+      // tsField:   welches Feld den Zeitstempel enthält (für Fenster-Filter)
+      const userStats = (items, nameField, tsField) => {
         const map = new Map();
         for (const item of items) {
+          const ts = item[tsField] || "";
+          if (!inWindow(ts)) continue;
           const user = item[nameField] || "Unbekannt";
           if (!map.has(user)) map.set(user, { count: 0, latest: "" });
           const entry = map.get(user);
           entry.count++;
-          const ts = item.spCreated || item.spModified || "";
           if (ts && (!entry.latest || ts > entry.latest)) entry.latest = ts;
         }
         return [...map.entries()]
@@ -2250,27 +2281,34 @@
           .sort((a, b) => b.count - a.count);
       };
 
-      // ── 1. Kontakterfassungen pro User ───────────────────────────────────
-      const contactCreations = userStats(contacts, "spCreatedBy");
-      const contactMutations = userStats(contacts, "spModifiedBy");
+      // ── Alle bekannten User ermitteln (Union aus allen Erfassern) ─────────
+      const allKnownUsers = new Set();
+      for (const c of contacts)  { if (c.spCreatedBy) allKnownUsers.add(c.spCreatedBy); }
+      for (const h of history)   { if (h.spCreatedBy) allKnownUsers.add(h.spCreatedBy); }
+      for (const t of tasks)     { if (t.spCreatedBy) allKnownUsers.add(t.spCreatedBy); }
 
-      // ── 2. Aktivitätenerfassungen (History) pro User ─────────────────────
-      const historyCreations = userStats(history, "spCreatedBy");
+      // ── Statistiken im Zeitfenster ────────────────────────────────────────
+      const contactCreations = userStats(contacts, "spCreatedBy", "spCreated");
+      const contactMutations = userStats(contacts, "spModifiedBy", "spModified");
+      const historyCreations = userStats(history,  "spCreatedBy", "spCreated");
+      const taskCreations    = userStats(tasks,    "spCreatedBy", "spCreated");
 
-      // ── 3. Aufgabenerfassungen pro User ──────────────────────────────────
-      const taskCreations = userStats(tasks, "spCreatedBy");
+      // User die im Zeitfenster KEINE Aktivität haben
+      const activeUsersInWindow = new Set([
+        ...contactCreations.map(u => u.name),
+        ...historyCreations.map(u => u.name),
+        ...taskCreations.map(u => u.name)
+      ]);
+      const inactiveUsers = [...allKnownUsers].filter(u => !activeUsersInWindow.has(u)).sort();
 
-      // ── 4. Datenqualität: Kontakte mit fehlenden Pflichtfeldern ──────────
-      const activeContacts = contacts.filter(c => !c.archiviert);
-      const missingEmail   = activeContacts.filter(c => !c.email1 && !c.email2);
-      const missingPhone   = activeContacts.filter(c => !c.direktwahl && !c.mobile);
-      const missingFunktion = activeContacts.filter(c => !c.funktion);
-      const missingLeadbbz = activeContacts.filter(c => !c.leadbbz0);
-      const missingSgf     = activeContacts.filter(c => !c.sgf || c.sgf.length === 0);
-
-      // ── 5. Letzte Aktivität pro User (History-Datum, nicht SP-Datum) ─────
+      // ── Aktivitäten-Statistik nach Datum-Feld (History-Datum) ─────────────
+      // Hier wird das CRM-Datum (nicht SP-Metadatum) gefiltert
       const activityByUser = new Map();
       for (const h of history) {
+        if (cutoff) {
+          const d = helpers.toDate(h.datum);
+          if (!d || d < cutoff) continue;
+        }
         const user = h.spCreatedBy || "Unbekannt";
         if (!activityByUser.has(user)) activityByUser.set(user, { count: 0, latest: "" });
         const e = activityByUser.get(user);
@@ -2281,30 +2319,34 @@
         .map(([name, d]) => ({ name, count: d.count, latest: d.latest }))
         .sort((a, b) => b.count - a.count);
 
-      // ── 6. Letzte 30 Erfassungen / Mutationen (Kontakte) ─────────────────
+      // ── Datenqualität (immer über alle Daten, kein Zeitfilter) ────────────
+      const activeContacts  = contacts.filter(c => !c.archiviert);
+      const missingEmail    = activeContacts.filter(c => !c.email1 && !c.email2);
+      const missingPhone    = activeContacts.filter(c => !c.direktwahl && !c.mobile);
+      const missingFunktion = activeContacts.filter(c => !c.funktion);
+      const missingLeadbbz  = activeContacts.filter(c => !c.leadbbz0);
+      const missingSgf      = activeContacts.filter(c => !c.sgf || c.sgf.length === 0);
+
+      // ── Detail-Tabellen: letzte N Items im Zeitfenster ────────────────────
       const recentContacts = [...contacts]
-        .filter(c => c.spCreated)
+        .filter(c => c.spCreated && inWindow(c.spCreated))
         .sort((a, b) => (b.spCreated > a.spCreated ? 1 : -1))
-        .slice(0, 30);
+        .slice(0, 50);
       const recentMutations = [...contacts]
-        .filter(c => c.spModified && c.spModified !== c.spCreated)
+        .filter(c => c.spModified && c.spModified !== c.spCreated && inWindow(c.spModified))
         .sort((a, b) => (b.spModified > a.spModified ? 1 : -1))
-        .slice(0, 20);
-
-      // ── 7. Letzte 30 History-Einträge (Aktivitäten) ──────────────────────
+        .slice(0, 50);
       const recentHistory = [...history]
-        .filter(h => h.spCreated)
+        .filter(h => h.spCreated && inWindow(h.spCreated))
         .sort((a, b) => (b.spCreated > a.spCreated ? 1 : -1))
-        .slice(0, 30);
-
-      // ── 8. Letzte 20 Tasks ───────────────────────────────────────────────
+        .slice(0, 50);
       const recentTasks = [...tasks]
-        .filter(t => t.spCreated)
+        .filter(t => t.spCreated && inWindow(t.spCreated))
         .sort((a, b) => (b.spCreated > a.spCreated ? 1 : -1))
-        .slice(0, 20);
+        .slice(0, 50);
 
-      // ── Render-Helfer ────────────────────────────────────────────────────
-      const adminTable = (headers, rows, emptyText = "Keine Daten.") => {
+      // ── Render-Helfer ─────────────────────────────────────────────────────
+      const adminTable = (headers, rows, emptyText = "Keine Daten im gewählten Zeitfenster.") => {
         if (!rows.length) return `<div class="bbz-empty">${emptyText}</div>`;
         return `
           <div class="bbz-table-wrap" style="display:block;overflow-x:auto;">
@@ -2338,6 +2380,26 @@
           <div class="bbz-section-body" style="padding:10px 14px 12px;">${body}</div>
         </section>`;
 
+      // Zeitfenster-Labels
+      const zfLabels = { "7": "letzte 7 Tage", "30": "letzte 30 Tage", "90": "letzte 90 Tage", "all": "gesamte Zeit" };
+      const zfLabel  = zfLabels[zf] || zf;
+
+      // Zeitfilter-Buttons HTML
+      const zfBtn = (val, label) => {
+        const active = zf === val;
+        return `<button style="padding:4px 12px;border-radius:var(--r-full);border:1px solid ${active?"var(--blue)":"var(--line)"};background:${active?"var(--blue)":"var(--panel)"};color:${active?"#fff":"var(--text)"};font-size:12px;font-weight:${active?"700":"400"};cursor:pointer;font-family:inherit;" data-action="admin-zeitfilter" data-zf="${val}">${helpers.escapeHtml(label)}</button>`;
+      };
+
+      const zeitfilterBar = `
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;padding:10px 14px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);">
+          <span style="font-size:12px;font-weight:600;color:var(--muted);margin-right:4px;">Zeitfenster:</span>
+          ${zfBtn("7",   "7 Tage")}
+          ${zfBtn("30",  "30 Tage")}
+          ${zfBtn("90",  "90 Tage")}
+          ${zfBtn("all", "Alles")}
+          <span style="font-size:11px;color:var(--muted);margin-left:8px;">— Statistiken und Detail-Tabellen gefiltert auf: <strong>${zfLabel}</strong></span>
+        </div>`;
+
       return `
         <div>
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
@@ -2348,6 +2410,8 @@
             <button class="bbz-button bbz-button-secondary" data-action="kpi-filter" data-scope="navigate" data-value="firms">← Zurück</button>
           </div>
 
+          ${zeitfilterBar}
+
           <div class="bbz-kpis" style="margin-bottom:12px;">
             ${this.kpiBlock("Firmen", state.enriched.firms.length, "")}
             ${this.kpiBlock("Kontakte (aktiv)", activeContacts.length, `${contacts.filter(c=>c.archiviert).length} archiviert`)}
@@ -2355,7 +2419,7 @@
             ${this.kpiBlock("Aufgaben", tasks.length, `${tasks.filter(t=>t.isOpen).length} offen`)}
           </div>
 
-          ${sec("Kontakterfassungen pro User", `${contacts.length} Kontakte total`,
+          ${sec(`Kontakterfassungen pro User — ${zfLabel}`, `${recentContacts.length} Erfassungen im Zeitfenster`,
             adminTable(
               ["User", "Erfassungen", "Letzte Erfassung"],
               contactCreations.map(u => [
@@ -2366,7 +2430,7 @@
             )
           )}
 
-          ${sec("Kontaktmutationen pro User", "Letzte Änderung pro User (inkl. eigene Erfassungen)",
+          ${sec(`Kontaktmutationen pro User — ${zfLabel}`, "Letzte Änderung pro User",
             adminTable(
               ["User", "Mutationen", "Letzte Mutation"],
               contactMutations.map(u => [
@@ -2377,7 +2441,7 @@
             )
           )}
 
-          ${sec("Aktivitäten pro User", `${history.length} History-Einträge — erfasst via SP-Metadaten`,
+          ${sec(`Aktivitäten pro User — ${zfLabel}`, `${recentHistory.length} Aktivitäten im Zeitfenster (nach Erfassungszeitpunkt)`,
             adminTable(
               ["User", "Aktivitäten erfasst", "Letzte Erfassung"],
               historyCreations.map(u => [
@@ -2388,7 +2452,7 @@
             )
           )}
 
-          ${sec("Aktivitäten-Statistik (nach Datum-Feld)", "Ausgewertet nach dem Aktivitätsdatum im History-Eintrag",
+          ${sec(`Aktivitäten nach Datum-Feld — ${zfLabel}`, "Ausgewertet nach dem CRM-Aktivitätsdatum (nicht Erfassungszeitpunkt)",
             adminTable(
               ["User", "Aktivitäten", "Letztes Datum"],
               activityStats.map(u => [
@@ -2399,7 +2463,7 @@
             )
           )}
 
-          ${sec("Aufgaben pro User", `${tasks.length} Tasks total`,
+          ${sec(`Aufgaben pro User — ${zfLabel}`, `${recentTasks.length} Tasks im Zeitfenster`,
             adminTable(
               ["User", "Aufgaben erfasst", "Letzte Erfassung"],
               taskCreations.map(u => [
@@ -2410,7 +2474,19 @@
             )
           )}
 
-          ${sec("Datenqualität — fehlende Felder", `Aktive Kontakte: ${activeContacts.length}`,
+          ${inactiveUsers.length > 0 ? sec(
+            `Inaktiv im Zeitfenster (${zfLabel})`,
+            `${inactiveUsers.length} bekannte User ohne Erfassungen oder Aktivitäten`,
+            `<div style="display:flex;flex-wrap:wrap;gap:8px;padding:4px 0;">
+              ${inactiveUsers.map(u => `<span class="bbz-chip" style="background:var(--red-light);color:var(--red);">${helpers.escapeHtml(u)}</span>`).join("")}
+            </div>`
+          ) : sec(
+            `Inaktiv im Zeitfenster (${zfLabel})`,
+            "Alle bekannten User haben im Zeitfenster etwas erfasst",
+            `<div style="color:var(--green);font-size:13px;padding:4px 0;">✓ Keine inaktiven User</div>`
+          )}
+
+          ${sec("Datenqualität — fehlende Felder", `Aktive Kontakte: ${activeContacts.length} (kein Zeitfilter)`,
             `<div style="margin-bottom:6px;font-size:11px;color:var(--muted);">Zeigt Anzahl aktiver Kontakte mit fehlendem Feld — 0 ist das Ziel.</div>
             ${dqRow("Keine E-Mail-Adresse", missingEmail, "Email1 / Email2")}
             ${dqRow("Keine Telefonnummer", missingPhone, "Direktwahl / Mobile")}
@@ -2419,7 +2495,7 @@
             ${dqRow("Kein SGF", missingSgf, "SGF (Multi-Choice)")}`
           )}
 
-          ${sec("Letzte 30 Kontakterfassungen", "Neueste zuerst",
+          ${sec(`Letzte Kontakterfassungen — ${zfLabel}`, `${recentContacts.length} Einträge`,
             adminTable(
               ["Kontakt", "Firma", "Erfasst von", "Datum"],
               recentContacts.map(c => [
@@ -2431,7 +2507,7 @@
             )
           )}
 
-          ${sec("Letzte 20 Kontaktmutationen", "Neueste zuerst — nur Items mit Mutation nach Erfassung",
+          ${sec(`Letzte Kontaktmutationen — ${zfLabel}`, `${recentMutations.length} Einträge — nur Items mit Mutation nach Erfassung`,
             adminTable(
               ["Kontakt", "Firma", "Mutiert von", "Datum"],
               recentMutations.map(c => [
@@ -2443,7 +2519,7 @@
             )
           )}
 
-          ${sec("Letzte 30 Aktivitäten (History)", "Neueste zuerst — nach Erfassungszeitpunkt",
+          ${sec(`Letzte Aktivitäten (History) — ${zfLabel}`, `${recentHistory.length} Einträge — nach Erfassungszeitpunkt`,
             adminTable(
               ["Titel", "Kontakt", "Typ", "Erfasst von", "Erfasst am"],
               recentHistory.map(h => [
@@ -2456,7 +2532,7 @@
             )
           )}
 
-          ${sec("Letzte 20 Aufgaben", "Neueste zuerst — nach Erfassungszeitpunkt",
+          ${sec(`Letzte Aufgaben — ${zfLabel}`, `${recentTasks.length} Einträge — nach Erfassungszeitpunkt`,
             adminTable(
               ["Titel", "Kontakt", "Status", "Erfasst von", "Erfasst am"],
               recentTasks.map(t => [
@@ -2475,7 +2551,7 @@
         </div>
       `;
     },
-    // ── ENDE ADMIN PANEL ────────────────────────────────────────────────────
+
 
     firms() {
       const filters = state.filters.firms;
