@@ -848,6 +848,105 @@
           return;
         }
 
+        // === Event-Matrix: Modal öffnen ===
+        const openEventMatrix = event.target.closest("[data-action='open-event-matrix']");
+        if (openEventMatrix) {
+          state.modal = {
+            type: "event-matrix",
+            payload: {
+              filterSearch: "",
+              filterFirmId: "",
+              filterLeadbbz: "",
+              filterSegment: "",
+              pendingChanges: {}
+            }
+          };
+          controller.render();
+          return;
+        }
+
+        // === Event-Matrix: Filter zurücksetzen ===
+        const matrixClearFilters = event.target.closest("[data-action='matrix-clear-filters']");
+        if (matrixClearFilters && state.modal?.type === "event-matrix") {
+          state.modal.payload.filterSearch = "";
+          state.modal.payload.filterFirmId = "";
+          state.modal.payload.filterLeadbbz = "";
+          state.modal.payload.filterSegment = "";
+          controller.render();
+          return;
+        }
+
+        // === Event-Matrix: einzelne Zelle togglen ===
+        const matrixCellToggle = event.target.closest("[data-action='matrix-cell-toggle']");
+        if (matrixCellToggle && state.modal?.type === "event-matrix") {
+          const cid = Number(matrixCellToggle.dataset.contactId);
+          const evName = matrixCellToggle.dataset.eventName;
+          const newVal = matrixCellToggle.checked;
+          const pc = state.modal.payload.pendingChanges;
+          if (!pc[cid]) pc[cid] = {};
+          // Wenn neuer Wert = Original, lösche Pending (nicht dirty)
+          const contact = state.enriched.contacts.find(c => c.id === cid);
+          const original = contact ? helpers.toArray(contact.event).includes(evName) : false;
+          if (newVal === original) {
+            delete pc[cid][evName];
+            if (Object.keys(pc[cid]).length === 0) delete pc[cid];
+          } else {
+            pc[cid][evName] = newVal;
+          }
+          controller.render();
+          return;
+        }
+
+        // === Event-Matrix: Spalten-Toggle (alle gefilterten Kontakte für eine Event-Spalte) ===
+        const matrixColToggle = event.target.closest("[data-action='matrix-col-toggle']");
+        if (matrixColToggle && state.modal?.type === "event-matrix") {
+          const evName = matrixColToggle.dataset.eventName;
+          const targetVal = matrixColToggle.checked;
+          const payload = state.modal.payload;
+          // Aktuell gefilterte Kontakte erneut bestimmen (DRY-Verstoss wäre hier teurer als Duplikation)
+          const firmMap = new Map(state.enriched.firms.map(f => [f.id, f]));
+          let rows = state.enriched.contacts.filter(c => !c.archiviert);
+          if (payload.filterFirmId) rows = rows.filter(c => String(c.firmId) === String(payload.filterFirmId));
+          if (payload.filterLeadbbz) rows = rows.filter(c => c.leadbbz0 === payload.filterLeadbbz);
+          if (payload.filterSegment) rows = rows.filter(c => String(firmMap.get(c.firmId)?.klassifizierung || "").toUpperCase().startsWith(payload.filterSegment));
+          if (payload.filterSearch.trim()) {
+            const s = payload.filterSearch.trim().toLowerCase();
+            rows = rows.filter(c => [c.fullName, c.firmTitle].some(v => helpers.textIncludes(v, s)));
+          }
+          const pc = payload.pendingChanges;
+          rows.forEach(c => {
+            const original = helpers.toArray(c.event).includes(evName);
+            if (targetVal === original) {
+              if (pc[c.id]) {
+                delete pc[c.id][evName];
+                if (Object.keys(pc[c.id]).length === 0) delete pc[c.id];
+              }
+            } else {
+              if (!pc[c.id]) pc[c.id] = {};
+              pc[c.id][evName] = targetVal;
+            }
+          });
+          controller.render();
+          return;
+        }
+
+        // === Event-Matrix: Speichern ===
+        const matrixSave = event.target.closest("[data-action='matrix-save']");
+        if (matrixSave && state.modal?.type === "event-matrix") {
+          controller.handleEventMatrixSave();
+          return;
+        }
+
+        // === Event-Matrix: Änderungen verwerfen ===
+        const matrixDiscard = event.target.closest("[data-action='matrix-discard']");
+        if (matrixDiscard && state.modal?.type === "event-matrix") {
+          if (confirm("Alle ausstehenden Änderungen verwerfen?")) {
+            state.modal.payload.pendingChanges = {};
+            controller.render();
+          }
+          return;
+        }
+
         // Event Excel-Export
         const evExport = event.target.closest("[data-action='event-export-excel']");
         if (evExport) {
@@ -1011,6 +1110,7 @@
         if (el.matches("[data-filter='event-einladung-search']") && state.modal?.payload) { state.modal.payload.filterSearch = el.value; debouncedRender(); }
         if (el.matches("[data-filter='event-nb-search']") && state.modal?.payload) { state.modal.payload.filterSearch = el.value; debouncedRender(); }
         if (el.matches("[data-filter='batch-eventhistory-category-text']") && state.modal?.payload) { state.modal.payload.selectedHistoryCategory = el.value; state.modal.payload.selected = []; debouncedRender(); }
+        if (el.matches("[data-filter='matrix-search']") && state.modal?.type === "event-matrix") { state.modal.payload.filterSearch = el.value; debouncedRender(); }
       });
 
       document.addEventListener("change", (event) => {
@@ -1041,6 +1141,10 @@
           const saveBtn = document.querySelector("[data-action='event-nb-save']");
           if (saveBtn) saveBtn.disabled = state.modal.payload.checkedIds.length === 0;
         }
+        // Event-Matrix-Modal Filter
+        if (el.matches("[data-filter='matrix-firm']") && state.modal?.type === "event-matrix") { state.modal.payload.filterFirmId = el.value; controller.render(); }
+        if (el.matches("[data-filter='matrix-leadbbz']") && state.modal?.type === "event-matrix") { state.modal.payload.filterLeadbbz = el.value; controller.render(); }
+        if (el.matches("[data-filter='matrix-segment']") && state.modal?.type === "event-matrix") { state.modal.payload.filterSegment = el.value; controller.render(); }
         if (el.matches("[data-action='task-status-change']")) {
           controller.handleTaskStatusChange(Number(el.dataset.taskId), el.value);
         }
@@ -1692,6 +1796,7 @@
       if (state.modal?.type === "batch-event") modalHtml = views.renderBatchEventForm(state.modal.payload);
       if (state.modal?.type === "event-einladung") modalHtml = views.renderEventEinladungModal(state.modal.payload);
       if (state.modal?.type === "event-nachbearbeitung") modalHtml = views.renderEventNachbearbeitungModal(state.modal.payload);
+      if (state.modal?.type === "event-matrix") modalHtml = views.renderEventMatrixModal(state.modal.payload);
       return viewHtml + modalHtml;
     },
 
@@ -4304,6 +4409,14 @@
 
       return `
         <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+            <div style="font-size:11px;color:var(--muted);">
+              ${allGroups.length} Event${allGroups.length !== 1 ? "s" : ""} · ${totalActiveContacts} aktive Kontakte
+            </div>
+            <button class="bbz-button bbz-button-primary" data-action="open-event-matrix" style="font-weight:700;">
+              🗂 Event-Management
+            </button>
+          </div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;">
             ${cardHtml || ui.emptyBlock("Keine Events vorhanden.")}
           </div>
@@ -4421,10 +4534,6 @@
             <!-- Footer -->
             <div class="bbz-modal-footer" style="display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-top:1px solid var(--line);background:var(--panel-2);flex-shrink:0;gap:8px;flex-wrap:wrap;">
               <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                <button class="bbz-button bbz-button-primary"
-                  data-action="open-batch-event" data-event-name="${helpers.escapeHtml(eventName)}" data-mode="anmelden">
-                  + Einladen
-                </button>
                 <button class="bbz-button" data-action="event-export-excel" data-event-name="${helpers.escapeHtml(eventName)}">
                   ↓ Excel
                 </button>
@@ -4564,6 +4673,224 @@
                 data-action="event-nb-save" data-event-name="${helpers.escapeHtml(eventName)}">
                 ✓ Teilnahmen speichern (${checkedIds.length})
               </button>
+              <button class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
+            </div>
+          </div>
+        </div>`;
+    },
+
+    // Modal: Event-Matrix — alle Kontakte × alle Events als Checkbox-Grid
+    renderEventMatrixModal(payload = {}) {
+      const {
+        filterSearch = "",
+        filterFirmId = "",
+        filterLeadbbz = "",
+        filterSegment = "",
+        pendingChanges = {}  // Struktur: { [contactId]: { [eventName]: boolean } }
+      } = payload;
+
+      // Anlass- vs. Versand-Events (gleiche Liste wie in events()-View)
+      const EVENTS_MIT_NACHBEARBEITUNG = ["BOL", "SummerConv."];
+      const eventChoices = state.meta.choices?.[CONFIG.lists.contacts]?.["Event"] || [];
+
+      // Sortierung: Anlässe zuerst, dann Versand
+      const sortedEvents = [
+        ...eventChoices.filter(e => EVENTS_MIT_NACHBEARBEITUNG.includes(e)),
+        ...eventChoices.filter(e => !EVENTS_MIT_NACHBEARBEITUNG.includes(e))
+      ];
+
+      // Filter-Optionen aufbauen
+      const firmMap = new Map(state.enriched.firms.map(f => [f.id, f]));
+      const allFirms = [...state.enriched.firms].sort((a, b) =>
+        (a.title || "").localeCompare(b.title || "", "de"));
+      const allLeadbbz = [...new Set(state.enriched.contacts.map(c => c.leadbbz0).filter(Boolean))].sort();
+
+      // Kontakte filtern (alle aktiven — KEIN 200er-Limit)
+      let rows = state.enriched.contacts.filter(c => !c.archiviert);
+      if (filterFirmId) rows = rows.filter(c => String(c.firmId) === String(filterFirmId));
+      if (filterLeadbbz) rows = rows.filter(c => c.leadbbz0 === filterLeadbbz);
+      if (filterSegment) {
+        rows = rows.filter(c => String(firmMap.get(c.firmId)?.klassifizierung || "").toUpperCase().startsWith(filterSegment));
+      }
+      if (filterSearch.trim()) {
+        const s = filterSearch.trim().toLowerCase();
+        rows = rows.filter(c => [c.fullName, c.firmTitle].some(v => helpers.textIncludes(v, s)));
+      }
+
+      // Sortierung: Name aufsteigend
+      rows.sort((a, b) => (a.fullName || "").localeCompare(b.fullName || "", "de"));
+
+      // Hilfsfunktion: aktueller (effektiver) Status einer Zelle
+      const isChecked = (contact, evName) => {
+        const pending = pendingChanges[contact.id]?.[evName];
+        if (pending !== undefined) return pending;
+        return helpers.toArray(contact.event).includes(evName);
+      };
+
+      // Hilfsfunktion: ist Zelle vom Originalstatus abweichend?
+      const isDirty = (contact, evName) => {
+        const pending = pendingChanges[contact.id]?.[evName];
+        if (pending === undefined) return false;
+        const original = helpers.toArray(contact.event).includes(evName);
+        return pending !== original;
+      };
+
+      // Anzahl ausstehender Änderungen zählen (nur echt dirty)
+      let dirtyCount = 0;
+      Object.entries(pendingChanges).forEach(([cid, evMap]) => {
+        const contact = state.enriched.contacts.find(c => String(c.id) === String(cid));
+        if (!contact) return;
+        const orig = helpers.toArray(contact.event);
+        Object.entries(evMap).forEach(([evName, val]) => {
+          if (orig.includes(evName) !== val) dirtyCount++;
+        });
+      });
+
+      // Anzahl betroffener Kontakte
+      const dirtyContactCount = new Set(
+        Object.entries(pendingChanges).flatMap(([cid, evMap]) => {
+          const contact = state.enriched.contacts.find(c => String(c.id) === String(cid));
+          if (!contact) return [];
+          const orig = helpers.toArray(contact.event);
+          return Object.entries(evMap).some(([evName, val]) => orig.includes(evName) !== val) ? [cid] : [];
+        })
+      ).size;
+
+      // Event-Spalten-Header
+      const eventHeadersHtml = sortedEvents.map(evName => {
+        const isAnlass = EVENTS_MIT_NACHBEARBEITUNG.includes(evName);
+        const bg = isAnlass ? "var(--blue-light)" : "#f3e8ff";
+        const color = isAnlass ? "var(--blue)" : "#6d1fb8";
+        return `<th style="text-align:center;background:${bg};color:${color};font-size:11px;padding:8px 6px;white-space:nowrap;min-width:80px;position:sticky;top:0;z-index:2;">
+          ${helpers.escapeHtml(evName)}
+        </th>`;
+      }).join("");
+
+      // Spalten-Toggle-Header (alle aus aktueller Filterung an/abwählen pro Event)
+      const colToggleHtml = sortedEvents.map(evName => {
+        // Status: alle gefilterten Zeilen haben dieses Event aktiv?
+        const allChecked = rows.length > 0 && rows.every(c => isChecked(c, evName));
+        const someChecked = rows.some(c => isChecked(c, evName));
+        const indeterminate = someChecked && !allChecked;
+        return `<th style="text-align:center;padding:4px 6px;background:var(--panel-2);position:sticky;top:32px;z-index:2;border-bottom:1px solid var(--line-2);">
+          <input type="checkbox"
+            data-action="matrix-col-toggle"
+            data-event-name="${helpers.escapeHtml(evName)}"
+            ${allChecked ? "checked" : ""}
+            ${indeterminate ? `ref-indeterminate="1"` : ""}
+            title="Alle gefilterten für ${helpers.escapeHtml(evName)} ${allChecked ? "abwählen" : "anwählen"}" />
+        </th>`;
+      }).join("");
+
+      // Tabellen-Body
+      const rowsHtml = rows.length ? rows.map(c => {
+        const seg = String(firmMap.get(c.firmId)?.klassifizierung || "").toUpperCase().charAt(0);
+        const av = helpers.avatarHtml({ vorname: c.vorname || "", nachname: c.nachname || "" });
+        const cellsHtml = sortedEvents.map(evName => {
+          const checked = isChecked(c, evName);
+          const dirty = isDirty(c, evName);
+          return `<td style="text-align:center;padding:6px;${dirty ? "background:#fff7e0;" : ""}">
+            <input type="checkbox"
+              data-action="matrix-cell-toggle"
+              data-contact-id="${c.id}"
+              data-event-name="${helpers.escapeHtml(evName)}"
+              ${checked ? "checked" : ""} />
+          </td>`;
+        }).join("");
+        return `<tr>
+          <td style="position:sticky;left:0;background:var(--panel);z-index:1;min-width:200px;max-width:240px;border-right:1px solid var(--line-2);">
+            <div style="display:flex;align-items:center;gap:8px;">
+              ${av}
+              <div style="min-width:0;overflow:hidden;">
+                <div style="font-weight:600;font-size:12px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${helpers.escapeHtml(c.fullName || "—")}</div>
+                <div style="font-size:10px;color:var(--muted);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${helpers.escapeHtml(c.firmTitle || "—")}</div>
+              </div>
+            </div>
+          </td>
+          <td style="white-space:nowrap;text-align:center;">${seg ? `<span class="${helpers.firmBadgeClass(seg)}" style="font-size:10px;">${helpers.escapeHtml(seg)}</span>` : '<span class="bbz-muted">—</span>'}</td>
+          <td style="white-space:nowrap;font-size:11px;">${c.leadbbz0 ? helpers.leadbbzBadgeHtml(c.leadbbz0) : '<span class="bbz-muted">—</span>'}</td>
+          ${cellsHtml}
+        </tr>`;
+      }).join("") : `<tr><td colspan="${3 + sortedEvents.length}">${ui.emptyBlock("Keine Kontakte für diese Filterung.")}</td></tr>`;
+
+      const firmOptions = [`<option value="">— alle Firmen —</option>`,
+        ...allFirms.map(f => `<option value="${f.id}" ${String(filterFirmId) === String(f.id) ? "selected" : ""}>${helpers.escapeHtml(f.title || "—")}</option>`)
+      ].join("");
+      const leadOptions = [`<option value="">— alle Lead BBZ —</option>`,
+        ...allLeadbbz.map(l => `<option value="${helpers.escapeHtml(l)}" ${filterLeadbbz === l ? "selected" : ""}>${helpers.escapeHtml(l)}</option>`)
+      ].join("");
+
+      return `
+        <div class="bbz-modal-backdrop show">
+          <div class="bbz-modal" style="max-width:1280px;width:97vw;max-height:92vh;">
+            <!-- Header -->
+            <div class="bbz-modal-header">
+              <div style="width:32px;height:32px;border-radius:var(--r-md);background:var(--blue-light);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;">🗂</div>
+              <div style="flex:1;min-width:0;">
+                <div class="bbz-modal-title">Event-Management</div>
+                <div style="font-size:11px;color:var(--muted);margin-top:1px;">Alle Kontakte × alle Events — Häkchen setzen oder entfernen, dann speichern</div>
+              </div>
+              <button class="bbz-button bbz-button-secondary" style="height:28px;width:28px;padding:0;" data-close-modal>✕</button>
+            </div>
+
+            <!-- Filter-Zeile -->
+            <div style="display:grid;grid-template-columns:1.5fr 1.2fr 1fr 0.7fr;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line-2);flex-shrink:0;align-items:center;">
+              <input class="bbz-input" style="height:30px;" data-filter="matrix-search"
+                type="text" placeholder="Name oder Firma suchen …" value="${helpers.escapeHtml(filterSearch)}" />
+              <select class="bbz-select" style="height:30px;" data-filter="matrix-firm">${firmOptions}</select>
+              <select class="bbz-select" style="height:30px;" data-filter="matrix-leadbbz">${leadOptions}</select>
+              <select class="bbz-select" style="height:30px;" data-filter="matrix-segment">
+                <option value="" ${!filterSegment ? "selected" : ""}>— Segment —</option>
+                <option value="A" ${filterSegment === "A" ? "selected" : ""}>A</option>
+                <option value="B" ${filterSegment === "B" ? "selected" : ""}>B</option>
+                <option value="C" ${filterSegment === "C" ? "selected" : ""}>C</option>
+              </select>
+            </div>
+
+            <!-- Stats -->
+            <div style="padding:6px 16px;border-bottom:1px solid var(--line-2);font-size:11px;color:var(--muted);flex-shrink:0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+              <div>
+                <strong style="color:var(--text);">${rows.length}</strong> Kontakt${rows.length !== 1 ? "e" : ""} angezeigt
+                · <strong style="color:var(--text);">${sortedEvents.length}</strong> Event-Spalten
+                ${filterSearch || filterFirmId || filterLeadbbz || filterSegment
+                  ? `<button class="bbz-button bbz-button-secondary" style="height:22px;font-size:10px;padding:0 8px;margin-left:8px;" data-action="matrix-clear-filters">Filter zurücksetzen</button>`
+                  : ""}
+              </div>
+              ${dirtyCount > 0
+                ? `<div style="color:var(--blue);font-weight:600;">${dirtyCount} Änderung${dirtyCount !== 1 ? "en" : ""} ausstehend (${dirtyContactCount} Kontakt${dirtyContactCount !== 1 ? "e" : ""})</div>`
+                : `<div>Keine ausstehenden Änderungen</div>`}
+            </div>
+
+            <!-- Tabelle -->
+            <div class="bbz-modal-body" style="padding:0;flex:1;overflow:auto;min-height:0;">
+              <table class="bbz-table" style="border-collapse:separate;border-spacing:0;">
+                <thead>
+                  <tr>
+                    <th style="position:sticky;top:0;left:0;background:var(--panel-2);z-index:3;min-width:200px;border-right:1px solid var(--line-2);">Kontakt</th>
+                    <th style="position:sticky;top:0;background:var(--panel-2);z-index:2;text-align:center;">Seg.</th>
+                    <th style="position:sticky;top:0;background:var(--panel-2);z-index:2;">Lead BBZ</th>
+                    ${eventHeadersHtml}
+                  </tr>
+                  <tr>
+                    <th colspan="3" style="position:sticky;top:32px;left:0;background:var(--panel-2);z-index:3;font-size:10px;text-align:right;padding-right:10px;color:var(--muted);font-weight:400;border-right:1px solid var(--line-2);">↓ Spalte: alle gefilterten an/aus</th>
+                    ${colToggleHtml}
+                  </tr>
+                </thead>
+                <tbody>${rowsHtml}</tbody>
+              </table>
+            </div>
+
+            <!-- Footer -->
+            <div class="bbz-modal-footer" style="display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-top:1px solid var(--line);background:var(--panel-2);flex-shrink:0;gap:8px;flex-wrap:wrap;">
+              <div style="display:flex;gap:8px;align-items:center;">
+                <button class="bbz-button bbz-button-primary" ${dirtyCount === 0 ? "disabled" : ""}
+                  data-action="matrix-save">
+                  ✓ ${dirtyCount > 0 ? `${dirtyCount} Änderung${dirtyCount !== 1 ? "en" : ""} speichern` : "Speichern"}
+                </button>
+                ${dirtyCount > 0
+                  ? `<button class="bbz-button bbz-button-secondary" data-action="matrix-discard">Verwerfen</button>`
+                  : ""}
+              </div>
               <button class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
             </div>
           </div>
@@ -4971,6 +5298,61 @@
 
       } catch (error) {
         console.error("handleBatchEventSubmit:", error);
+        ui.setMessage(`Fehler: ${error.message}`, "error");
+      } finally {
+        ui.setLoading(false);
+        this.render();
+      }
+    },
+
+    // Event-Matrix: alle ausstehenden Änderungen batched speichern
+    async handleEventMatrixSave() {
+      const pc = state.modal?.payload?.pendingChanges || {};
+      const contactIds = Object.keys(pc);
+      if (!contactIds.length) { ui.setMessage("Keine Änderungen.", "warning"); return; }
+
+      // Pro Kontakt: finalen Event-Array berechnen (nur Patch wenn echt geändert)
+      const patches = [];
+      for (const cid of contactIds) {
+        const contact = state.enriched.contacts.find(c => String(c.id) === String(cid));
+        if (!contact) continue;
+        const original = helpers.toArray(contact.event);
+        const set = new Set(original);
+        let changed = false;
+        Object.entries(pc[cid]).forEach(([evName, val]) => {
+          const had = set.has(evName);
+          if (val && !had) { set.add(evName); changed = true; }
+          else if (!val && had) { set.delete(evName); changed = true; }
+        });
+        if (changed) patches.push({ cid: Number(cid), newArr: [...set] });
+      }
+
+      if (!patches.length) {
+        ui.setMessage("Keine echten Änderungen zum Speichern.", "warning");
+        state.modal.payload.pendingChanges = {};
+        this.render();
+        return;
+      }
+
+      ui.setLoading(true);
+      ui.setMessage("");
+      let ok = 0, fail = 0;
+      try {
+        const results = await Promise.allSettled(patches.map(p =>
+          api.patchItem(SCHEMA.contacts.listTitle, p.cid, {
+            "Event@odata.type": "Collection(Edm.String)",
+            "Event": p.newArr
+          })
+        ));
+        results.forEach(r => r.status === "fulfilled" ? ok++ : (fail++, console.error(r.reason)));
+        await api.loadAll();
+        // Pending-State zurücksetzen, Modal offen lassen (User sieht aktualisierten Stand)
+        if (state.modal?.payload) state.modal.payload.pendingChanges = {};
+        const msg = `✓ ${ok} Kontakt${ok !== 1 ? "e" : ""} aktualisiert${fail > 0 ? ` — ${fail} Fehler (Konsole prüfen)` : ""}.`;
+        ui.setMessage(msg, fail > 0 ? "error" : "success");
+        if (fail === 0) setTimeout(() => ui.setMessage(""), 3000);
+      } catch (error) {
+        console.error("handleEventMatrixSave:", error);
         ui.setMessage(`Fehler: ${error.message}`, "error");
       } finally {
         ui.setLoading(false);
