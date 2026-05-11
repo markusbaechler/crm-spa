@@ -858,6 +858,8 @@
               filterFirmId: "",
               filterLeadbbz: "",
               filterSegment: "",
+              sortBy: "firm",
+              sortDir: "asc",
               pendingChanges: {}
             }
           };
@@ -872,6 +874,21 @@
           state.modal.payload.filterFirmId = "";
           state.modal.payload.filterLeadbbz = "";
           state.modal.payload.filterSegment = "";
+          controller.render();
+          return;
+        }
+
+        // === Event-Matrix: Spalten-Sortierung ===
+        const matrixSort = event.target.closest("[data-action='matrix-sort']");
+        if (matrixSort && state.modal?.type === "event-matrix") {
+          const key = matrixSort.dataset.sortKey;
+          const p = state.modal.payload;
+          if (p.sortBy === key) {
+            p.sortDir = p.sortDir === "asc" ? "desc" : "asc";
+          } else {
+            p.sortBy = key;
+            p.sortDir = "asc";
+          }
           controller.render();
           return;
         }
@@ -4686,6 +4703,8 @@
         filterFirmId = "",
         filterLeadbbz = "",
         filterSegment = "",
+        sortBy = "firm",   // 'contact' | 'firm' | 'segment' | 'leadbbz'
+        sortDir = "asc",   // 'asc' | 'desc'
         pendingChanges = {}  // Struktur: { [contactId]: { [eventName]: boolean } }
       } = payload;
 
@@ -4717,8 +4736,23 @@
         rows = rows.filter(c => [c.fullName, c.firmTitle].some(v => helpers.textIncludes(v, s)));
       }
 
-      // Sortierung: Name aufsteigend
-      rows.sort((a, b) => (a.fullName || "").localeCompare(b.fullName || "", "de"));
+      // Konfigurierbare Sortierung — Sekundärschlüssel = Name, damit innerhalb einer Firma alphabetisch
+      const dir = sortDir === "desc" ? -1 : 1;
+      const cmpStr = (a, b) => (a || "").localeCompare(b || "", "de");
+      const segOf = (c) => String(firmMap.get(c.firmId)?.klassifizierung || "").toUpperCase().charAt(0) || "Z";
+      rows.sort((a, b) => {
+        let primary = 0;
+        switch (sortBy) {
+          case "firm":     primary = cmpStr(a.firmTitle, b.firmTitle); break;
+          case "segment":  primary = cmpStr(segOf(a), segOf(b)); break;
+          case "leadbbz":  primary = cmpStr(a.leadbbz0, b.leadbbz0); break;
+          case "contact":
+          default:         primary = cmpStr(a.fullName, b.fullName); break;
+        }
+        if (primary !== 0) return primary * dir;
+        // Sekundär: immer Name aufsteigend (lesefreundlich)
+        return cmpStr(a.fullName, b.fullName);
+      });
 
       // Hilfsfunktion: aktueller (effektiver) Status einer Zelle
       const isChecked = (contact, evName) => {
@@ -4798,20 +4832,18 @@
           </td>`;
         }).join("");
         return `<tr>
-          <td style="position:sticky;left:0;background:var(--panel);z-index:1;min-width:200px;max-width:240px;border-right:1px solid var(--line-2);">
+          <td style="position:sticky;left:0;background:var(--panel);z-index:1;min-width:180px;max-width:220px;border-right:1px solid var(--line-2);">
             <div style="display:flex;align-items:center;gap:8px;">
               ${av}
-              <div style="min-width:0;overflow:hidden;">
-                <div style="font-weight:600;font-size:12px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${helpers.escapeHtml(c.fullName || "—")}</div>
-                <div style="font-size:10px;color:var(--muted);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${helpers.escapeHtml(c.firmTitle || "—")}</div>
-              </div>
+              <div style="min-width:0;overflow:hidden;font-weight:600;font-size:12px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${helpers.escapeHtml(c.fullName || "—")}</div>
             </div>
           </td>
+          <td style="min-width:160px;max-width:220px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${helpers.escapeHtml(c.firmTitle || "—")}</td>
           <td style="white-space:nowrap;text-align:center;">${seg ? `<span class="${helpers.firmBadgeClass(seg)}" style="font-size:10px;">${helpers.escapeHtml(seg)}</span>` : '<span class="bbz-muted">—</span>'}</td>
           <td style="white-space:nowrap;font-size:11px;">${c.leadbbz0 ? helpers.leadbbzBadgeHtml(c.leadbbz0) : '<span class="bbz-muted">—</span>'}</td>
           ${cellsHtml}
         </tr>`;
-      }).join("") : `<tr><td colspan="${3 + sortedEvents.length}">${ui.emptyBlock("Keine Kontakte für diese Filterung.")}</td></tr>`;
+      }).join("") : `<tr><td colspan="${4 + sortedEvents.length}">${ui.emptyBlock("Keine Kontakte für diese Filterung.")}</td></tr>`;
 
       const firmOptions = [`<option value="">— alle Firmen —</option>`,
         ...allFirms.map(f => `<option value="${f.id}" ${String(filterFirmId) === String(f.id) ? "selected" : ""}>${helpers.escapeHtml(f.title || "—")}</option>`)
@@ -4866,13 +4898,23 @@
               <table class="bbz-table" style="border-collapse:separate;border-spacing:0;">
                 <thead>
                   <tr>
-                    <th style="position:sticky;top:0;left:0;background:var(--panel-2);z-index:3;min-width:200px;border-right:1px solid var(--line-2);">Kontakt</th>
-                    <th style="position:sticky;top:0;background:var(--panel-2);z-index:2;text-align:center;">Seg.</th>
-                    <th style="position:sticky;top:0;background:var(--panel-2);z-index:2;">Lead BBZ</th>
+                    ${[
+                      { key: "contact",  label: "Kontakt",  sticky: "left:0;",           extra: "min-width:180px;border-right:1px solid var(--line-2);", z: 3 },
+                      { key: "firm",     label: "Firma",    sticky: "",                  extra: "min-width:160px;",                                       z: 2 },
+                      { key: "segment",  label: "Seg.",     sticky: "",                  extra: "text-align:center;",                                      z: 2 },
+                      { key: "leadbbz",  label: "Lead BBZ", sticky: "",                  extra: "",                                                        z: 2 }
+                    ].map(h => {
+                      const active = sortBy === h.key;
+                      const arrow = active ? (sortDir === "asc" ? " ▲" : " ▼") : "";
+                      return `<th style="position:sticky;top:0;${h.sticky}background:var(--panel-2);z-index:${h.z};${h.extra}cursor:pointer;user-select:none;${active ? "color:var(--blue);" : ""}"
+                        data-action="matrix-sort" data-sort-key="${h.key}" title="Klick: nach ${helpers.escapeHtml(h.label)} sortieren">
+                        ${helpers.escapeHtml(h.label)}${arrow}
+                      </th>`;
+                    }).join("")}
                     ${eventHeadersHtml}
                   </tr>
                   <tr>
-                    <th colspan="3" style="position:sticky;top:32px;left:0;background:var(--panel-2);z-index:3;font-size:10px;text-align:right;padding-right:10px;color:var(--muted);font-weight:400;border-right:1px solid var(--line-2);">↓ Spalte: alle gefilterten an/aus</th>
+                    <th colspan="4" style="position:sticky;top:32px;left:0;background:var(--panel-2);z-index:3;font-size:10px;text-align:right;padding-right:10px;color:var(--muted);font-weight:400;border-right:1px solid var(--line-2);">↓ Spalte: alle gefilterten an/aus</th>
                     ${colToggleHtml}
                   </tr>
                 </thead>
