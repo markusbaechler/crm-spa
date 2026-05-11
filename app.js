@@ -1229,6 +1229,11 @@
       const savedStart  = isSearchInput ? active.selectionStart : null;
       const savedEnd    = isSearchInput ? active.selectionEnd   : null;
 
+      // Scroll-Position von Modal-Body merken (falls offenes Modal mit scrollbarem Body)
+      const modalBody = document.querySelector(".bbz-modal-backdrop.show .bbz-modal-body");
+      const savedScrollTop  = modalBody ? modalBody.scrollTop  : null;
+      const savedScrollLeft = modalBody ? modalBody.scrollLeft : null;
+
       this.els.viewRoot.innerHTML = html;
 
       // Fokus + Cursor wiederherstellen
@@ -1237,6 +1242,15 @@
         if (restored) {
           restored.focus();
           try { restored.setSelectionRange(savedStart, savedEnd); } catch (_) {}
+        }
+      }
+
+      // Scroll-Position wiederherstellen
+      if (savedScrollTop !== null) {
+        const newModalBody = document.querySelector(".bbz-modal-backdrop.show .bbz-modal-body");
+        if (newModalBody) {
+          newModalBody.scrollTop  = savedScrollTop;
+          newModalBody.scrollLeft = savedScrollLeft;
         }
       }
     },
@@ -1567,7 +1581,13 @@
       const siteId = await this.getSiteId();
       return await this.graphRequest(
         `/sites/${siteId}/lists/${encodeURIComponent(listTitle)}/items/${itemId}/fields`,
-        { method: "PATCH", body: fields }
+        {
+          method: "PATCH",
+          body: fields,
+          // If-Match: * — überschreibt unabhängig vom eTag, verhindert 409 resourceModified
+          // bei parallelen Patches auf dieselbe Liste (SharePoint refresht eTags listenweit).
+          headers: { "If-Match": "*" }
+        }
       );
     },
 
@@ -5378,14 +5398,45 @@
 
       ui.setLoading(true);
       ui.setMessage("");
+
+      // Helper: einzelner Patch mit Retry bei 409/429/503
+      const patchWithRetry = async (cid, newArr, attempt = 1) => {
+        try {
+          await api.patchItem(SCHEMA.contacts.listTitle, cid, {
+            "Event@odata.type": "Collection(Edm.String)",
+            "Event": newArr
+          });
+        } catch (err) {
+          const msg = String(err?.message || "");
+          const retriable = /409|429|503|resourceModified|throttl/i.test(msg);
+          if (retriable && attempt < 4) {
+            // Exponentielles Backoff: 200ms, 600ms, 1.4s
+            const delay = 200 * Math.pow(3, attempt - 1) + Math.random() * 100;
+            await new Promise(r => setTimeout(r, delay));
+            return patchWithRetry(cid, newArr, attempt + 1);
+          }
+          throw err;
+        }
+      };
+
+      // Helper: limitiert parallele Ausführung (max 4 gleichzeitig — SP-freundlich)
+      const runPool = async (items, worker, concurrency = 4) => {
+        const results = [];
+        let idx = 0;
+        const workers = Array(Math.min(concurrency, items.length)).fill(0).map(async () => {
+          while (idx < items.length) {
+            const i = idx++;
+            try { results[i] = { status: "fulfilled", value: await worker(items[i]) }; }
+            catch (e) { results[i] = { status: "rejected", reason: e }; }
+          }
+        });
+        await Promise.all(workers);
+        return results;
+      };
+
       let ok = 0, fail = 0;
       try {
-        const results = await Promise.allSettled(patches.map(p =>
-          api.patchItem(SCHEMA.contacts.listTitle, p.cid, {
-            "Event@odata.type": "Collection(Edm.String)",
-            "Event": p.newArr
-          })
-        ));
+        const results = await runPool(patches, p => patchWithRetry(p.cid, p.newArr), 4);
         results.forEach(r => r.status === "fulfilled" ? ok++ : (fail++, console.error(r.reason)));
         await api.loadAll();
         // Pending-State zurücksetzen, Modal offen lassen (User sieht aktualisierten Stand)
