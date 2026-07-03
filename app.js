@@ -5546,7 +5546,6 @@
       state.selection.contactId = null;
       state.modal = null;
       if (route !== "firms") state.filters.firms.radarMode = false;
-      state.filters.history.radarMode = false;
       state.filters.events.segment = "";
       state.filters.events.selectedEvent = "";
       history.pushState({ route, firmId: null, contactId: null }, "", `#${route}`);
