@@ -141,7 +141,7 @@
       firms: { search: "", klassifizierung: "", vip: "", onlyPrivat: false, sortBy: "title", sortDir: "asc", radarMode: false, radarSignal: "" },
       contacts: { search: "", archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden, sortBy: "fullName", sortDir: "asc" },
       planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, groupBy: "none", sortBy: "deadline", sortDir: "asc", segment: "", leadbbz: "", faelligkeit: "" },
-      history: { search: "", kontaktart: "", leadbbz: "", viewMode: "firms", zeitfenster: "", lens: "", expandedFirms: [] },
+      history: { search: "", kontaktart: "", viewMode: "firms", lens: "", granularitaet: "monat", periode: "", expandedFirms: [] },
       events: { search: "", onlyWithOpenTasks: false, sortBy: "contactName", sortDir: "asc", segment: "", selectedEvent: "" },
       admin: { zeitfenster: "30" }
     },
@@ -448,6 +448,26 @@
       return `<div style="display:flex;gap:3px;align-items:stretch;">${boxes}</div>`;
     },
 
+    // Perioden-Key einer Aktivität je Granularität ("2026-03" / "2026-Q1" / "2026").
+    periodKey(value, gran) {
+      const dt = value instanceof Date ? value : helpers.toDate(value);
+      if (!dt) return "";
+      const y = dt.getFullYear();
+      if (gran === "jahr")    return `${y}`;
+      if (gran === "quartal") return `${y}-Q${Math.floor(dt.getMonth() / 3) + 1}`;
+      return `${y}-${String(dt.getMonth() + 1).padStart(2, "0")}`; // monat (Default)
+    },
+
+    // Kompaktes Label eines Perioden-Keys.
+    periodLabel(key) {
+      if (!key) return "alle";
+      const q = key.indexOf("-Q");
+      if (q !== -1) return "Q" + key.slice(q + 2);
+      const m = key.match(/^(\d{4})-(\d{2})$/);
+      if (m) return ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"][parseInt(m[2], 10) - 1];
+      return key; // Jahr
+    },
+
     // Debounce: verhindert excessive DOM-Rebuilds beim Tippen in Suchfeldern
     debounce(fn, ms = 150) {
       let timer = null;
@@ -614,18 +634,8 @@
             state.filters.firms.onlyPrivat = false;
             state.filters.route = "firms";
             state.selection.firmId = null;
-          } else if (scope === "history-zeitfenster") {
-            state.filters.history.zeitfenster = state.filters.history.zeitfenster === value ? "" : value;
           } else if (scope === "history-kontaktart") {
             state.filters.history.kontaktart = state.filters.history.kontaktart === value ? "" : value;
-          } else if (scope === "history-leadbbz") {
-            state.filters.history.leadbbz = state.filters.history.leadbbz === value ? "" : value;
-          } else if (scope === "history-radar") {
-            state.filters.history.radarMode = !state.filters.history.radarMode;
-            if (state.filters.history.radarMode) {
-              state.filters.history.search = "";
-              state.filters.history.zeitfenster = "";
-            }
           } else if (scope === "planning-faelligkeit") {
             state.filters.planning.faelligkeit = state.filters.planning.faelligkeit === value ? "" : value;
           } else if (scope === "planning-segment") {
@@ -816,6 +826,34 @@
         const viewMode = event.target.closest("[data-action='history-view-mode']");
         if (viewMode) {
           state.filters.history.viewMode = viewMode.dataset.mode;
+          controller.render();
+          return;
+        }
+
+        // Aktivitäten-Balkenfilter: Lead BBZ (case-insensitiv togglen)
+        const filterLens = event.target.closest("[data-action='filter-lens']");
+        if (filterLens) {
+          const v = filterLens.dataset.value || "";
+          const cur = state.filters.history.lens || "";
+          state.filters.history.lens = cur.toLowerCase() === v.toLowerCase() ? "" : v;
+          controller.render();
+          return;
+        }
+
+        // Aktivitäten-Balkenfilter: Periode (Toggle; leerer Wert = alle)
+        const filterPeriode = event.target.closest("[data-action='filter-periode']");
+        if (filterPeriode) {
+          const v = filterPeriode.dataset.value || "";
+          state.filters.history.periode = (v === "" || state.filters.history.periode === v) ? "" : v;
+          controller.render();
+          return;
+        }
+
+        // Aktivitäten-Balkenfilter: Granularität wechseln (Periode zurücksetzen)
+        const filterGran = event.target.closest("[data-action='filter-granularitaet']");
+        if (filterGran) {
+          state.filters.history.granularitaet = filterGran.dataset.value || "monat";
+          state.filters.history.periode = "";
           controller.render();
           return;
         }
@@ -1200,9 +1238,6 @@
         if (el.matches("[data-filter='planning-groupby']")) { state.filters.planning.groupBy = el.value; controller.render(); }
         if (el.matches("[data-filter='planning-sortdir']")) { state.filters.planning.sortDir = el.value; controller.render(); }
         if (el.matches("[data-filter='history-kontaktart']")) { state.filters.history.kontaktart = el.value; controller.render(); }
-        if (el.matches("[data-filter='history-leadbbz']")) { state.filters.history.leadbbz = el.value; controller.render(); }
-        if (el.matches("[data-filter='history-lens']")) { state.filters.history.lens = el.value; controller.render(); }
-        if (el.matches("[data-filter='history-zeitfenster']")) { state.filters.history.zeitfenster = el.value; controller.render(); }
         if (el.matches("[data-filter='events-open']")) { state.filters.events.onlyWithOpenTasks = el.checked; controller.render(); }
         if (el.matches("[data-filter='events-sortby']")) { state.filters.events.sortBy = el.value; controller.render(); }
         // Batch-Event-Modal Filter
@@ -3913,85 +3948,85 @@
       const filters = state.filters.history;
       const today   = helpers.todayStart();
       const lens    = filters.lens;
+      const gran    = filters.granularitaet;
+      const periode = filters.periode;
 
-      // ── Linse: firmen-zentrierte Basismengen ────────────────────────────────
-      // cockpitFirms = alle Firmen der aktiven Linse (leere Linse = alle).
-      const cockpitFirms = state.enriched.firms.filter(f => helpers.firmMatchesLens(f, lens));
-      const lensFirmIds  = new Set(cockpitFirms.map(f => f.id));
-      // Aktivitäten der Lens-Firmen (firmen-zentriert für Band/Momentum/Bericht).
-      const lensHistory = state.enriched.history.filter(h => !lens || lensFirmIds.has(h.firmId));
+      // ── Datenbasis: Perioden-Maps + rollierende Spanne je Granularität ───────
+      const contactById = new Map(state.enriched.contacts.map(c => [c.id, c]));
+      const firmById    = new Map(state.enriched.firms.map(f => [f.id, f]));
+      const leadOf = (h) => (contactById.get(h.contactId)?.leadbbz0 || "").trim();
 
-      // ── Filterfunktion ──────────────────────────────────────────────────────
-      const applyFilters = (h) => {
+      // Rollierende Spanne (älteste zuerst): Monat=12 · Quartal=8 · Jahr=max. 3.
+      let spanPeriods = [];
+      if (gran === "quartal") {
+        for (let i = 7; i >= 0; i--) { const d = new Date(today.getFullYear(), today.getMonth() - i * 3, 1); spanPeriods.push(helpers.periodKey(d, gran)); }
+      } else if (gran === "jahr") {
+        const years = [...new Set(state.enriched.history.map(h => { const d = helpers.toDate(h.datum); return d ? d.getFullYear() : null; }).filter(Boolean))].sort((a, b) => b - a).slice(0, 3).sort((a, b) => a - b);
+        spanPeriods = years.length ? years.map(String) : [String(today.getFullYear())];
+      } else {
+        for (let i = 11; i >= 0; i--) { const d = new Date(today.getFullYear(), today.getMonth() - i, 1); spanPeriods.push(helpers.periodKey(d, gran)); }
+      }
+      spanPeriods = [...new Set(spanPeriods)];
+      const spanSet   = new Set(spanPeriods);
+      const spanLabel = gran === "quartal" ? "letzte 8 Quartale" : gran === "jahr" ? "alle Jahre" : "letzte 12 Monate";
+      const spanChip  = gran === "quartal" ? "8 Quartale" : gran === "jahr" ? "Jahre" : "12 Monate";
+
+      // Aktivitäten der Spanne + Count je Periode (für die Zeitraum-Balken).
+      const base = state.enriched.history.filter(h => spanSet.has(helpers.periodKey(h.datum, gran)));
+      const periodCounts = new Map();
+      base.forEach(h => { const k = helpers.periodKey(h.datum, gran); periodCounts.set(k, (periodCounts.get(k) || 0) + 1); });
+      const periodBars = spanPeriods.map(p => ({ key: p, label: helpers.periodLabel(p), count: periodCounts.get(p) || 0 }));
+
+      // Aktives Zeitfenster (Periode) — Lead-Chart aggregiert über DASSELBE Fenster.
+      const inPeriode    = (h) => !periode || helpers.periodKey(h.datum, gran) === periode;
+      const activeWindow = base.filter(inPeriode);
+
+      // Lead-BBZ-Balken über activeWindow, case-insensitiv dedupliziert
+      // (kanonische Schreibweise = häufigste Variante).
+      const leadAgg = new Map(); // lowerKey -> { variants: Map<variant,count>, total }
+      activeWindow.forEach(h => {
+        const raw = leadOf(h);
+        if (!raw) return;
+        const key = raw.toLowerCase();
+        if (!leadAgg.has(key)) leadAgg.set(key, { variants: new Map(), total: 0 });
+        const e = leadAgg.get(key);
+        e.total += 1;
+        e.variants.set(raw, (e.variants.get(raw) || 0) + 1);
+      });
+      const leadBars = [...leadAgg.values()].map(e => {
+        let canon = "", max = -1;
+        e.variants.forEach((c, v) => { if (c > max) { max = c; canon = v; } });
+        return { label: canon, count: e.total };
+      }).sort((a, b) => b.count - a.count);
+
+      // Scope für Band/Cockpit/Timeline: aktives Fenster + Linse.
+      const inLens = (h) => !lens || leadOf(h).toLowerCase() === lens.toLowerCase();
+      const scoped = activeWindow.filter(inLens);
+
+      // ── Band-Kennzahlen + dynamisches Ø pro Woche (fensterTage / 7) ──────────
+      const daysInMonth  = (y, m0) => new Date(y, m0 + 1, 0).getDate();
+      const daysInPeriod = (key) => {
+        if (gran === "jahr") { const y = +key; return ((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0) ? 366 : 365; }
+        if (gran === "quartal") { const [ys, qs] = key.split("-Q"); const y = +ys, q = +qs; let d = 0; for (let m = (q - 1) * 3; m < q * 3; m++) d += daysInMonth(y, m); return d; }
+        const [ys, ms] = key.split("-"); return daysInMonth(+ys, +ms - 1);
+      };
+      const fensterTage  = (periode ? [periode] : spanPeriods).reduce((s, k) => s + daysInPeriod(k), 0);
+      const aktivTotal   = scoped.length;
+      const aktiveFirmen = new Set(scoped.map(h => h.firmId).filter(Boolean)).size;
+      const avgProWoche  = (aktivTotal / Math.max(1, fensterTage / 7)).toFixed(1);
+
+      const allKontaktart = [...new Set(base.map(h => h.typ).filter(Boolean))].sort();
+      const activeFilterBadges = filters.kontaktart
+        ? `<span class="bbz-chip" style="background:var(--blue-light);color:var(--blue);border-color:#a8c8e0;cursor:pointer;" data-action="kpi-filter" data-scope="history-kontaktart" data-value="">${helpers.escapeHtml(filters.kontaktart)} ×</span>`
+        : "";
+
+      // ── Timeline-Zeilen (Sekundär-Modus): scoped + Suche/Kontaktart ──────────
+      const rows = scoped.filter(h => {
         const search = filters.search.trim().toLowerCase();
-        const searchMatch = !search || [h.contactName, h.firmTitle, h.typ, h.notizen, h.leadbbz].some(v => helpers.textIncludes(v, search));
+        const searchMatch = !search || [h.contactName, h.firmTitle, h.typ, h.notizen].some(v => helpers.textIncludes(v, search));
         const artMatch    = !filters.kontaktart || h.typ === filters.kontaktart;
-        const leadMatch   = !filters.leadbbz    || h.leadbbz === filters.leadbbz;
-        if (!searchMatch || !artMatch || !leadMatch) return false;
-        if (filters.zeitfenster === "today") {
-          const d = helpers.toDate(h.datum);
-          return d && d >= today;
-        }
-        if (filters.zeitfenster === "week") {
-          const d = helpers.toDate(h.datum);
-          const vor7 = new Date(today); vor7.setDate(vor7.getDate() - 7);
-          return d && d >= vor7;
-        }
-        if (filters.zeitfenster === "month") {
-          const d = helpers.toDate(h.datum);
-          const vor30 = new Date(today); vor30.setDate(vor30.getDate() - 30);
-          return d && d >= vor30;
-        }
-        return true;
-      };
-
-      // Chronologische Timeline-Zeilen (Sekundär-Modus): Suchfilter/Kontaktart +
-      // Linse auf Aktivitäts-Ebene (persönlicher Feed h.leadbbz === lens).
-      const rows = state.enriched.history.filter(h => applyFilters(h) && (!lens || h.leadbbz === lens));
-
-      // ── KPI-Zahlen (Linse-gefiltert, firmen-zentriert) ──────────────────────
-      const cntToday     = lensHistory.filter(h => { const d = helpers.toDate(h.datum); return d && d >= today; }).length;
-      const vor7         = new Date(today); vor7.setDate(vor7.getDate() - 7);
-      const cntWeek      = lensHistory.filter(h => { const d = helpers.toDate(h.datum); return d && d >= vor7; }).length;
-      const vor30        = new Date(today); vor30.setDate(vor30.getDate() - 30);
-      const cntMonth     = lensHistory.filter(h => { const d = helpers.toDate(h.datum); return d && d >= vor30; }).length;
-
-      // Vorwoche-Vergleich für Trend
-      const vor14 = new Date(today); vor14.setDate(vor14.getDate() - 14);
-      const cntVorwoche = lensHistory.filter(h => { const d = helpers.toDate(h.datum); return d && d >= vor14 && d < vor7; }).length;
-      const trendDiff   = cntWeek - cntVorwoche;
-
-      // Wochen-Buckets für Sparkline (8 Wo.) und Momentum-Heatmap (12 Wo.).
-      const weekBuckets = (n) => {
-        const arr = new Array(n).fill(0);
-        lensHistory.forEach(h => {
-          const d = helpers.toDate(h.datum);
-          if (!d) return;
-          let diffDays = Math.floor((today - d) / 86400000);
-          if (diffDays < 0) diffDays = 0;
-          const wk = Math.floor(diffDays / 7);
-          if (wk < n) arr[n - 1 - wk] += 1;
-        });
-        return arr;
-      };
-      const sparkWeeks    = weekBuckets(8);
-      const momentumWeeks = weekBuckets(12);
-      const trendHtml   = trendDiff > 0
-        ? `<span style="color:var(--green);font-weight:700;">↑ +${trendDiff} vs. Vorwoche</span>`
-        : trendDiff < 0
-        ? `<span style="color:var(--red);font-weight:700;">↓ ${trendDiff} vs. Vorwoche</span>`
-        : `<span style="color:var(--muted);">= Vorwoche</span>`;
-
-      // ── Optionen für Steuerleiste ───────────────────────────────────────────
-      const lensOptions   = [...new Set(state.enriched.contacts.map(c => c.leadbbz0).filter(Boolean))].sort();
-      const allKontaktart = [...new Set(state.enriched.history.map(h => h.typ).filter(Boolean))].sort();
-
-      // Aktive Filter-Badges für Filterleiste
-      const activeFilterBadges = [
-        filters.kontaktart ? `<span class="bbz-chip" style="background:var(--blue-light);color:var(--blue);border-color:#a8c8e0;cursor:pointer;" data-action="kpi-filter" data-scope="history-kontaktart" data-value="">${helpers.escapeHtml(filters.kontaktart)} ×</span>` : "",
-        filters.leadbbz    ? `<span class="bbz-chip" style="background:#f0fdf4;color:#15803d;border-color:#86efac;cursor:pointer;" data-action="kpi-filter" data-scope="history-leadbbz" data-value="">${helpers.escapeHtml(filters.leadbbz)} ×</span>` : "",
-        filters.zeitfenster ? `<span class="bbz-chip" style="cursor:pointer;" data-action="kpi-filter" data-scope="history-zeitfenster" data-value="">${filters.zeitfenster === "today" ? "Heute" : filters.zeitfenster === "week" ? "Diese Woche" : "Dieser Monat"} ×</span>` : ""
-      ].filter(Boolean).join("");
+        return searchMatch && artMatch;
+      });
 
       // ── Timeline-Gruppierung ─────────────────────────────────────────────────
       const renderCard = (h, hideFirm = false) => {
@@ -4064,25 +4099,17 @@
         </div>`).join("")
         : ui.emptyBlock("Keine Aktivitäten für die aktuelle Filterung gefunden.", "open-history-form", "+ Erste Aktivität erfassen");
 
-      // ── Aktivitäts-Scope (Linse + Zeitraum) für Band, Momentum, Firmen-Bericht ─
-      const inZeitraum = (h) => {
-        const d = helpers.toDate(h.datum);
-        if (!d) return false;
-        if (filters.zeitfenster === "today") return d >= today;
-        if (filters.zeitfenster === "week")  { const v = new Date(today); v.setDate(v.getDate() - 7);  return d >= v; }
-        if (filters.zeitfenster === "month") { const v = new Date(today); v.setDate(v.getDate() - 30); return d >= v; }
-        return true;
-      };
-      const scopedHistory = lensHistory.filter(inZeitraum);
-      const aktiveFirmen  = new Set(scopedHistory.map(h => h.firmId).filter(Boolean)).size;
-      const avg8          = sparkWeeks.reduce((a, b) => a + b, 0) / 8;
-      const zeitraumLabel = filters.zeitfenster === "today" ? "heute" : filters.zeitfenster === "week" ? "diese Woche" : filters.zeitfenster === "month" ? "dieser Monat" : "gesamt";
-
-      // ── Firmen-Bericht (Default): nur Firmen mit tatsächlichen Aktivitäten ────
+      // ── Firmen-Bericht (Default): Firmen mit ≥1 Aktivität im Scope ────────────
       const cockpitSearch = filters.search.trim().toLowerCase();
-      const cockpitReport = cockpitFirms
-        .map(f => ({ f, acts: f.history.filter(inZeitraum) }))
-        .filter(x => x.acts.length > 0 && (!cockpitSearch || helpers.textIncludes(x.f.title, cockpitSearch)))
+      const actsByFirm = new Map();
+      scoped.forEach(h => {
+        if (!h.firmId) return;
+        if (!actsByFirm.has(h.firmId)) actsByFirm.set(h.firmId, []);
+        actsByFirm.get(h.firmId).push(h);
+      });
+      const cockpitReport = [...actsByFirm.entries()]
+        .map(([fid, acts]) => ({ f: firmById.get(fid), acts: acts.slice().sort((a, b) => helpers.compareDateDesc(a.datum, b.datum)) }))
+        .filter(x => x.f && (!cockpitSearch || helpers.textIncludes(x.f.title, cockpitSearch)))
         .sort((a, b) => helpers.compareDateDesc(a.acts[0]?.datum, b.acts[0]?.datum));
 
       const firmReportRow = (f, acts) => {
@@ -4110,19 +4137,19 @@
         ? `<div class="bbz-mini-list">${cockpitReport.map(x => firmReportRow(x.f, x.acts)).join("")}</div>`
         : ui.emptyBlock(cockpitSearch ? "Keine Firma gefunden." : "Keine Aktivitäten im gewählten Zeitraum.");
 
-      // ── Instrumenten-Band: reine Anzeige, 4 aktivitätsbasierte Kacheln ────────
+      // ── Instrumenten-Band: reine Anzeige, 3 Kacheln (12-Monats-Fenster) ──────
       const bandTile = (accent, label, valueHtml, extraHtml) => `
         <div style="background:var(--panel);border:1px solid var(--line);border-top:3px solid ${accent};border-radius:var(--r-xl);padding:14px 16px;">
           <div class="bbz-kpi-label">${label}</div>
           <div class="bbz-kpi-value">${valueHtml}</div>
           ${extraHtml || ""}
         </div>`;
+      const bandScopeLabel = `${periode ? helpers.escapeHtml(helpers.periodLabel(periode)) : spanLabel}${lens ? " · " + helpers.escapeHtml(lens) : ""}`;
       const bandHtml = `
         <div class="bbz-kpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));">
-          ${bandTile("var(--blue)", "Aktivitäten", `${scopedHistory.length}`, `<div class="bbz-kpi-meta">${zeitraumLabel}</div>`)}
-          ${bandTile("var(--blue)", "Diese Woche", `${cntWeek}`, `<div style="margin-top:6px;">${helpers.sparklineHtml(sparkWeeks)}</div><div style="margin-top:4px;font-size:11px;">${trendHtml}</div>`)}
-          ${bandTile("var(--green)", "Aktive Firmen", `${aktiveFirmen}`, `<div class="bbz-kpi-meta">mit Aktivität im Zeitraum</div>`)}
-          ${bandTile("var(--amber)", "Ø pro Woche", `${avg8.toFixed(1)}`, `<div class="bbz-kpi-meta">letzte 8 Wochen</div>`)}
+          ${bandTile("var(--blue)", "Aktivitäten total", `${aktivTotal}`, `<div class="bbz-kpi-meta">${bandScopeLabel}</div>`)}
+          ${bandTile("var(--green)", "Aktive Firmen", `${aktiveFirmen}`, `<div class="bbz-kpi-meta">mit ≥1 Aktivität</div>`)}
+          ${bandTile("var(--amber)", "Ø pro Woche", `${avgProWoche}`, `<div class="bbz-kpi-meta">Fenster ≈ ${Math.round(fensterTage / 7)} Wo.</div>`)}
         </div>`;
 
       // ── Schnellerfassung (Buttons je Kontaktart-Choice) ──────────────────────
@@ -4133,59 +4160,85 @@
           ${schnellTypen.map(t => `<button class="bbz-button bbz-button-secondary" style="height:30px;font-size:12px;" data-action="open-history-form" data-typ="${helpers.escapeHtml(t)}">+ ${helpers.escapeHtml(t)}</button>`).join("")}
         </div>` : "";
 
-      // ── Steuerleiste (alle Bedienelemente gebündelt, optisch abgesetzt) ──────
-      const controlField = (label, controlHtml, extraStyle = "") => `
-        <div style="display:flex;flex-direction:column;gap:3px;${extraStyle}">
-          <span style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;">${label}</span>
-          ${controlHtml}
-        </div>`;
-
-      // Segmentierter Ansicht-Umschalter (Firmen | Chronologisch).
+      // ── Steuerung: Slim-Actionbar + zwei klickbare Balken-Filter ─────────────
       const ansichtToggle = `
-        <div style="display:flex;border-radius:var(--r-sm);overflow:hidden;">
+        <div style="display:flex;border-radius:var(--r-sm);overflow:hidden;flex-shrink:0;">
           ${[["firms", "Firmen"], ["timeline", "Chronologisch"]].map(([m, label]) => {
             const active = filters.viewMode === m;
             return `<button class="bbz-button ${active ? "bbz-button-primary" : "bbz-button-secondary"}" style="border-radius:0;height:34px;font-size:12px;" data-action="history-view-mode" data-mode="${m}">${label}</button>`;
           }).join("")}
         </div>`;
-
-      const controlBarHtml = `
-        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-xl);box-shadow:var(--shadow-sm);padding:12px 14px;margin-bottom:14px;">
-          ${controlField("Lead BBZ", `<select class="bbz-select" style="height:34px;font-size:13px;min-width:140px;" data-filter="history-lens">
-            <option value="">Alle Lead BBZ</option>
-            ${lensOptions.map(l => `<option value="${helpers.escapeHtml(l)}" ${filters.lens === l ? "selected" : ""}>${helpers.escapeHtml(l)}</option>`).join("")}
-          </select>`)}
-          ${controlField("Zeitraum", `<select class="bbz-select" style="height:34px;font-size:13px;min-width:130px;" data-filter="history-zeitfenster">
-            <option value="" ${!filters.zeitfenster ? "selected" : ""}>Ganzer Zeitraum</option>
-            <option value="today" ${filters.zeitfenster === "today" ? "selected" : ""}>Heute</option>
-            <option value="week" ${filters.zeitfenster === "week" ? "selected" : ""}>Diese Woche</option>
-            <option value="month" ${filters.zeitfenster === "month" ? "selected" : ""}>Dieser Monat</option>
-          </select>`)}
-          ${controlField("Ansicht", ansichtToggle)}
-          ${controlField("Suche", `<input class="bbz-input" style="min-width:200px;" data-filter="history-search" type="text" placeholder="🔍 Firma oder Aktivität suchen ..." value="${helpers.escapeHtml(filters.search)}" />`, "flex:1;min-width:180px;")}
-          ${controlField("&nbsp;", `<button class="bbz-button bbz-button-primary" style="height:34px;white-space:nowrap;" data-action="open-history-form">+ Aktivität</button>`, "margin-left:auto;")}
+      const slimActionbar = `
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+          ${ansichtToggle}
+          <input class="bbz-input" style="flex:1;min-width:180px;" data-filter="history-search" type="text" placeholder="🔍 Firma oder Aktivität suchen ..." value="${helpers.escapeHtml(filters.search)}" />
+          <button class="bbz-button bbz-button-primary" style="height:34px;white-space:nowrap;flex-shrink:0;" data-action="open-history-form">+ Aktivität</button>
         </div>`;
 
-      // Momentum als schmaler Streifen in voller Breite unter dem Band.
-      const momentumStripHtml = `
-        <div style="background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow-sm);padding:8px 14px;margin-bottom:14px;">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
-            <span style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);">Momentum · 12 Wochen</span>
-            <span style="font-size:10px;color:var(--muted);">vor 12 Wo. → diese Woche</span>
+      // Lead-BBZ: horizontale Balken (Länge=Count), Klick=Toggle-Filter.
+      const maxLead = Math.max(1, ...leadBars.map(b => b.count));
+      const leadChartHtml = leadBars.length ? leadBars.map(b => {
+        const active = lens && b.label.toLowerCase() === lens.toLowerCase();
+        const pct = Math.round(b.count / maxLead * 100);
+        return `
+          <div class="bbz-actbar" data-action="filter-lens" data-value="${helpers.escapeHtml(b.label)}" title="${helpers.escapeHtml(b.label)}: ${b.count}" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:1px 0;">
+            <span style="font-size:11px;width:64px;flex-shrink:0;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${active ? "var(--blue)" : "var(--muted)"};font-weight:${active ? 700 : 400};">${helpers.escapeHtml(b.label)}</span>
+            <div style="flex:1;height:13px;background:var(--line);border-radius:3px;overflow:hidden;">
+              <div class="bbz-actbar-fill ${active ? "bbz-on" : ""}" style="height:100%;width:${pct}%;"></div>
+            </div>
+            <span style="font-size:11px;width:22px;flex-shrink:0;text-align:right;color:var(--muted);">${b.count}</span>
+          </div>`;
+      }).join("") : `<div style="font-size:12px;color:var(--muted);padding:4px 0;">Keine Lead-BBZ-Aktivitäten.</div>`;
+
+      // Zeitraum: vertikale Perioden-Balken je Granularität, Klick=Toggle-Periode.
+      const maxPeriod = Math.max(1, ...periodBars.map(b => b.count));
+      const periodChartHtml = `
+        <div style="display:flex;align-items:flex-end;gap:4px;height:56px;">
+          ${periodBars.map(b => {
+            const active = periode === b.key;
+            const barH = b.count === 0 ? 2 : Math.round(b.count / maxPeriod * 44) + 4;
+            return `<div class="bbz-actbar" data-action="filter-periode" data-value="${b.key}" title="${helpers.escapeHtml(helpers.periodLabel(b.key))}: ${b.count}" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;cursor:pointer;gap:2px;min-width:0;">
+              <span style="font-size:9px;color:var(--muted);line-height:1;">${b.count || ""}</span>
+              <div class="bbz-actbar-fill ${active ? "bbz-on" : ""}" style="width:100%;height:${barH}px;border-radius:2px 2px 0 0;"></div>
+              <span style="font-size:9px;color:${active ? "var(--blue)" : "var(--muted)"};font-weight:${active ? 700 : 400};line-height:1;white-space:nowrap;overflow:hidden;max-width:100%;">${helpers.escapeHtml(b.label)}</span>
+            </div>`;
+          }).join("")}
+        </div>`;
+
+      const chartLabel = (text, right = "") => `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;min-height:26px;"><span style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);flex-shrink:0;">${text}</span>${right}</div>`;
+
+      // Granularität + Reset-Chip (zeigt aktive Spanne).
+      const granSwitcher = `
+        <div style="display:flex;border-radius:var(--r-sm);overflow:hidden;flex-shrink:0;">
+          ${[["monat", "Monat"], ["quartal", "Quartal"], ["jahr", "Jahr"]].map(([g, l]) => {
+            const active = gran === g;
+            return `<button class="bbz-button ${active ? "bbz-button-primary" : "bbz-button-secondary"}" style="border-radius:0;height:26px;font-size:11px;padding:0 8px;" data-action="filter-granularitaet" data-value="${g}">${l}</button>`;
+          }).join("")}
+        </div>`;
+      const resetPeriodeChip = `<span class="bbz-chip" style="cursor:pointer;flex-shrink:0;${!periode ? "background:var(--blue-light);color:var(--blue);border-color:#a8c8e0;" : ""}" data-action="filter-periode" data-value="">${spanChip}</span>`;
+
+      const controlPanelHtml = `
+        <div style="background:var(--panel);border:1px solid var(--line);border-radius:var(--r-xl);box-shadow:var(--shadow-sm);padding:12px 14px;margin-bottom:14px;">
+          ${slimActionbar}
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;align-items:start;">
+            <div>
+              ${chartLabel("Lead BBZ")}
+              <div style="display:grid;gap:3px;">${leadChartHtml}</div>
+            </div>
+            <div>
+              ${chartLabel("Zeitraum", `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">${granSwitcher}${resetPeriodeChip}</div>`)}
+              ${periodChartHtml}
+            </div>
           </div>
-          ${helpers.momentumHeatmapHtml(momentumWeeks)}
         </div>`;
 
       return `
         <div>
-          <!-- Steuerleiste (Bedienung gebündelt) -->
-          ${controlBarHtml}
+          <!-- Steuerung: Slim-Actionbar + klickbare Balken-Filter -->
+          ${controlPanelHtml}
 
-          <!-- Instrumenten-Band (reine Anzeige) -->
+          <!-- Instrumenten-Band (reine Anzeige, 3 Kacheln) -->
           ${bandHtml}
-
-          <!-- Momentum-Streifen (volle Breite) -->
-          ${momentumStripHtml}
 
           <!-- Schnellerfassung (über dem Hauptinhalt) -->
           ${schnellerfassungHtml}
