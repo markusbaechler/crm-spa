@@ -329,9 +329,10 @@
     .bbz-mini-title { font-size: 13px; font-weight: 700; line-height: 1.25; color: var(--text); }
     .bbz-mini-meta  { margin-top: 3px; font-size: 11px; color: var(--subtle); line-height: 1.35; }
     /* Klickbare Aktivitäts-Balken (Lead-BBZ- + Zeitraum-Chart) */
-    .bbz-actbar-fill { background: var(--blue-mid); transition: background 0.12s, width 0.2s, height 0.2s; }
-    .bbz-actbar:hover .bbz-actbar-fill { background: var(--blue); }
-    .bbz-actbar-fill.bbz-on { background: var(--amber); }
+    .bbz-actbar-fill { background: var(--blue-mid); transition: width 0.2s, height 0.2s; }
+    .bbz-actbar:hover .bbz-actbar-fill:not(.bbz-on) { background: var(--blue); }
+    .bbz-actbar-fill.bbz-on,
+    .bbz-actbar:hover .bbz-actbar-fill.bbz-on { background: var(--amber); }
     .bbz-empty { border: 1.5px dashed var(--line); border-radius: var(--r-lg); padding: 24px 16px; text-align: center; color: var(--subtle); background: var(--panel-2); font-size: 13px; }
     .bbz-loader { width: 16px; height: 16px; border: 2px solid rgba(0,64,120,0.15); border-top-color: var(--blue); border-radius: 50%; animation: bbzspin 0.7s linear infinite; flex-shrink: 0; }
     @keyframes bbzspin { to { transform: rotate(360deg); } }
