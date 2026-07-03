@@ -1,0 +1,41 @@
+﻿name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax check
+        run: node --check app.js && node --check io.js && node --check service-worker.js
+
+      - name: Stamp version
+        run: |
+          SHA="${GITHUB_SHA::7}"
+          sed -i "s#src=\"app.js\"#src=\"app.js?v=$SHA\"#g" index.html
+          sed -i "s#src=\"io.js\"#src=\"io.js?v=$SHA\"#g" index.html
+          sed -i "s#const CACHE = '[^']*'#const CACHE = 'bbz-crm-$SHA'#g" service-worker.js
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4
