@@ -4182,7 +4182,7 @@
         const pct = Math.round(b.count / maxLead * 100);
         return `
           <div class="bbz-actbar" data-action="filter-lens" data-value="${helpers.escapeHtml(b.label)}" title="${helpers.escapeHtml(b.label)}: ${b.count}" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:1px 0;">
-            <span style="font-size:11px;width:64px;flex-shrink:0;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${active ? "var(--blue)" : "var(--muted)"};font-weight:${active ? 700 : 400};">${helpers.escapeHtml(b.label)}</span>
+            <span style="font-size:11px;width:64px;flex-shrink:0;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${active ? "var(--amber)" : "var(--muted)"};font-weight:${active ? 700 : 400};">${helpers.escapeHtml(b.label)}</span>
             <div style="flex:1;height:13px;background:var(--line);border-radius:3px;overflow:hidden;">
               <div class="bbz-actbar-fill ${active ? "bbz-on" : ""}" style="height:100%;width:${pct}%;"></div>
             </div>
@@ -4200,7 +4200,7 @@
             return `<div class="bbz-actbar" data-action="filter-periode" data-value="${b.key}" title="${helpers.escapeHtml(helpers.periodLabel(b.key))}: ${b.count}" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;cursor:pointer;gap:2px;min-width:0;">
               <span style="font-size:9px;color:var(--muted);line-height:1;">${b.count || ""}</span>
               <div class="bbz-actbar-fill ${active ? "bbz-on" : ""}" style="width:100%;height:${barH}px;border-radius:2px 2px 0 0;"></div>
-              <span style="font-size:9px;color:${active ? "var(--blue)" : "var(--muted)"};font-weight:${active ? 700 : 400};line-height:1;white-space:nowrap;overflow:hidden;max-width:100%;">${helpers.escapeHtml(b.label)}</span>
+              <span style="font-size:9px;color:${active ? "var(--amber)" : "var(--muted)"};font-weight:${active ? 700 : 400};line-height:1;white-space:nowrap;overflow:hidden;max-width:100%;">${helpers.escapeHtml(b.label)}</span>
             </div>`;
           }).join("")}
         </div>`;
