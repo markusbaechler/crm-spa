@@ -838,7 +838,7 @@
         if (aktBucket) {
           const id = aktBucket.dataset.bucket;
           const AF = state.filters.aktivitaeten;
-          const defOpen = { "akt-c-over": true, "akt-c-month": true, "akt-c-later": false, "akt-p-month": true, "akt-p-old": false };
+          const defOpen = { "akt-c-over": true, "akt-c-month": true, "akt-c-later": false, "akt-p-month": true, "akt-p-old": false, "akt-f-over": true, "akt-f-month": true, "akt-f-later": false, "akt-f-none": false };
           const cur = (id in AF.bucketOpen) ? AF.bucketOpen[id] : (defOpen[id] ?? true);
           AF.bucketOpen[id] = !cur;
           controller.render(); return;
@@ -3747,15 +3747,25 @@
 
       // ── Event-Zeilen (inline styles, nur bestehende Tokens) ──────────────────
       const rowBase = accent => `display:flex;gap:9px;align-items:center;background:var(--panel);border:1px solid var(--line);border-left:3px solid ${accent};border-radius:var(--r-md);padding:6px 10px;`;
+      // Kleiner Icon-Button für Zeilen-Aktionen (Bearbeiten/Löschen/Erledigt)
+      const iconBtn = (action, id, sym, title, extra, danger) =>
+        `<button data-action="${action}" data-id="${id}"${extra || ""} title="${title}" style="width:24px;height:24px;flex-shrink:0;border:1px solid ${danger ? "var(--red-light)" : "var(--line)"};border-radius:var(--r-sm);background:var(--panel);color:${danger ? "var(--red)" : "var(--muted)"};cursor:pointer;font-size:12px;line-height:1;padding:0;">${sym}</button>`;
+      const firmLink = (id, title) => `<a class="bbz-link" data-action="open-firm" data-id="${id}" style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;flex-shrink:1;">${esc(title)}</a>`;
+      // Aktivität: Titel öffnet das Detail-/Bearbeiten-Formular; ✎ bearbeiten, ✕ löschen
       const evAct = (h, showFirm) => `
         <div style="${rowBase("#c3d3e3")}">
           <span style="width:22px;height:22px;border-radius:var(--r-sm);background:var(--panel-2);display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">📝</span>
           <div style="flex:1;min-width:0;display:flex;gap:10px;align-items:baseline;">
-            <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;"><b style="font-weight:700;">${esc(h.typ || "Aktivität")}</b>${h.notizen ? `<span style="color:var(--muted);"> — ${esc(h.notizen)}</span>` : ""}</span>
-            ${showFirm && h.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${h.firmId}" style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;flex-shrink:1;">${esc(h.firmTitle)}</a>` : ""}
+            <a class="bbz-link" data-action="edit-history" data-id="${h.id}" style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:var(--text);"><b style="font-weight:700;">${esc(h.typ || "Aktivität")}</b>${h.notizen ? `<span style="color:var(--muted);"> — ${esc(h.notizen)}</span>` : ""}</a>
+            ${showFirm && h.firmId ? firmLink(h.firmId, h.firmTitle) : ""}
             <span style="font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0;">${esc(helpers.relativeDate(h.datum))}</span>
           </div>
+          <span style="display:flex;gap:4px;flex-shrink:0;">
+            ${iconBtn("edit-history", h.id, "✎", "Bearbeiten", "", false)}
+            ${iconBtn("delete-history", h.id, "✕", "Löschen", ` data-title="${esc(h.typ || "Aktivität")}"`, true)}
+          </span>
         </div>`;
+      // Aufgabe: Titel öffnet Bearbeiten; ✓ erledigt (nur offene), ✕ löschen
       const evTask = (t, showFirm) => {
         const done = !t.isOpen, over = t.isOpen && t.isOverdue;
         const accent = done ? "var(--subtle)" : (over ? "var(--red)" : "var(--blue-mid)");
@@ -3769,9 +3779,13 @@
           <span style="width:22px;height:22px;border-radius:var(--r-sm);background:${icBg};display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">${done ? "✓" : "◻"}</span>
           <div style="flex:1;min-width:0;display:flex;gap:10px;align-items:baseline;">
             <a class="bbz-link" data-action="edit-task" data-id="${t.id}" style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;font-weight:700;color:${kindCol};${done ? "text-decoration:line-through;" : ""}">${esc(t.title)}</a>
-            ${showFirm && t.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${t.firmId}" style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;flex-shrink:1;">${esc(t.firmTitle)}</a>` : ""}
+            ${showFirm && t.firmId ? firmLink(t.firmId, t.firmTitle) : ""}
             <span style="font-size:11px;white-space:nowrap;flex-shrink:0;">${when}</span>
           </div>
+          <span style="display:flex;gap:4px;flex-shrink:0;">
+            ${t.isOpen ? iconBtn("complete-task", t.id, "✓", "Als erledigt markieren", "", false) : ""}
+            ${iconBtn("delete-task", t.id, "✕", "Löschen", ` data-title="${esc(t.title)}"`, true)}
+          </span>
         </div>`;
       };
 
@@ -3826,9 +3840,7 @@
           </div>` : ""}
         </div>`;
       };
-      const firmAxisHtml = firmRows.length
-        ? `<div style="display:flex;flex-direction:column;gap:8px;">${firmRows.map(firmCard).join("")}</div>`
-        : ui.emptyBlock("Keine Firmen mit Aktivität oder Aufgabe im aktuellen Filter.");
+      let firmAxisHtml = "";  // gefüllt nach der bucket()-Definition (TDZ)
 
       // ── AGENDA-Achse: Zukunft ▲ / Heute / Verlauf ▼ ──────────────────────────
       const divider = (label, isToday) => {
@@ -3840,16 +3852,41 @@
       };
       const bucket = (id, label, items, rowFn, defOpen, red) => {
         const open = (id in F.bucketOpen) ? F.bucketOpen[id] : defOpen;
-        const cap = 6, more = !!F.moreOpen[id];
+        const cap = 8, more = !!F.moreOpen[id];
         const shown = open ? (more ? items : items.slice(0, cap)) : [];
         const rest = items.length - cap;
-        return `<div style="margin-bottom:6px;">
+        return `<div style="margin-bottom:8px;">
           <div data-action="akt-bucket" data-bucket="${id}" style="font-size:11px;font-weight:700;color:${red ? "var(--red)" : "var(--muted)"};display:flex;gap:7px;align-items:center;cursor:pointer;padding:3px 2px;user-select:none;">
             <span style="font-size:10px;color:var(--subtle);width:10px;">${open ? "▾" : "▸"}</span>${esc(label)}<span style="font-weight:400;color:var(--subtle);">${items.length}</span>
           </div>
-          ${open ? `<div style="display:flex;flex-direction:column;gap:4px;">${shown.map(rowFn).join("")}${(!more && rest > 0) ? `<button data-action="akt-more" data-bucket="${id}" style="width:100%;height:28px;border:1px dashed var(--line);background:var(--panel-2);border-radius:var(--r-sm);color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;">+ ${rest} weitere anzeigen</button>` : ""}</div>` : ""}
+          ${open ? `<div style="display:flex;flex-direction:column;gap:6px;">${shown.map(rowFn).join("")}${(!more && rest > 0) ? `<button data-action="akt-more" data-bucket="${id}" style="width:100%;height:28px;border:1px dashed var(--line);background:var(--panel-2);border-radius:var(--r-sm);color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;">+ ${rest} weitere anzeigen</button>` : ""}</div>` : ""}
         </div>`;
       };
+
+      // FIRMA-Achse in Fälligkeits-Buckets (analog Agenda): Überfällig / Diesen Monat / Später / Ohne offene Aufgabe.
+      const firmBucketOf = x => {
+        const n = x.openT[0];
+        if (!n) return "none";
+        if (n.isOverdue) return "over";
+        const d = dl(n);
+        return (d && d <= mo) ? "month" : "later";
+      };
+      const fbk = { over: [], month: [], later: [], none: [] };
+      firmRows.forEach(x => fbk[firmBucketOf(x)].push(x));
+      const byTitle = (a, b) => a.f.title.localeCompare(b.f.title, "de");
+      const byNext  = (a, b) => helpers.compareDateAsc(a.openT[0].deadline, b.openT[0].deadline) || byTitle(a, b);
+      fbk.over.sort(byNext); fbk.month.sort(byNext); fbk.later.sort(byNext);
+      fbk.none.sort((a, b) => helpers.compareDateDesc(a.fa[0] && a.fa[0].datum, b.fa[0] && b.fa[0].datum) || byTitle(a, b));
+      const firmBuckets = [
+        ["akt-f-over",  "Überfällig",          fbk.over,  true,  true],
+        ["akt-f-month", "Diesen Monat",        fbk.month, true,  false],
+        ["akt-f-later", "Später",              fbk.later, false, false],
+        ["akt-f-none",  "Ohne offene Aufgabe", fbk.none,  false, false]
+      ].filter(x => x[2].length);
+      firmAxisHtml = firmRows.length
+        ? firmBuckets.map(([id, l, it, o, r]) => bucket(id, l, it, firmCard, o, r)).join("")
+        : ui.emptyBlock("Keine Firmen mit Aktivität oder Aufgabe im aktuellen Filter.");
+
       const openDisp = dispTasks.filter(t => t.isOpen);
       const over  = openDisp.filter(t => t.isOverdue).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
       const month = openDisp.filter(t => { const d = dl(t); return !t.isOverdue && d && d <= mo; }).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
@@ -3923,7 +3960,7 @@
           <!-- Achsen-Umschalter + Legende -->
           <div style="display:flex;gap:10px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
             <div style="display:flex;border-radius:var(--r-sm);overflow:hidden;flex-shrink:0;border:1px solid var(--line);">${axisBtn("firm", "Nach Firma")}${axisBtn("chrono", "Agenda (chronologisch)")}</div>
-            <span style="font-size:11px;color:var(--subtle);">${F.axis === "firm" ? "Beziehungssicht · sortiert nach Dringlichkeit" : "Fälligkeits-Agenda · offene Aufgaben zuerst, Verlauf eingeklappt"}</span>
+            <span style="font-size:11px;color:var(--subtle);">${F.axis === "firm" ? "Beziehungssicht · gruppiert nach Fälligkeit der nächsten Aufgabe" : "Fälligkeits-Agenda · offene Aufgaben zuerst, Verlauf eingeklappt"}</span>
             ${F.axis === "firm" ? `<button class="bbz-button bbz-button-secondary" style="margin-left:auto;height:28px;font-size:11px;" data-action="akt-legende">Signal-Legende ${F.legendeOffen ? "▾" : "▸"}</button>` : ""}
           </div>
           ${F.axis === "firm" && F.legendeOffen ? `

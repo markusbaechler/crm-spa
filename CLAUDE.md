@@ -198,8 +198,11 @@ Zähler: total · 30 Tage · 365 Tage. Kontaktart-Split-Bar aus `choices[CRMHist
 (Reihenfolge SP-Choices, sonst alphabetisch).
 
 **Zwei Achsen:**
-- `firm` (Default): **Bank-Cadence-Karten** je Firma mit ≥1 Aktivität/Aufgabe, sortiert nach
-  `firmSignal` (overdue→never→cold→ok→kein Signal), dann Titel. Kopf zeigt Signal-Dot,
+- `firm` (Default): **Bank-Cadence-Karten** je Firma mit ≥1 Aktivität/Aufgabe, **gruppiert in
+  Fälligkeits-Buckets** (analog Agenda) nach der nächsten offenen Aufgabe: `akt-f-over`
+  (Überfällig, offen) / `akt-f-month` (Diesen Monat, offen) / `akt-f-later` (Später, zu) /
+  `akt-f-none` (Ohne offene Aufgabe, zu). Buckets klappbar (`akt-bucket`), Cap 8 + „+N weitere".
+  Innerhalb sortiert nach nächster Deadline (none: nach letzter Aktivität). Kopf zeigt Signal-Dot,
   „Letzter Touch" + „Nächste Aufgabe" (Farbe rot/amber/neutral nach Dringlichkeit) + Lead-Tag.
   Aufklappbar (`akt-firm-expand`) → gemergte Timeline (Aktivitäten+Aufgaben, neueste zuerst) +
   „+ Aktivität"/„+ Aufgabe" (reuse `open-history-form`/`open-task-form` mit `data-firm-id`).
@@ -212,6 +215,12 @@ Zähler: total · 30 Tage · 365 Tage. Kontaktart-Split-Bar aus `choices[CRMHist
 **Wiederverwendete Aktionen (nicht duplizieren):** `open-firm`, `open-contact`,
 `open-history-form`, `open-task-form`, `edit-task`, `edit-history`, `complete-task`,
 `task-status-change`. Neue Aktionen alle mit `akt-`-Präfix.
+
+**Zeilen-Aktionen (jede Event-Zeile, `iconBtn`-Helper):** Aktivität — Titel/✎ öffnet das
+Detail-/Bearbeiten-Formular (`edit-history`), ✕ löscht (`delete-history`, mit `data-title`).
+Aufgabe — Titel öffnet Bearbeiten (`edit-task`), ✓ markiert erledigt (`complete-task`, nur
+offene), ✕ löscht (`delete-task`, mit `data-title`). Alle Handler existierten bereits; die
+neue View emittiert nur die Buttons mit `data-id`/`data-title`.
 
 **Styling:** nur bestehende Tokens/`bbz-*`-Klassen; Event-Zeilen als Inline-Styles mit
 CSS-Variablen (Muster wie `historyView`). Keine neuen CSS-Klassen in `index.html`.
