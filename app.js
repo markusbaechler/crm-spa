@@ -1881,13 +1881,6 @@
       state.enriched.firms = firms.sort((a, b) => a.title.localeCompare(b.title, "de"));
       state.enriched.events = events;
 
-      // TEMP-VERIFIKATION (Kategorie-Feld) — nach Prüfung wieder entfernen
-      ["Kunde", "Lieferant", "Übrige"].forEach(kat => {
-        const bsp = state.enriched.firms.find(f => f.kategorie === kat);
-        console.log(`[Kategorie-Check] ${kat}:`, bsp ? `${bsp.title} -> "${bsp.kategorie}"` : "keine Firma gefunden");
-      });
-      console.log("[Kategorie-Check] verteilte Werte:", [...new Set(state.enriched.firms.map(f => f.kategorie))]);
-
       // privateFirmId nach jedem enrich() neu auflösen — robust gegen SP-ID-Änderungen
       const privateFirm = state.data.firms.find(
         f => String(f.title).trim() === CONFIG.defaults.privateFirmTitle
