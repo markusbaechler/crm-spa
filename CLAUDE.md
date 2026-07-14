@@ -33,19 +33,24 @@ Gehostet auf GitHub Pages: https://markusbaechler.github.io/crm-spa/
 
 ## Datenmodell (SharePoint-Listen)
 - **CRMFirms**: Title, Adresse, PLZ, Ort, Land, Hauptnummer, Klassifizierung (A/B/C), VIP,
-  Kategorie (Choice: Kunde/Lieferant/Übrige; internes Feld `Kategorie` -> `firm.kategorie`)
+  Kategorie (Choice: Kunde/Lieferant/Übrige; SP-internes Feld `Kategorie`, gemappt in
+  `normalizer.firm()` -> `firm.kategorie`)
 - **CRMContacts**: Title(=Nachname), Vorname, Anrede, Firma(Lookup), Funktion, Email1/2, Direktwahl, Mobile, Rolle, Leadbbz0, SGF, Geburtstag, Kommentar, Event, Eventhistory, Archiviert
 - **CRMHistory**: Title, Nachname(Lookup), Datum, Kontaktart(=typ), Notizen, Projektbezug, Leadbbz
 - **CRMTasks**: Title, Name(Lookup), Deadline, Status, Leadbbz
 
-`firmSignal(firm)` -> `overdue | never | cold | ok | ""`. **Gate:** nur Firmen mit
-`kategorie === "Kunde"` erhalten ein Signal/Dot; Lieferant/Übrige/leer -> `""` (kein Dot).
-Klassifizierung (A/B/C) spielt **keine** Rolle. Stufen: `overdue` (offene überfällige Task) >
-`never` (keine History) > `cold` (letzte Aktivität > 12 Monate, exakte Monatsdifferenz) >
-`ok` (on track). Basis für die Signal-Dots im **Firmen-Cockpit** (grüner `ok`-Dot bleibt,
-nur bei Kunden); die `history`-Route nutzt kein `firmSignal`. Kein Pflege-Radar mehr —
-die Cockpit-Tabelle führt Deadline+Aktivität in **einer** Spalte „Status/Aktivität"
-zusammen (Precedence überfällige Task > laufende Task > Aktivitätsalter), sortierbar nach Dringlichkeit.
+`firmSignal(firm)` -> **fünf Rückgaben** `overdue | never | cold | ok | ""`. **Gate:**
+nur Firmen mit `firm.kategorie === "Kunde"` erhalten ein Signal; Lieferant/Übrige/leer
+-> `""` (kein Dot). Klassifizierung (A/B/C) spielt **keine** Rolle; **VIP ist ein
+separates Flag ohne Gate-Einfluss**. Stufen in Priorität: `overdue` (≥1 offene,
+überfällige Task) > `never` (keine History — gilt für **alle** Kunden, nicht nur A/B)
+> `cold` (letzte Aktivität > 12 Monate, exakte Monatsdifferenz via getFullYear/getMonth)
+> `ok` (on track, sonst). Die `history`-Route nutzt kein `firmSignal`.
+
+**Signal-Dot-Farben** (Rendering an zwei Stellen — Desktop-Tabelle + Mobile-Card,
+identisch halten): `overdue` = **rot**, `never` = **rot**, `cold` = **amber**,
+`ok` = **grün**, `""` = **kein Dot** (Lieferant/Übrige). Farben ausschliesslich über
+`--red`/`--amber`/`--green` (siehe `--red`-Warnung in Konvention #4).
 
 ## Konventionen — strikt einhalten
 1. **Kein Framework/Build einführen.** Bleibt Vanilla. Keine neuen Dependencies ohne expliziten Auftrag.
@@ -54,6 +59,9 @@ zusammen (Precedence überfällige Task > laufende Task > Aktivitätsalter), sor
 3. **Escaping:** Jeder Nutzer-/SP-Wert im HTML MUSS durch `helpers.escapeHtml()`.
 4. **Styling:** Nur bestehende CSS-Variablen (`--blue`, `--muted`, `--green`, `--amber`,
    `--red`, `--line`, `--panel`, `--r-md`, `--shadow` ...) und `bbz-*`-Klassen. Keine neuen Ad-hoc-Farben.
+   **`--red` MUSS echtes Rot bleiben (`#a4161a`).** Ein versehentlich gesetztes Teal
+   (`#0d6e6a`) liess sämtliche Danger-Elemente inkl. Signal-Dots grünlich rendern
+   (Logik/Mapping waren korrekt — nur der Token-Wert falsch). Nie auf einen Nicht-Rot-Wert setzen.
 5. **State:** Filter/Selektion in `state.filters.<route>` bzw. `state.selection`. Nach Mutation `controller.render()`.
 6. **SharePoint-Write-Eigenheit:** POST speichert zuverlässig nur `Title` + Lookups. Restfelder per
    separatem PATCH auf die neue Item-ID nachschreiben (Muster ab Z. ~5229 nicht umgehen).
@@ -85,6 +93,37 @@ anlegen — zwei Workflows laden dasselbe `github-pages`-Artefakt hoch -> Kollis
 **"Deployment failed / try again later"** ist meist ein transienter GitHub-Pages-
 Backend-Fehler (githubstatus.com), **kein** Code-Fix: Deploy neu auslösen mit
 `gh workflow run deploy.yml --ref main` (nicht `gh run rerun --failed` — das dupliziert Artefakte).
+
+## Firmen-Route (`firms`) — Ist-Stand
+`views.firms()`. **Reines Firmenboard** — **kein** Instrumenten-Band, **keine**
+KPI-Kacheln, **keine** Geburtstage-Kachel, **keine** rechte „Offene Tasks"-Liste,
+**kein** Pflege-Radar (alles ersatzlos entfernt). Aufbau: Header („Firmen" + „+ Firma")
+-> Filterbereich -> Suche -> aufklappbare Legende -> Tabelle.
+
+**Zweistufiger Filter** — `state.filters.firms = { kategorie, klassifizierung, vip,
+search, legendeOffen, sortBy, sortDir }`:
+- Stufe 1 **Kategorie** (`kpi-filter`/`firms-kategorie`): Chips Kunden(Default) |
+  Lieferanten | Übrige, filtert `firm.kategorie`, Zähler je Chip.
+- Stufe 2 **Klassifizierung/VIP** — **nur bei Kunden sichtbar**: `Alle|A|B|C`
+  (`firms-klassifizierung`, exklusiv) + separat `♛ VIP` (`firms-vip`, boolescher
+  Toggle, additiv zu A/B/C). Beim Kategorie-Wechsel weg von „Kunde" werden
+  `klassifizierung` + `vip` zurückgesetzt.
+
+**Tabelle (6 Spalten):** Dot · Firma · Ort · Klassifizierung · Kontakte ·
+Status/Aktivität. **Keine** VIP-Spalte, **keine** Tasks-Spalte — Task-Info steckt nur
+im kombinierten Feld „Status/Aktivität" (Precedence überfällige Task > laufende Task >
+Aktivitätsalter; farblos ausser rotem „seit X fällig"; sortierbar nach Dringlichkeit).
+Dot = `firmSignal` (siehe oben), Nicht-Kunden ohne Dot.
+
+**Aufklappbare Signal-Legende** (`data-action="toggle-firm-legende"` ->
+`filters.firms.legendeOffen`): grün „Aktiv gepflegt" / amber „Aufmerksamkeit" /
+rot „Nicht aktiv gepflegt" + Fusszeile „Lieferanten und Übrige tragen keinen Punkt."
+
+**Vorgehalten fürs geplante Dashboard — bewusst NICHT gelöscht:**
+`helpers.upcomingBirthdays` / `helpers.birthdayLabel` werden weiter in `firmDetail`
+und der Kontakte-Route genutzt — **nicht als toten Code entfernen**. Die aus dem Board
+entfernte KPI-/Geburtstags-/Task-Fälligkeits-Anzeige war **inline** (kein benannter
+Helper) und ist bei Bedarf aus der Git-History wiederherstellbar.
 
 ## Aktivitäten-Route (`history`) — Ist-Stand
 `views.historyView()` (app.js ~Z. 3918). **Reiner Aktivitäts-Bericht** über tatsächliche
