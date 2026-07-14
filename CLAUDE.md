@@ -39,6 +39,10 @@ Gehostet auf GitHub Pages: https://markusbaechler.github.io/crm-spa/
 - **CRMHistory**: Title, Nachname(Lookup), Datum, Kontaktart(=typ), Notizen, Projektbezug, Leadbbz
 - **CRMTasks**: Title, Name(Lookup), Deadline, Status, Leadbbz
 
+> **Lead-Semantik (Route `aktivitaeten`):** „Lead bbz" = **Record-Lead** (`history.leadbbz` /
+> `task.leadbbz`), **kein** Kontakt-Fallback auf `contact.leadbbz0`. Bewusste Abweichung von
+> der alten `history`-Route, die nach `contact.leadbbz0` filterte.
+
 `firmSignal(firm)` -> **fünf Rückgaben** `overdue | never | cold | ok | ""`. **Gate:**
 nur Firmen mit `firm.kategorie === "Kunde"` erhalten ein Signal; Lieferant/Übrige/leer
 -> `""` (kein Dot). Klassifizierung (A/B/C) spielt **keine** Rolle; **VIP ist ein
@@ -160,3 +164,54 @@ Aktive Firmen (≥1 Aktivität) / **Ø pro Woche** = `total / Math.max(1, fenste
 `state.filters.history` (real existierende Felder): `search, kontaktart, viewMode,
 lens, granularitaet, periode, expandedFirms`. (Entfernt: `radarMode`, `monat`,
 `wochenziel`, `zeitfenster`, `leadbbz`, `groupBy`.)
+
+## Aktivitäten-Route (`aktivitaeten`) — Ist-Stand  ⟵ zusammengeführt aus `planning` + `history`
+
+`views.aktivitaeten()` (app.js ~Z. 3681). **Ersetzt** die Screens `planning` (Aufgaben)
+und `history` (Aktivitäten) durch **einen** Screen. Aktivität (Vergangenheit) und Aufgabe
+(Zukunft) verschmelzen um die **Kunden-Beziehung** herum, bleiben aber typografisch
+getrennt: **blau = Aufgabe, rot = überfällig, grau = Aktivität/erledigt**. Ampelfarben
+(grün/amber/rot) sind **ausschliesslich** dem Firmen-Signal vorbehalten.
+
+**Routing/Redirect:** Nav-Buttons (Desktop + Bottom) zeigen auf `data-route="aktivitaeten"`.
+`renderRoute()` lenkt `planning` und `history` **auf `aktivitaeten` um** (alte Bookmarks/
+Deep-Links `#planning`/`#history` überleben; `knownRoutes` enthält alle drei). Die alten
+View-Funktionen `planning()` / `historyView()` bleiben im Code (nicht gelöscht), sind aber
+nicht mehr über die Nav erreichbar. Cross-Links aus dem Firmenboard
+(`navigate-planning` / `navigate-planning-filtered`) zeigen jetzt auf `aktivitaeten`
+(`week`/`rest` → `month`, Achse `chrono`).
+
+**State:** `state.filters.aktivitaeten = { segment:"kunden", axis:"firm", search, lead,
+faelligkeit, expandedFirms[], bucketOpen{}, moreOpen{}, legendeOffen }`.
+- **segment** (`kpi-filter`/`akt-segment`, exklusiv): `kunden` (Default, = Banken/
+  Versicherungen, Gate `kategorie==="Kunde"`) | `alle`. Wechsel setzt `lead`+`faelligkeit` zurück.
+- **axis** (`akt-axis`): `firm` (Default) | `chrono`.
+- **lead** (`kpi-filter`/`akt-lead`, Toggle, case-insensitiv): Record-Lead-Filter.
+- **faelligkeit** (`kpi-filter`/`akt-faelligkeit`, Toggle): `""|overdue|month|later`.
+- **expandedFirms/bucketOpen/moreOpen**: UI-Zustand der Achsen (getrennt von `history`).
+- **legendeOffen** (`akt-legende`): aufklappbare Signal-Legende (nur Firma-Achse).
+- Suche: `data-filter="akt-search"`.
+
+**Monats-Raster (kein Woche-Bucket):** `mo = heute+30`, `moP = heute−30`. Aufgaben-Fenster:
+`overdue` (offen & überfällig) · `month` (offen, heute…+30) · `later` (offen, >+30). Aktivitäts-
+Zähler: total · 30 Tage · 365 Tage. Kontaktart-Split-Bar aus `choices[CRMHistory].Kontaktart`
+(Reihenfolge SP-Choices, sonst alphabetisch).
+
+**Zwei Achsen:**
+- `firm` (Default): **Bank-Cadence-Karten** je Firma mit ≥1 Aktivität/Aufgabe, sortiert nach
+  `firmSignal` (overdue→never→cold→ok→kein Signal), dann Titel. Kopf zeigt Signal-Dot,
+  „Letzter Touch" + „Nächste Aufgabe" (Farbe rot/amber/neutral nach Dringlichkeit) + Lead-Tag.
+  Aufklappbar (`akt-firm-expand`) → gemergte Timeline (Aktivitäten+Aufgaben, neueste zuerst) +
+  „+ Aktivität"/„+ Aufgabe" (reuse `open-history-form`/`open-task-form` mit `data-firm-id`).
+- `chrono`: **Fälligkeits-Agenda.** Zukunft (offene Aufgaben) über der **Heute-Scheidelinie**,
+  Verlauf (Aktivitäten + erledigte Aufgaben) darunter. Buckets: Zukunft `Überfällig`/`Diesen
+  Monat`(offen) / `Später`(zu); Verlauf `Dieser Monat`(offen) / `Älter`(zu). Jede Gruppe
+  klappbar (`akt-bucket`), **Cap 6** + „+N weitere" (`akt-more`). Kompakte Einzeiler
+  (Titel/Kontaktart · Firma · Fälligkeit), Firma verlinkt.
+
+**Wiederverwendete Aktionen (nicht duplizieren):** `open-firm`, `open-contact`,
+`open-history-form`, `open-task-form`, `edit-task`, `edit-history`, `complete-task`,
+`task-status-change`. Neue Aktionen alle mit `akt-`-Präfix.
+
+**Styling:** nur bestehende Tokens/`bbz-*`-Klassen; Event-Zeilen als Inline-Styles mit
+CSS-Variablen (Muster wie `historyView`). Keine neuen CSS-Klassen in `index.html`.

@@ -143,6 +143,8 @@
       contacts: { search: "", archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden, sortBy: "fullName", sortDir: "asc" },
       planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, groupBy: "none", sortBy: "deadline", sortDir: "asc", segment: "", leadbbz: "", faelligkeit: "" },
       history: { search: "", kontaktart: "", viewMode: "firms", lens: "", granularitaet: "monat", periode: "", expandedFirms: [] },
+      // Zusammengeführte Aktivitäten+Aufgaben-Route (ersetzt planning + history)
+      aktivitaeten: { segment: "kunden", axis: "firm", search: "", lead: "", faelligkeit: "", expandedFirms: [], bucketOpen: {}, moreOpen: {}, legendeOffen: false },
       events: { search: "", onlyWithOpenTasks: false, sortBy: "contactName", sortDir: "asc", segment: "", selectedEvent: "" },
       admin: { zeitfenster: "30" }
     },
@@ -581,13 +583,16 @@
         if (openFirm) { controller.openFirm(openFirm.dataset.id); return; }
 
         const navPlanning = event.target.closest("[data-action='navigate-planning']");
-        if (navPlanning) { event.preventDefault(); controller.navigate("planning"); return; }
+        if (navPlanning) { event.preventDefault(); controller.navigate("aktivitaeten"); return; }
 
         const navPlanningFiltered = event.target.closest("[data-action='navigate-planning-filtered']");
         if (navPlanningFiltered) {
           event.preventDefault();
-          state.filters.planning.faelligkeit = navPlanningFiltered.dataset.faelligkeit || "";
-          controller.navigate("planning");
+          // "week" existiert nicht mehr (Monats-Raster) -> auf "month" abbilden
+          const f = navPlanningFiltered.dataset.faelligkeit || "";
+          state.filters.aktivitaeten.faelligkeit = (f === "week" || f === "rest") ? "month" : f;
+          state.filters.aktivitaeten.axis = "chrono";
+          controller.navigate("aktivitaeten");
           return;
         }
 
@@ -620,6 +625,17 @@
             state.filters.planning.segment = state.filters.planning.segment === value ? "" : value;
           } else if (scope === "planning-leadbbz") {
             state.filters.planning.leadbbz = state.filters.planning.leadbbz === value ? "" : value;
+          } else if (scope === "akt-segment") {
+            state.filters.aktivitaeten.segment = value;
+            // Lead- und Fälligkeitsfilter gelten pro Segment -> beim Wechsel zurücksetzen
+            state.filters.aktivitaeten.lead = "";
+            state.filters.aktivitaeten.faelligkeit = "";
+          } else if (scope === "akt-faelligkeit") {
+            const AF = state.filters.aktivitaeten;
+            AF.faelligkeit = AF.faelligkeit === value ? "" : value;
+          } else if (scope === "akt-lead") {
+            const AF = state.filters.aktivitaeten;
+            AF.lead = (AF.lead || "").toLowerCase() === (value || "").toLowerCase() ? "" : value;
           } else if (scope === "events-segment") {
             state.filters.events.segment = state.filters.events.segment === value ? "" : value;
           } else if (scope === "events-selected") {
@@ -802,6 +818,39 @@
           controller.render();
           return;
         }
+
+        // ── Zusammengeführte Aktivitäten-Route ──────────────────────────────
+        // Achse umschalten: Nach Firma / Agenda (chronologisch)
+        const aktAxis = event.target.closest("[data-action='akt-axis']");
+        if (aktAxis) { state.filters.aktivitaeten.axis = aktAxis.dataset.value || "firm"; controller.render(); return; }
+
+        // Firma-Karte auf-/zuklappen (eigener Expand-State, getrennt von history)
+        const aktFirmExpand = event.target.closest("[data-action='akt-firm-expand']");
+        if (aktFirmExpand) {
+          const fid = Number(aktFirmExpand.dataset.firmId);
+          const arr = state.filters.aktivitaeten.expandedFirms;
+          const i = arr.indexOf(fid); if (i === -1) arr.push(fid); else arr.splice(i, 1);
+          controller.render(); return;
+        }
+
+        // Chrono-Zeitgruppe auf-/zuklappen (Default je Bucket)
+        const aktBucket = event.target.closest("[data-action='akt-bucket']");
+        if (aktBucket) {
+          const id = aktBucket.dataset.bucket;
+          const AF = state.filters.aktivitaeten;
+          const defOpen = { "akt-c-over": true, "akt-c-month": true, "akt-c-later": false, "akt-p-month": true, "akt-p-old": false };
+          const cur = (id in AF.bucketOpen) ? AF.bucketOpen[id] : (defOpen[id] ?? true);
+          AF.bucketOpen[id] = !cur;
+          controller.render(); return;
+        }
+
+        // Chrono-Gruppe: gedeckelte Liste vollständig zeigen
+        const aktMore = event.target.closest("[data-action='akt-more']");
+        if (aktMore) { state.filters.aktivitaeten.moreOpen[aktMore.dataset.bucket] = true; controller.render(); return; }
+
+        // Signal-Legende auf-/zuklappen
+        const aktLegende = event.target.closest("[data-action='akt-legende']");
+        if (aktLegende) { state.filters.aktivitaeten.legendeOffen = !state.filters.aktivitaeten.legendeOffen; controller.render(); return; }
 
         // Aktivitäten-Ansicht umschalten: Firmen-Bericht / Chronologisch
         const viewMode = event.target.closest("[data-action='history-view-mode']");
@@ -1182,7 +1231,7 @@
       const isMsalRedirect = currentHash.includes("code=") || currentHash.includes("error=") || currentHash.includes("state=")
                           || currentSearch.includes("code=") || currentSearch.includes("error=") || currentSearch.includes("state=");
       // Bekannte App-Routen aus dem Hash lesen — verhindert Ueberschreiben von #admin etc.
-      const knownRoutes = ["firms","contacts","planning","history","events","birthdays","admin"];
+      const knownRoutes = ["firms","contacts","aktivitaeten","planning","history","events","birthdays","admin"];
       const hashRoute = currentHash.replace("#", "").split("-")[0];
       if (!isMsalRedirect && knownRoutes.includes(hashRoute)) {
         state.filters.route = hashRoute;
@@ -1201,6 +1250,7 @@
         if (el.matches("[data-filter='contacts-search']")) { state.filters.contacts.search = el.value; debouncedRender(); }
         if (el.matches("[data-filter='planning-search']")) { state.filters.planning.search = el.value; debouncedRender(); }
         if (el.matches("[data-filter='history-search']")) { state.filters.history.search = el.value; debouncedRender(); }
+        if (el.matches("[data-filter='akt-search']")) { state.filters.aktivitaeten.search = el.value; debouncedRender(); }
         if (el.matches("[data-filter='events-search']")) { state.filters.events.search = el.value; debouncedRender(); }
         if (el.matches("[data-filter='batch-search']") && state.modal?.payload) { state.modal.payload.filterSearch = el.value; state.modal.payload.selected = []; debouncedRender(); }
         if (el.matches("[data-filter='event-einladung-search']") && state.modal?.payload) { state.modal.payload.filterSearch = el.value; debouncedRender(); }
@@ -1888,9 +1938,15 @@
       if (state.meta.loading) return ui.loadingBlock();
 
       let viewHtml = "";
+      // Alte Routen (planning/history) auf die zusammengeführte Route umlenken —
+      // hält Bookmarks/Deep-Links am Leben und synchronisiert die Nav-Hervorhebung.
+      if (state.filters.route === "planning" || state.filters.route === "history") {
+        state.filters.route = "aktivitaeten";
+      }
       switch (state.filters.route) {
         case "firms": viewHtml = state.selection.firmId ? this.firmDetail() : this.firms(); break;
         case "contacts": viewHtml = state.selection.contactId ? this.contactDetail() : this.contacts(); break;
+        case "aktivitaeten": viewHtml = this.aktivitaeten(); break;
         case "planning": viewHtml = this.planning(); break;
         case "history": viewHtml = this.historyView(); break;
         case "events": viewHtml = this.events(); break;
@@ -3614,6 +3670,275 @@
               </div>
             </div>
           </section>
+        </div>
+      `;
+    },
+
+    // ══ Zusammengeführte Route: Aktivitäten + Aufgaben in einem Screen ══════════
+    // Ersetzt planning() + historyView(). Zwei Achsen (Firma / Agenda),
+    // Segment-Gate (Kunden = Banken/Versicherungen), Monats-Raster,
+    // Lead = Record-Lead (history.leadbbz / task.leadbbz), KEIN Kontakt-Fallback.
+    aktivitaeten() {
+      const F = state.filters.aktivitaeten;
+      const esc = helpers.escapeHtml;
+      const today = helpers.todayStart();
+      const mo  = new Date(today); mo.setDate(mo.getDate() + 30);
+      const moP = new Date(today); moP.setDate(moP.getDate() - 30);
+      const dl = t => helpers.toDate(t.deadline);
+
+      // ── Segment-Scope (Firmen) ───────────────────────────────────────────────
+      const segFirms = state.enriched.firms.filter(f => F.segment === "alle" ? true : f.kategorie === "Kunde");
+      const segIds = new Set(segFirms.map(f => f.id));
+      const inSeg = r => r.firmId && segIds.has(r.firmId);
+      const leadOf = r => (r.leadbbz || "").trim();
+      const leadPass = r => !F.lead || leadOf(r).toLowerCase() === F.lead.toLowerCase();
+
+      // Segment-weit (für Lead-Balken, ohne aktiven Lead-Filter)
+      const segActsAll  = state.enriched.history.filter(inSeg);
+      const segTasksAll = state.enriched.tasks.filter(inSeg);
+      // Segment + Lead (für Zähler)
+      const scopeActs  = segActsAll.filter(leadPass);
+      const scopeTasks = segTasksAll.filter(leadPass);
+
+      // ── Zähler (stabil: ohne Fälligkeits-/Suchfilter) ────────────────────────
+      const openTasks = scopeTasks.filter(t => t.isOpen);
+      const cOver  = openTasks.filter(t => t.isOverdue).length;
+      const cMonth = openTasks.filter(t => { const d = dl(t); return d && !t.isOverdue && d <= mo; }).length;
+      const cLater = openTasks.filter(t => { const d = dl(t); return d && d > mo; }).length;
+      const cAll   = scopeTasks.length;
+      const sinceDays = (v, n) => { const x = new Date(today); x.setDate(x.getDate() - n); const d = helpers.toDate(v); return d && d >= x; };
+      const aMonth = scopeActs.filter(h => sinceDays(h.datum, 30)).length;
+      const aYear  = scopeActs.filter(h => sinceDays(h.datum, 365)).length;
+
+      // Kontaktart-Split
+      const artOrder = state.meta.choices?.[CONFIG.lists.history]?.["Kontaktart"] || [];
+      const artCounts = new Map();
+      scopeActs.forEach(h => { const k = h.typ || "—"; artCounts.set(k, (artCounts.get(k) || 0) + 1); });
+      const artKeys = [...artCounts.keys()].sort((a, b) => {
+        const ia = artOrder.indexOf(a), ib = artOrder.indexOf(b);
+        if (ia !== -1 || ib !== -1) return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+        return a.localeCompare(b, "de");
+      });
+      const artPalette = ["#004078", "#005aaa", "#2e8bce", "#7bb6e0", "#b9d4ea", "#cfe0ee", "#dfeaf4"];
+      const splitTot = scopeActs.length || 1;
+      const splitBar = artKeys.map((k, i) => `<div title="${esc(k)}: ${artCounts.get(k)}" style="width:${artCounts.get(k) / splitTot * 100}%;background:${artPalette[i % artPalette.length]};"></div>`).join("");
+      const splitLeg = artKeys.map((k, i) => `<span style="font-size:11px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;"><span style="width:9px;height:9px;border-radius:2px;background:${artPalette[i % artPalette.length]};"></span>${esc(k)} ${artCounts.get(k)}</span>`).join("");
+
+      // Lead-Balken (Record-Lead, segment-weit)
+      const leadAgg = new Map();
+      [...segActsAll, ...segTasksAll].forEach(r => { const l = leadOf(r); if (!l) return; leadAgg.set(l, (leadAgg.get(l) || 0) + 1); });
+      const leadBars = [...leadAgg.entries()].sort((a, b) => b[1] - a[1]);
+      const maxLead = Math.max(1, ...leadBars.map(b => b[1]));
+
+      // ── Anzeige-Filter (Fälligkeit-Chip + Suche) ─────────────────────────────
+      const s = (F.search || "").trim().toLowerCase();
+      const taskWindowPass = t => {
+        if (!F.faelligkeit) return true;
+        if (F.faelligkeit === "overdue") return t.isOpen && t.isOverdue;
+        const d = dl(t);
+        if (F.faelligkeit === "month")   return t.isOpen && !t.isOverdue && d && d <= mo;
+        if (F.faelligkeit === "later")   return t.isOpen && d && d > mo;
+        return true;
+      };
+      const actSearch  = h => !s || [h.contactName, h.firmTitle, h.typ, h.notizen].some(v => helpers.textIncludes(v, s));
+      const taskSearch = t => !s || [t.title, t.contactName, t.firmTitle, t.status].some(v => helpers.textIncludes(v, s));
+      const dispActs  = scopeActs.filter(actSearch);
+      const dispTasks = scopeTasks.filter(t => taskWindowPass(t) && taskSearch(t));
+
+      // ── Event-Zeilen (inline styles, nur bestehende Tokens) ──────────────────
+      const rowBase = accent => `display:flex;gap:9px;align-items:center;background:var(--panel);border:1px solid var(--line);border-left:3px solid ${accent};border-radius:var(--r-md);padding:6px 10px;`;
+      const evAct = (h, showFirm) => `
+        <div style="${rowBase("#c3d3e3")}">
+          <span style="width:22px;height:22px;border-radius:var(--r-sm);background:var(--panel-2);display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">📝</span>
+          <div style="flex:1;min-width:0;display:flex;gap:10px;align-items:baseline;">
+            <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;"><b style="font-weight:700;">${esc(h.typ || "Aktivität")}</b>${h.notizen ? `<span style="color:var(--muted);"> — ${esc(h.notizen)}</span>` : ""}</span>
+            ${showFirm && h.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${h.firmId}" style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;flex-shrink:1;">${esc(h.firmTitle)}</a>` : ""}
+            <span style="font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0;">${esc(helpers.relativeDate(h.datum))}</span>
+          </div>
+        </div>`;
+      const evTask = (t, showFirm) => {
+        const done = !t.isOpen, over = t.isOpen && t.isOverdue;
+        const accent = done ? "var(--subtle)" : (over ? "var(--red)" : "var(--blue-mid)");
+        const icBg   = over ? "var(--red-soft)" : (done ? "var(--panel-2)" : "var(--blue-light)");
+        const kindCol = done ? "var(--muted)" : (over ? "var(--red)" : "var(--blue)");
+        const when = over
+          ? `<span style="color:var(--red);font-weight:700;">${esc(helpers.relativeDate(t.deadline))} fällig</span>`
+          : `<span style="color:var(--muted);">${esc(helpers.relativeDate(t.deadline)) || "—"}</span>`;
+        return `
+        <div style="${rowBase(accent)}${done ? "opacity:.62;" : ""}">
+          <span style="width:22px;height:22px;border-radius:var(--r-sm);background:${icBg};display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">${done ? "✓" : "◻"}</span>
+          <div style="flex:1;min-width:0;display:flex;gap:10px;align-items:baseline;">
+            <a class="bbz-link" data-action="edit-task" data-id="${t.id}" style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;font-weight:700;color:${kindCol};${done ? "text-decoration:line-through;" : ""}">${esc(t.title)}</a>
+            ${showFirm && t.firmId ? `<a class="bbz-link" data-action="open-firm" data-id="${t.firmId}" style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;flex-shrink:1;">${esc(t.firmTitle)}</a>` : ""}
+            <span style="font-size:11px;white-space:nowrap;flex-shrink:0;">${when}</span>
+          </div>
+        </div>`;
+      };
+
+      // ── FIRMA-Achse: Bank-Cadence-Karten ─────────────────────────────────────
+      const rankSig = { overdue: 0, never: 1, cold: 2, ok: 3, "": 4 };
+      const firmRows = segFirms.map(f => {
+        const fa = dispActs.filter(h => h.firmId === f.id).sort((a, b) => helpers.compareDateDesc(a.datum, b.datum));
+        const ft = dispTasks.filter(t => t.firmId === f.id);
+        const openT = ft.filter(t => t.isOpen).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
+        return { f, fa, ft, openT, sig: helpers.firmSignal(f) };
+      }).filter(x => x.fa.length || x.ft.length);
+      firmRows.sort((a, b) => (rankSig[a.sig] ?? 4) - (rankSig[b.sig] ?? 4) || a.f.title.localeCompare(b.f.title, "de"));
+
+      const sigColors = { overdue: "var(--red)", never: "var(--red)", cold: "var(--amber)", ok: "var(--green)" };
+      const firmCard = ({ f, fa, ft, openT, sig }) => {
+        const expanded = F.expandedFirms.includes(f.id);
+        const last = fa[0], next = openT[0];
+        const dot = sig
+          ? `<span style="width:11px;height:11px;border-radius:var(--r-full);background:${sigColors[sig]};flex-shrink:0;"></span>`
+          : `<span style="width:11px;height:11px;border-radius:var(--r-full);border:1.5px dashed var(--subtle);flex-shrink:0;"></span>`;
+        const nextCol = next ? (next.isOverdue ? "var(--red)" : (dl(next) && dl(next) <= mo ? "var(--amber)" : "var(--text)")) : "var(--muted)";
+        const leads = [...new Set([...fa, ...ft].map(leadOf).filter(Boolean))];
+        const merged = [
+          ...fa.map(h => ({ k: "a", d: helpers.toDate(h.datum), it: h })),
+          ...ft.map(t => ({ k: "t", d: helpers.toDate(t.deadline), it: t }))
+        ].sort((a, b) => (b.d || 0) - (a.d || 0));
+        return `
+        <div style="background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;">
+          <div style="display:flex;align-items:center;gap:11px;padding:10px 13px;cursor:pointer;" data-action="akt-firm-expand" data-firm-id="${f.id}">
+            ${dot}
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:14px;font-weight:700;display:flex;align-items:center;gap:7px;">
+                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(f.title)}</span>
+                ${f.klassifizierung ? `<span class="${helpers.firmBadgeClass(f.klassifizierung)}" style="flex-shrink:0;">${esc(f.klassifizierung)}</span>` : ""}
+                ${f.vip ? `<span style="font-size:11px;color:var(--amber);flex-shrink:0;">♛</span>` : ""}
+              </div>
+              <div style="display:flex;gap:18px;margin-top:2px;flex-wrap:wrap;font-size:12px;color:var(--muted);">
+                <span>Letzter Touch: <b style="color:var(--text);font-weight:600;">${last ? esc(last.typ || "Aktivität") + " " + esc(helpers.relativeDate(last.datum)) : "—"}</b></span>
+                <span>Nächste Aufgabe: <b style="color:${nextCol};font-weight:600;">${next ? esc(next.title) + " · " + (next.isOverdue ? "überfällig" : esc(helpers.relativeDate(next.deadline))) : "keine offene"}</b></span>
+              </div>
+            </div>
+            ${leads.length ? `<span style="font-size:11px;color:var(--muted);background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r-full);padding:1px 8px;white-space:nowrap;flex-shrink:0;">${esc(leads.join(", "))}</span>` : ""}
+            <span style="color:var(--subtle);font-size:12px;flex-shrink:0;transition:transform .15s;transform:${expanded ? "rotate(90deg)" : "none"};">▶</span>
+          </div>
+          ${expanded ? `
+          <div style="border-top:1px solid var(--line-2);background:var(--panel-2);padding:8px 11px 10px;">
+            <div style="display:flex;gap:6px;margin-bottom:8px;">
+              <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 9px;" data-action="open-history-form" data-firm-id="${f.id}">+ Aktivität</button>
+              <button class="bbz-button bbz-button-secondary" style="height:28px;font-size:12px;padding:0 9px;" data-action="open-task-form" data-firm-id="${f.id}">+ Aufgabe</button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px;">${merged.map(m => m.k === "a" ? evAct(m.it, false) : evTask(m.it, false)).join("")}</div>
+          </div>` : ""}
+        </div>`;
+      };
+      const firmAxisHtml = firmRows.length
+        ? `<div style="display:flex;flex-direction:column;gap:8px;">${firmRows.map(firmCard).join("")}</div>`
+        : ui.emptyBlock("Keine Firmen mit Aktivität oder Aufgabe im aktuellen Filter.");
+
+      // ── AGENDA-Achse: Zukunft ▲ / Heute / Verlauf ▼ ──────────────────────────
+      const divider = (label, isToday) => {
+        const lc = isToday ? "var(--red-light)" : "var(--line)";
+        const ls = isToday
+          ? "color:var(--red);background:var(--red-soft);border:1px solid var(--red-light);border-radius:var(--r-full);padding:2px 12px;"
+          : "color:var(--subtle);";
+        return `<div style="display:flex;align-items:center;gap:10px;margin:12px 0 8px;"><div style="flex:1;height:1px;background:${lc};"></div><span style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;${ls}">${esc(label)}</span><div style="flex:1;height:1px;background:${lc};"></div></div>`;
+      };
+      const bucket = (id, label, items, rowFn, defOpen, red) => {
+        const open = (id in F.bucketOpen) ? F.bucketOpen[id] : defOpen;
+        const cap = 6, more = !!F.moreOpen[id];
+        const shown = open ? (more ? items : items.slice(0, cap)) : [];
+        const rest = items.length - cap;
+        return `<div style="margin-bottom:6px;">
+          <div data-action="akt-bucket" data-bucket="${id}" style="font-size:11px;font-weight:700;color:${red ? "var(--red)" : "var(--muted)"};display:flex;gap:7px;align-items:center;cursor:pointer;padding:3px 2px;user-select:none;">
+            <span style="font-size:10px;color:var(--subtle);width:10px;">${open ? "▾" : "▸"}</span>${esc(label)}<span style="font-weight:400;color:var(--subtle);">${items.length}</span>
+          </div>
+          ${open ? `<div style="display:flex;flex-direction:column;gap:4px;">${shown.map(rowFn).join("")}${(!more && rest > 0) ? `<button data-action="akt-more" data-bucket="${id}" style="width:100%;height:28px;border:1px dashed var(--line);background:var(--panel-2);border-radius:var(--r-sm);color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;">+ ${rest} weitere anzeigen</button>` : ""}</div>` : ""}
+        </div>`;
+      };
+      const openDisp = dispTasks.filter(t => t.isOpen);
+      const over  = openDisp.filter(t => t.isOverdue).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
+      const month = openDisp.filter(t => { const d = dl(t); return !t.isOverdue && d && d <= mo; }).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
+      const later = openDisp.filter(t => { const d = dl(t); return d && d > mo; }).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
+      const past = [
+        ...dispActs.map(h => ({ k: "a", d: helpers.toDate(h.datum), it: h })),
+        ...dispTasks.filter(t => !t.isOpen).map(t => ({ k: "t", d: helpers.toDate(t.deadline), it: t }))
+      ].sort((a, b) => (b.d || 0) - (a.d || 0));
+      const pMonth = past.filter(p => p.d && p.d >= moP);
+      const pOld   = past.filter(p => !p.d || p.d < moP);
+      const rowP = p => p.k === "a" ? evAct(p.it, true) : evTask(p.it, true);
+
+      let chronoHtml = divider("▲ Fällig — offene Aufgaben", false);
+      const fut = [["akt-c-over", "Überfällig", over, true, true], ["akt-c-month", "Diesen Monat", month, true, false], ["akt-c-later", "Später", later, false, false]].filter(x => x[2].length);
+      chronoHtml += fut.length ? fut.map(([id, l, it, o, r]) => bucket(id, l, it, t => evTask(t, true), o, r)).join("") : `<div style="font-size:12px;color:var(--subtle);padding:4px 2px;">Keine offenen Aufgaben im Filter.</div>`;
+      chronoHtml += divider("Heute · " + today.toLocaleDateString("de-CH"), true);
+      chronoHtml += divider("▼ Verlauf — Aktivitäten & Erledigtes", false);
+      const pst = [["akt-p-month", "Dieser Monat", pMonth, true], ["akt-p-old", "Älter", pOld, false]].filter(x => x[2].length);
+      chronoHtml += pst.length ? pst.map(([id, l, it, o]) => bucket(id, l, it, rowP, o, false)).join("") : `<div style="font-size:12px;color:var(--subtle);padding:4px 2px;">Kein Verlauf im Filter.</div>`;
+
+      // ── Steuerung: Segment / Suche / Erfassen ────────────────────────────────
+      const segBtn = (v, l) => `<button class="bbz-button ${F.segment === v ? "bbz-button-primary" : "bbz-button-secondary"}" style="border-radius:0;height:34px;font-size:12px;" data-action="kpi-filter" data-scope="akt-segment" data-value="${v}">${l}</button>`;
+      const axisBtn = (v, l) => `<button class="bbz-button ${F.axis === v ? "bbz-button-primary" : "bbz-button-secondary"}" style="border-radius:0;height:34px;font-size:12px;" data-action="akt-axis" data-value="${v}">${l}</button>`;
+      const chip = (l, v, cnt, style = "") => `<button class="bbz-kpi-chip ${F.faelligkeit === v ? "bbz-kpi-chip-active" : ""}" style="${style}" data-action="kpi-filter" data-scope="akt-faelligkeit" data-value="${v}">${l} <span>${cnt}</span></button>`;
+
+      const leadChart = leadBars.length ? leadBars.map(([name, c]) => {
+        const active = F.lead && name.toLowerCase() === F.lead.toLowerCase();
+        return `<div data-action="kpi-filter" data-scope="akt-lead" data-value="${esc(name)}" title="${esc(name)}: ${c}" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:1px 0;">
+          <span style="font-size:11px;width:96px;flex-shrink:0;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${active ? "var(--amber)" : "var(--muted)"};font-weight:${active ? 700 : 400};">${esc(name)}</span>
+          <div style="flex:1;height:13px;background:var(--line);border-radius:3px;overflow:hidden;"><div style="height:100%;width:${Math.round(c / maxLead * 100)}%;background:${active ? "var(--amber)" : "var(--blue-mid)"};"></div></div>
+          <span style="font-size:11px;width:22px;flex-shrink:0;text-align:right;color:var(--muted);">${c}</span>
+        </div>`;
+      }).join("") : `<div style="font-size:12px;color:var(--muted);padding:4px 0;">Keine Lead-Zuordnung im Segment.</div>`;
+
+      return `
+        <div>
+          <!-- Aktionsleiste -->
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+            <div style="display:flex;border-radius:var(--r-sm);overflow:hidden;flex-shrink:0;border:1px solid var(--line);">${segBtn("kunden", "Kunden")}${segBtn("alle", "Alle")}</div>
+            <input class="bbz-input" style="flex:1;min-width:180px;" data-filter="akt-search" type="text" placeholder="🔍 Firma, Kontakt oder Aktivität suchen …" value="${esc(F.search)}" />
+            <button class="bbz-button bbz-button-primary" style="height:34px;" data-action="open-history-form">+ Aktivität</button>
+            <button class="bbz-button bbz-button-primary" style="height:34px;background:var(--blue-mid);border-color:var(--blue-mid);" data-action="open-task-form">+ Aufgabe</button>
+          </div>
+
+          <!-- Zähler-Band -->
+          <div class="bbz-kpis" style="grid-template-columns:1.1fr 1.4fr;margin-bottom:14px;">
+            <div class="bbz-kpi bbz-kpi-red">
+              <div class="bbz-kpi-label">Aufgaben</div>
+              <div style="display:flex;align-items:baseline;gap:8px;"><div class="bbz-kpi-value">${openTasks.length}</div><div style="font-size:11px;color:var(--muted);">offen</div></div>
+              <div style="margin-top:9px;display:flex;gap:5px;flex-wrap:wrap;">
+                ${chip("Überfällig", "overdue", cOver, cOver > 0 ? "background:var(--red-soft);border-color:#f0b0b2;color:var(--red);" : "")}
+                ${chip("Diesen Monat", "month", cMonth, cMonth > 0 ? "background:#fff9eb;border-color:#f4dfab;color:var(--amber);" : "")}
+                ${chip("Später", "later", cLater)}
+                ${F.faelligkeit ? `<button class="bbz-kpi-chip" data-action="kpi-filter" data-scope="akt-faelligkeit" data-value="">Alle ${cAll}</button>` : `<button class="bbz-kpi-chip" data-action="kpi-filter" data-scope="akt-faelligkeit" data-value="">Alle <span>${cAll}</span></button>`}
+              </div>
+            </div>
+            <div class="bbz-kpi bbz-kpi-blue">
+              <div class="bbz-kpi-label">Aktivitäten</div>
+              <div style="display:flex;align-items:baseline;gap:8px;"><div class="bbz-kpi-value">${scopeActs.length}</div><div style="font-size:11px;color:var(--muted);">total · ${aMonth} Monat · ${aYear} Jahr</div></div>
+              <div style="display:flex;height:16px;border-radius:5px;overflow:hidden;margin-top:10px;background:var(--line-2);">${splitBar}</div>
+              <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:7px;">${splitLeg || '<span style="font-size:11px;color:var(--muted);">keine Aktivitäten</span>'}</div>
+            </div>
+          </div>
+
+          <!-- Lead-Filter -->
+          <div style="background:var(--panel);border:1px solid var(--line);border-radius:var(--r-xl);padding:11px 14px;margin-bottom:14px;">
+            <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:7px;display:flex;justify-content:space-between;"><span>Lead bbz</span><span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--subtle);">${F.lead ? esc(F.lead) : "alle Leads"}</span></div>
+            <div style="display:grid;gap:2px;">${leadChart}</div>
+          </div>
+
+          <!-- Achsen-Umschalter + Legende -->
+          <div style="display:flex;gap:10px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
+            <div style="display:flex;border-radius:var(--r-sm);overflow:hidden;flex-shrink:0;border:1px solid var(--line);">${axisBtn("firm", "Nach Firma")}${axisBtn("chrono", "Agenda (chronologisch)")}</div>
+            <span style="font-size:11px;color:var(--subtle);">${F.axis === "firm" ? "Beziehungssicht · sortiert nach Dringlichkeit" : "Fälligkeits-Agenda · offene Aufgaben zuerst, Verlauf eingeklappt"}</span>
+            ${F.axis === "firm" ? `<button class="bbz-button bbz-button-secondary" style="margin-left:auto;height:28px;font-size:11px;" data-action="akt-legende">Signal-Legende ${F.legendeOffen ? "▾" : "▸"}</button>` : ""}
+          </div>
+          ${F.axis === "firm" && F.legendeOffen ? `
+          <div style="background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:9px 12px;margin-bottom:12px;font-size:12px;color:var(--muted);">
+            <div style="display:flex;gap:18px;flex-wrap:wrap;">
+              <span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:11px;height:11px;border-radius:var(--r-full);background:var(--green);"></span> grün — aktiv gepflegt</span>
+              <span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:11px;height:11px;border-radius:var(--r-full);background:var(--amber);"></span> amber — Aufmerksamkeit (&gt;12 Mt.)</span>
+              <span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:11px;height:11px;border-radius:var(--r-full);background:var(--red);"></span> rot — nicht aktiv gepflegt / überfällig</span>
+              <span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:11px;height:11px;border-radius:var(--r-full);border:1.5px dashed var(--subtle);"></span> kein Punkt</span>
+            </div>
+            <div style="margin-top:6px;font-size:11px;color:var(--subtle);">Der Punkt bewertet nur Kunden. Lieferanten und Übrige tragen keinen Punkt.</div>
+          </div>` : ""}
+
+          <!-- Achsen-Inhalt -->
+          ${F.axis === "firm" ? firmAxisHtml : `<div>${chronoHtml}</div>`}
         </div>
       `;
     },
