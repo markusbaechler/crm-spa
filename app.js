@@ -1865,6 +1865,22 @@
       state.enriched.history = history.sort((a, b) => helpers.compareDateDesc(a.datum, b.datum));
       state.enriched.tasks = tasks.sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
       state.enriched.firms = firms.sort((a, b) => a.title.localeCompare(b.title, "de"));
+
+      // TEMP-DEBUG (firmSignal Bugs 1+2) — nach Prüfung entfernen
+      ["aek bank", "acrevis"].forEach(needle => {
+        state.enriched.firms
+          .filter(f => (f.title || "").toLowerCase().includes(needle))
+          .forEach(f => console.log("[sig-debug]", f.title, {
+            kategorie: JSON.stringify(f.kategorie),
+            historyTag: Object.prototype.toString.call(f.history),
+            historyLen: f.history && f.history.length,
+            latestActivity: JSON.stringify(f.latestActivity),
+            openTasksCount: f.openTasksCount,
+            tasks: (f.tasks || []).map(t => ({ status: t.status, isOpen: t.isOpen, isOverdue: t.isOverdue, deadline: t.deadline })),
+            someOverdue: (f.tasks || []).some(t => t.isOpen && t.isOverdue),
+            signal: helpers.firmSignal(f)
+          }));
+      });
       state.enriched.events = events;
 
       // privateFirmId nach jedem enrich() neu auflösen — robust gegen SP-ID-Änderungen
