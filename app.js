@@ -3015,13 +3015,13 @@
                       ${rows.length ? rows.map(firm => {
                         const signal = helpers.firmSignal(firm);
                         const signalDot = signal === "overdue"
-                          ? `<span class="bbz-signal bbz-signal-red" title="Überfällige Tasks"></span>`
+                          ? `<span class="bbz-signal bbz-signal-red" title="Überfällige Task(s)"></span>`
                           : signal === "never"
-                          ? `<span class="bbz-signal bbz-signal-amber" title="A-Kunde — noch kein Kontakt erfasst"></span>`
+                          ? `<span class="bbz-signal bbz-signal-red" title="Noch nie kontaktiert"></span>`
                           : signal === "cold"
-                          ? `<span class="bbz-signal bbz-signal-amber" title="Kein Kontakt seit über 360 Tagen (A/B-Kunde)"></span>`
+                          ? `<span class="bbz-signal bbz-signal-amber" title="Kein Kontakt seit über 12 Monaten"></span>`
                           : signal === "ok"
-                          ? `<span class="bbz-signal bbz-signal-green" title="On Track — letzter Kontakt < 90 Tage"></span>`
+                          ? `<span class="bbz-signal bbz-signal-green" title="Aktiv"></span>`
                           : `<span class="bbz-signal bbz-signal-none"></span>`;
                         const rowClass = signal === "overdue" ? "bbz-row-alert"
                           : (signal === "cold" || signal === "never") ? "bbz-row-cold"
@@ -3060,11 +3060,13 @@
                   ${rows.length ? rows.map(firm => {
                     const signal = helpers.firmSignal(firm);
                     const sigDot = signal === "overdue"
-                      ? `<span class="bbz-signal bbz-signal-red"></span>`
-                      : (signal === "never" || signal === "cold")
-                      ? `<span class="bbz-signal bbz-signal-amber"></span>`
+                      ? `<span class="bbz-signal bbz-signal-red" title="Überfällige Task(s)"></span>`
+                      : signal === "never"
+                      ? `<span class="bbz-signal bbz-signal-red" title="Noch nie kontaktiert"></span>`
+                      : signal === "cold"
+                      ? `<span class="bbz-signal bbz-signal-amber" title="Kein Kontakt seit über 12 Monaten"></span>`
                       : signal === "ok"
-                      ? `<span class="bbz-signal bbz-signal-green"></span>`
+                      ? `<span class="bbz-signal bbz-signal-green" title="Aktiv"></span>`
                       : `<span style="width:8px;flex-shrink:0;display:inline-block;"></span>`;
                     const taskBadge = firm.openTasksCount > 0
                       ? overdueTasks.some(t => t.firmId === firm.id)
