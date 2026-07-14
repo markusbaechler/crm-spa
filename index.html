@@ -254,9 +254,6 @@
     .bbz-focus-sub-amber { color: rgba(251,191,36,0.7); }
     .bbz-focus-sub-green { color: rgba(52,211,153,0.7); }
     .bbz-focus-sub-muted { color: rgba(255,255,255,0.4); }
-    .bbz-focus-radar-pill { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 5px; white-space: nowrap; }
-    .bbz-focus-radar-pill-alert { background: rgba(149,14,19,0.28); color: #f87171; }
-    .bbz-focus-radar-pill-ok    { background: rgba(52,211,153,0.12); color: #34d399; }
     .bbz-focus-next { display: flex; align-items: center; gap: 10px; padding: 9px 20px; border-top: 1px solid rgba(255,255,255,0.07); cursor: pointer; transition: background 0.12s; }
     .bbz-focus-next:hover { background: rgba(255,255,255,0.04); }
     .bbz-focus-next-label { font-size: 9px; font-weight: 700; color: rgba(255,255,255,0.35); letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap; min-width: 100px; }
@@ -314,9 +311,6 @@
     .bbz-history-group-meta   { font-size: 12px; color: var(--subtle); margin-left: auto; }
     .bbz-history-firm-header  { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; margin-bottom: 6px; border-radius: var(--r-lg); border: 1px solid var(--line); }
     .bbz-history-split { display: grid; grid-template-columns: minmax(0,1.75fr) minmax(300px,0.85fr); gap: 12px; }
-    .bbz-radar-item        { transition: background 0.1s; }
-    .bbz-radar-item:hover  { background: var(--blue-soft) !important; border-color: #a8c8e0 !important; }
-    .bbz-radar-item-active { background: var(--blue-light) !important; border-color: #8fbfdc !important; }
 
     /* LAYOUT */
     .bbz-grid       { display: grid; gap: 12px; }
@@ -375,8 +369,6 @@
       .bbz-history-split { display: block !important; }
       .bbz-history-split > section:first-child { display: block; }
       .bbz-history-split > section:last-child  { display: none; }
-      .bbz-history-split.show-radar > section:first-child { display: none; }
-      .bbz-history-split.show-radar > section:last-child  { display: block; }
     }
 
     /* RESPONSIVE */
@@ -474,7 +466,7 @@
       .bbz-modal-body .bbz-table-wrap { display: block !important; }
     }
 
-    /* --- CARD-VARIANTEN für Tasks, Events, Radar --- */
+    /* --- CARD-VARIANTEN für Tasks, Events --- */
     @media (max-width: 640px) {
       /* Tasks: Card-List */
       .bbz-task-card {
@@ -551,26 +543,6 @@
       .bbz-event-contact-body { flex: 1; min-width: 0; }
       .bbz-event-contact-name { font-size: 13px; font-weight: 700; color: var(--text); }
       .bbz-event-contact-meta { font-size: 11px; color: var(--subtle); margin-top: 2px; }
-
-      /* Radar: Card-List statt Tabelle */
-      .bbz-radar-card {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 10px 14px;
-        border-bottom: 1px solid var(--line-2);
-        cursor: pointer;
-        background: var(--panel);
-      }
-      .bbz-radar-card:last-child { border-bottom: none; }
-      .bbz-radar-card:hover { background: var(--blue-soft); }
-      .bbz-radar-card-body { flex: 1; min-width: 0; }
-      .bbz-radar-card-title { font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .bbz-radar-card-meta  { font-size: 11px; color: var(--subtle); margin-top: 2px; }
-      .bbz-radar-card-right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
-
-      /* Radar-Kacheln auf Mobile: 2 Spalten statt 4 */
-      .bbz-radar-kpis { grid-template-columns: 1fr 1fr !important; }
     }
 
     /* --- FILTER-ZEILEN: Stack auf Mobile --- */
@@ -622,7 +594,7 @@
       .bbz-history-split {
         display: block !important;
       }
-      /* Pflege-Radar: Kacheln 2-spaltig */
+      /* History-Split: Kacheln 2-spaltig */
       .bbz-history-split .bbz-kpis {
         grid-template-columns: 1fr 1fr !important;
       }

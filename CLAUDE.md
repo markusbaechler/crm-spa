@@ -32,13 +32,20 @@ Gehostet auf GitHub Pages: https://markusbaechler.github.io/crm-spa/
 - `controller.render()` (Z. ~5681): `ui.renderShell()` + `ui.renderView(views.renderRoute())` -> `innerHTML` in `#view-root`.
 
 ## Datenmodell (SharePoint-Listen)
-- **CRMFirms**: Title, Adresse, PLZ, Ort, Land, Hauptnummer, Klassifizierung (A/B/C), VIP
+- **CRMFirms**: Title, Adresse, PLZ, Ort, Land, Hauptnummer, Klassifizierung (A/B/C), VIP,
+  Kategorie (Choice: Kunde/Lieferant/Übrige; internes Feld `Kategorie` -> `firm.kategorie`)
 - **CRMContacts**: Title(=Nachname), Vorname, Anrede, Firma(Lookup), Funktion, Email1/2, Direktwahl, Mobile, Rolle, Leadbbz0, SGF, Geburtstag, Kommentar, Event, Eventhistory, Archiviert
 - **CRMHistory**: Title, Nachname(Lookup), Datum, Kontaktart(=typ), Notizen, Projektbezug, Leadbbz
 - **CRMTasks**: Title, Name(Lookup), Deadline, Status, Leadbbz
 
-`firmSignal(firm)` -> `overdue | never | cold | ok | ""` (Basis für Pflege-Radar &
-Signal-Sortierung der **Firmen-Route**; die `history`-Route nutzt kein `firmSignal` mehr).
+`firmSignal(firm)` -> `overdue | never | cold | ok | ""`. **Gate:** nur Firmen mit
+`kategorie === "Kunde"` erhalten ein Signal/Dot; Lieferant/Übrige/leer -> `""` (kein Dot).
+Klassifizierung (A/B/C) spielt **keine** Rolle. Stufen: `overdue` (offene überfällige Task) >
+`never` (keine History) > `cold` (letzte Aktivität > 12 Monate, exakte Monatsdifferenz) >
+`ok` (on track). Basis für die Signal-Dots im **Firmen-Cockpit** (grüner `ok`-Dot bleibt,
+nur bei Kunden); die `history`-Route nutzt kein `firmSignal`. Kein Pflege-Radar mehr —
+die Cockpit-Tabelle führt Deadline+Aktivität in **einer** Spalte „Status/Aktivität"
+zusammen (Precedence überfällige Task > laufende Task > Aktivitätsalter), sortierbar nach Dringlichkeit.
 
 ## Konventionen — strikt einhalten
 1. **Kein Framework/Build einführen.** Bleibt Vanilla. Keine neuen Dependencies ohne expliziten Auftrag.
