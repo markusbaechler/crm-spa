@@ -2998,18 +2998,6 @@
                     <tbody>
                       ${rows.length ? rows.map(firm => {
                         const signal = helpers.firmSignal(firm);
-                        // TEMP dot-debug (AEK) — nach Prüfung entfernen
-                        if ((firm.title || "").toLowerCase().includes("aek bank")) {
-                          console.log("[dot-debug]", JSON.stringify(firm.title), "id=" + firm.id, {
-                            signalAtRender: signal,
-                            kategorie: JSON.stringify(firm.kategorie),
-                            openTasksCount: firm.openTasksCount,
-                            someOverdue: (firm.tasks || []).some(t => t.isOpen && t.isOverdue),
-                            historyLen: firm.history && firm.history.length,
-                            latestActivity: JSON.stringify(firm.latestActivity),
-                            dotColor: signal === "overdue" ? "red" : signal === "never" ? "red" : signal === "cold" ? "amber" : signal === "ok" ? "green" : "none"
-                          });
-                        }
                         const signalDot = signal === "overdue"
                           ? `<span class="bbz-signal bbz-signal-red" title="Überfällige Task(s)"></span>`
                           : signal === "never"
