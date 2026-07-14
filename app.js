@@ -45,7 +45,8 @@
         land: "Land",
         hauptnummer: "Hauptnummer",
         klassifizierung: "Klassifizierung",
-        vip: "VIP"
+        vip: "VIP",
+        kategorie: "Kategorie"
       }
     },
 
@@ -1711,7 +1712,8 @@
         land: this.getField(item, f.land) || "",
         hauptnummer: this.getField(item, f.hauptnummer) || "",
         klassifizierung: this.getField(item, f.klassifizierung) || "",
-        vip: helpers.bool(this.getField(item, f.vip))
+        vip: helpers.bool(this.getField(item, f.vip)),
+        kategorie: (this.getField(item, f.kategorie) || "").trim()
       };
     },
 
@@ -1878,6 +1880,13 @@
       state.enriched.tasks = tasks.sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
       state.enriched.firms = firms.sort((a, b) => a.title.localeCompare(b.title, "de"));
       state.enriched.events = events;
+
+      // TEMP-VERIFIKATION (Kategorie-Feld) — nach Prüfung wieder entfernen
+      ["Kunde", "Lieferant", "Übrige"].forEach(kat => {
+        const bsp = state.enriched.firms.find(f => f.kategorie === kat);
+        console.log(`[Kategorie-Check] ${kat}:`, bsp ? `${bsp.title} -> "${bsp.kategorie}"` : "keine Firma gefunden");
+      });
+      console.log("[Kategorie-Check] verteilte Werte:", [...new Set(state.enriched.firms.map(f => f.kategorie))]);
 
       // privateFirmId nach jedem enrich() neu auflösen — robust gegen SP-ID-Änderungen
       const privateFirm = state.data.firms.find(
