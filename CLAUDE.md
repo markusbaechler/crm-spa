@@ -206,11 +206,13 @@ Zähler: total · 30 Tage · 365 Tage. Kontaktart-Split-Bar aus `choices[CRMHist
   „Letzter Touch" + „Nächste Aufgabe" (Farbe rot/amber/neutral nach Dringlichkeit) + Lead-Tag.
   Aufklappbar (`akt-firm-expand`) → gemergte Timeline (Aktivitäten+Aufgaben, neueste zuerst) +
   „+ Aktivität"/„+ Aufgabe" (reuse `open-history-form`/`open-task-form` mit `data-firm-id`).
-- `chrono`: **Fälligkeits-Agenda.** Zukunft (offene Aufgaben) über der **Heute-Scheidelinie**,
-  Verlauf (Aktivitäten + erledigte Aufgaben) darunter. Buckets: Zukunft `Überfällig`/`Diesen
-  Monat`(offen) / `Später`(zu); Verlauf `Dieser Monat`(offen) / `Älter`(zu). Jede Gruppe
-  klappbar (`akt-bucket`), **Cap 6** + „+N weitere" (`akt-more`). Kompakte Einzeiler
-  (Titel/Kontaktart · Firma · Fälligkeit), Firma verlinkt.
+- `chrono`: **Zweispaltig** (`.bbz-akt-split`, eigene CSS-Klasse in index.html; stapelt <900px).
+  **Links** Aktivitäten-Verlauf (`akt-p-month` offen / `akt-p-old` zu), **rechts** offene Aufgaben
+  (`akt-c-over`, `akt-c-month` offen / `akt-c-later` zu). Keine Heute-Scheidelinie mehr — die
+  Spalten trennen Vergangenheit/Zukunft. Jede Gruppe klappbar (`akt-bucket`), **Cap 8** +
+  „+N weitere" (`akt-more`).
+  **Wichtig:** NICHT `.bbz-history-split` wiederverwenden — die blendet Spalte 2 mobil aus
+  (altes Tab-Bar-Konzept, index.html Z. ~321).
 
 **Wiederverwendete Aktionen (nicht duplizieren):** `open-firm`, `open-contact`,
 `open-history-form`, `open-task-form`, `edit-task`, `edit-history`, `complete-task`,
@@ -222,5 +224,19 @@ Aufgabe — Titel öffnet Bearbeiten (`edit-task`), ✓ markiert erledigt (`comp
 offene), ✕ löscht (`delete-task`, mit `data-title`). Alle Handler existierten bereits; die
 neue View emittiert nur die Buttons mit `data-id`/`data-title`.
 
+**Zeilen-Darstellung:** In beiden Achsen ist die **Firma prominent** (fett, 13px) — nicht die
+Kontaktart. Aktivität: Firma · Kontaktart(blau) · relatives Datum, Notiz einzeilig darunter.
+Aufgabe: Firma · Fälligkeit, Titel darunter.
+
+**Aktivitäts-Detail-Modal** (`state.modal.type === "history-detail"`, `views.renderHistoryDetail`,
+`controller.openHistoryDetail(id)`, Aktion `open-history-detail`): read-only Vollansicht mit
+**ungekürzten Notizen**, Firma/Kontakt verlinkt. Footer: Löschen / Schliessen / Bearbeiten
+(→ öffnet `history`-Formular). Klick auf eine Aktivitäts-Zeile öffnet dieses Modal (nicht die
+Firma). Schliessen via `[data-close-modal]` oder Backdrop.
+
+**Lead bbz** ist eine **dezente Chip-Zeile** (`bbz-kpi-chip`, Label „Filter · Lead bbz",
+aktiver Chip + „✕ Filter aufheben") — bewusst KEIN Balkendiagramm mehr (war optisch zu
+dominant und nicht als Filter erkennbar).
+
 **Styling:** nur bestehende Tokens/`bbz-*`-Klassen; Event-Zeilen als Inline-Styles mit
-CSS-Variablen (Muster wie `historyView`). Keine neuen CSS-Klassen in `index.html`.
+CSS-Variablen (Muster wie `historyView`). Neue CSS-Klassen in `index.html` nur wenn Media-Queries nötig sind (z. B. `.bbz-akt-split`).

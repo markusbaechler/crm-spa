@@ -268,6 +268,11 @@
     .bbz-history-firm-header  { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; margin-bottom: 6px; border-radius: var(--r-lg); border: 1px solid var(--line); }
     .bbz-history-split { display: grid; grid-template-columns: minmax(0,1.75fr) minmax(300px,0.85fr); gap: 12px; }
 
+    /* Aktivitaeten-Route: Agenda zweispaltig (links Aktivitaeten, rechts Aufgaben).
+       Eigene Klasse statt bbz-history-split: letztere blendet Spalte 2 mobil aus. */
+    .bbz-akt-split { display: grid; grid-template-columns: minmax(0,1.6fr) minmax(290px,0.9fr); gap: 12px; align-items: start; }
+    @media (max-width: 900px) { .bbz-akt-split { grid-template-columns: 1fr; } }
+
     /* LAYOUT */
     .bbz-grid       { display: grid; gap: 12px; }
     .bbz-grid-2     { grid-template-columns: repeat(2, minmax(0,1fr)); }

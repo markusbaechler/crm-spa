@@ -706,6 +706,13 @@
           return;
         }
 
+        // Aktivitaets-Detail oeffnen (read-only Modal)
+        const openHistoryDetail = event.target.closest("[data-action='open-history-detail']");
+        if (openHistoryDetail) {
+          controller.openHistoryDetail(Number(openHistoryDetail.dataset.id));
+          return;
+        }
+
         // History-Eintrag bearbeiten
         const editHistory = event.target.closest("[data-action='edit-history']");
         if (editHistory) {
@@ -1960,6 +1967,7 @@
       if (state.modal?.type === "contact") modalHtml = views.renderContactForm(state.modal.mode, state.modal.payload);
       if (state.modal?.type === "firm")    modalHtml = views.renderFirmForm(state.modal.mode, state.modal.payload?.firmId);
       if (state.modal?.type === "history") modalHtml = views.renderHistoryForm(state.modal.payload);
+      if (state.modal?.type === "history-detail") modalHtml = views.renderHistoryDetail(state.modal.payload);
       if (state.modal?.type === "task")    modalHtml = views.renderTaskForm(state.modal.payload);
       if (state.modal?.type === "batch-event") modalHtml = views.renderBatchEventForm(state.modal.payload);
       if (state.modal?.type === "event-einladung") modalHtml = views.renderEventEinladungModal(state.modal.payload);
@@ -3674,6 +3682,64 @@
       `;
     },
 
+    // Aktivitaets-Detail: read-only Vollansicht (Notizen ungekuerzt), schliessbar.
+    renderHistoryDetail(payload) {
+      const esc = helpers.escapeHtml;
+      const h = state.enriched.history.find(x => x.id === Number(payload.itemId));
+      if (!h) {
+        return `
+        <div class="bbz-modal-backdrop show">
+          <div class="bbz-modal">
+            <div class="bbz-modal-header">
+              <div class="bbz-modal-title">Aktivität</div>
+              <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
+            </div>
+            <div class="bbz-modal-body">${ui.emptyBlock("Aktivität nicht gefunden (evtl. gelöscht).")}</div>
+          </div>
+        </div>`;
+      }
+      const row = (label, value) => value
+        ? `<div style="display:flex;gap:12px;padding:7px 0;border-bottom:1px solid var(--line-2);">
+             <div style="width:110px;flex-shrink:0;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--subtle);padding-top:2px;">${esc(label)}</div>
+             <div style="flex:1;min-width:0;font-size:13px;color:var(--text);">${value}</div>
+           </div>`
+        : "";
+      const firmVal = h.firmId
+        ? `<a class="bbz-link" data-action="open-firm" data-id="${h.firmId}">${esc(h.firmTitle)}</a>`
+        : "";
+      const kontaktVal = h.contactId
+        ? `<a class="bbz-link" data-action="open-contact" data-id="${h.contactId}">${esc(h.contactName)}</a>`
+        : esc(h.contactName || "");
+      const datumVal = `${esc(helpers.formatDate(h.datum))} <span style="color:var(--muted);">· ${esc(helpers.relativeDate(h.datum))}</span>`;
+      return `
+        <div class="bbz-modal-backdrop show">
+          <div class="bbz-modal">
+            <div class="bbz-modal-header">
+              <div class="bbz-modal-title">${esc(h.firmTitle || "Aktivität")}</div>
+              <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
+            </div>
+            <div class="bbz-modal-body" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                <span style="font-size:16px;font-weight:700;color:var(--blue);">${esc(h.typ || "Aktivität")}</span>
+                <span style="font-size:12px;color:var(--muted);">${esc(helpers.relativeDate(h.datum))}</span>
+              </div>
+              ${row("Firma", firmVal)}
+              ${row("Kontakt", kontaktVal)}
+              ${row("Datum", datumVal)}
+              ${row("Kontaktart", esc(h.typ || ""))}
+              ${row("Lead bbz", esc(h.leadbbz || ""))}
+              ${row("Projektbezug", esc(h.projektbezug || ""))}
+              ${row("Notizen", h.notizen ? `<div style="white-space:pre-wrap;line-height:1.55;">${esc(h.notizen)}</div>` : "")}
+            </div>
+            <div class="bbz-modal-footer">
+              <button type="button" class="bbz-button bbz-button-secondary" style="color:var(--red);border-color:var(--red);" data-action="delete-history" data-id="${h.id}" data-title="${esc(h.typ || "Aktivität")}">Löschen</button>
+              <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
+              <button type="button" class="bbz-button bbz-button-primary" data-action="edit-history" data-id="${h.id}">Bearbeiten</button>
+            </div>
+          </div>
+        </div>`;
+    },
+
     // ══ Zusammengeführte Route: Aktivitäten + Aufgaben in einem Screen ══════════
     // Ersetzt planning() + historyView(). Zwei Achsen (Firma / Agenda),
     // Segment-Gate (Kunden = Banken/Versicherungen), Monats-Raster,
@@ -3728,7 +3794,6 @@
       const leadAgg = new Map();
       [...segActsAll, ...segTasksAll].forEach(r => { const l = leadOf(r); if (!l) return; leadAgg.set(l, (leadAgg.get(l) || 0) + 1); });
       const leadBars = [...leadAgg.entries()].sort((a, b) => b[1] - a[1]);
-      const maxLead = Math.max(1, ...leadBars.map(b => b[1]));
 
       // ── Anzeige-Filter (Fälligkeit-Chip + Suche) ─────────────────────────────
       const s = (F.search || "").trim().toLowerCase();
@@ -3750,38 +3815,41 @@
       // Kleiner Icon-Button für Zeilen-Aktionen (Bearbeiten/Löschen/Erledigt)
       const iconBtn = (action, id, sym, title, extra, danger) =>
         `<button data-action="${action}" data-id="${id}"${extra || ""} title="${title}" style="width:24px;height:24px;flex-shrink:0;border:1px solid ${danger ? "var(--red-light)" : "var(--line)"};border-radius:var(--r-sm);background:var(--panel);color:${danger ? "var(--red)" : "var(--muted)"};cursor:pointer;font-size:12px;line-height:1;padding:0;">${sym}</button>`;
-      const firmLink = (id, title) => `<a class="bbz-link" data-action="open-firm" data-id="${id}" style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;flex-shrink:1;">${esc(title)}</a>`;
-      // Aktivität: Titel öffnet das Detail-/Bearbeiten-Formular; ✎ bearbeiten, ✕ löschen
+      // Aktivität: FIRMA prominent (Klick -> Detail-Modal), Kontaktart/Datum sekundär.
       const evAct = (h, showFirm) => `
         <div style="${rowBase("#c3d3e3")}">
           <span style="width:22px;height:22px;border-radius:var(--r-sm);background:var(--panel-2);display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">📝</span>
-          <div style="flex:1;min-width:0;display:flex;gap:10px;align-items:baseline;">
-            <a class="bbz-link" data-action="edit-history" data-id="${h.id}" style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:var(--text);"><b style="font-weight:700;">${esc(h.typ || "Aktivität")}</b>${h.notizen ? `<span style="color:var(--muted);"> — ${esc(h.notizen)}</span>` : ""}</a>
-            ${showFirm && h.firmId ? firmLink(h.firmId, h.firmTitle) : ""}
-            <span style="font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0;">${esc(helpers.relativeDate(h.datum))}</span>
-          </div>
+          <a class="bbz-link" data-action="open-history-detail" data-id="${h.id}" style="flex:1;min-width:0;color:var(--text);display:block;">
+            <div style="display:flex;gap:8px;align-items:baseline;">
+              <span style="font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(showFirm ? (h.firmTitle || h.contactName || "—") : (h.contactName || h.typ || "Aktivität"))}</span>
+              <span style="font-size:11px;color:var(--blue);font-weight:600;flex-shrink:0;">${esc(h.typ || "Aktivität")}</span>
+              <span style="font-size:11px;color:var(--muted);flex-shrink:0;margin-left:auto;white-space:nowrap;">${esc(helpers.relativeDate(h.datum))}</span>
+            </div>
+            ${h.notizen ? `<div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;">${esc(h.notizen)}</div>` : ""}
+          </a>
           <span style="display:flex;gap:4px;flex-shrink:0;">
             ${iconBtn("edit-history", h.id, "✎", "Bearbeiten", "", false)}
             ${iconBtn("delete-history", h.id, "✕", "Löschen", ` data-title="${esc(h.typ || "Aktivität")}"`, true)}
           </span>
         </div>`;
-      // Aufgabe: Titel öffnet Bearbeiten; ✓ erledigt (nur offene), ✕ löschen
+      // Aufgabe: FIRMA prominent, Titel darunter; Titel/Zeile oeffnet Bearbeiten.
       const evTask = (t, showFirm) => {
         const done = !t.isOpen, over = t.isOpen && t.isOverdue;
         const accent = done ? "var(--subtle)" : (over ? "var(--red)" : "var(--blue-mid)");
         const icBg   = over ? "var(--red-soft)" : (done ? "var(--panel-2)" : "var(--blue-light)");
-        const kindCol = done ? "var(--muted)" : (over ? "var(--red)" : "var(--blue)");
         const when = over
           ? `<span style="color:var(--red);font-weight:700;">${esc(helpers.relativeDate(t.deadline))} fällig</span>`
           : `<span style="color:var(--muted);">${esc(helpers.relativeDate(t.deadline)) || "—"}</span>`;
         return `
         <div style="${rowBase(accent)}${done ? "opacity:.62;" : ""}">
           <span style="width:22px;height:22px;border-radius:var(--r-sm);background:${icBg};display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">${done ? "✓" : "◻"}</span>
-          <div style="flex:1;min-width:0;display:flex;gap:10px;align-items:baseline;">
-            <a class="bbz-link" data-action="edit-task" data-id="${t.id}" style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;font-weight:700;color:${kindCol};${done ? "text-decoration:line-through;" : ""}">${esc(t.title)}</a>
-            ${showFirm && t.firmId ? firmLink(t.firmId, t.firmTitle) : ""}
-            <span style="font-size:11px;white-space:nowrap;flex-shrink:0;">${when}</span>
-          </div>
+          <a class="bbz-link" data-action="edit-task" data-id="${t.id}" style="flex:1;min-width:0;color:var(--text);display:block;">
+            <div style="display:flex;gap:8px;align-items:baseline;">
+              ${showFirm ? `<span style="font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(t.firmTitle || t.contactName || "—")}</span>` : ""}
+              <span style="font-size:11px;flex-shrink:0;margin-left:auto;white-space:nowrap;">${when}</span>
+            </div>
+            <div style="font-size:12px;color:${done ? "var(--muted)" : "var(--text)"};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;${done ? "text-decoration:line-through;" : ""}">${esc(t.title)}</div>
+          </a>
           <span style="display:flex;gap:4px;flex-shrink:0;">
             ${t.isOpen ? iconBtn("complete-task", t.id, "✓", "Als erledigt markieren", "", false) : ""}
             ${iconBtn("delete-task", t.id, "✕", "Löschen", ` data-title="${esc(t.title)}"`, true)}
@@ -3842,14 +3910,7 @@
       };
       let firmAxisHtml = "";  // gefüllt nach der bucket()-Definition (TDZ)
 
-      // ── AGENDA-Achse: Zukunft ▲ / Heute / Verlauf ▼ ──────────────────────────
-      const divider = (label, isToday) => {
-        const lc = isToday ? "var(--red-light)" : "var(--line)";
-        const ls = isToday
-          ? "color:var(--red);background:var(--red-soft);border:1px solid var(--red-light);border-radius:var(--r-full);padding:2px 12px;"
-          : "color:var(--subtle);";
-        return `<div style="display:flex;align-items:center;gap:10px;margin:12px 0 8px;"><div style="flex:1;height:1px;background:${lc};"></div><span style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;${ls}">${esc(label)}</span><div style="flex:1;height:1px;background:${lc};"></div></div>`;
-      };
+      // ── AGENDA-Achse: zweispaltig (Aktivitäten | Aufgaben) ──────────────────
       const bucket = (id, label, items, rowFn, defOpen, red) => {
         const open = (id in F.bucketOpen) ? F.bucketOpen[id] : defOpen;
         const cap = 8, more = !!F.moreOpen[id];
@@ -3899,27 +3960,40 @@
       const pOld   = past.filter(p => !p.d || p.d < moP);
       const rowP = p => p.k === "a" ? evAct(p.it, true) : evTask(p.it, true);
 
-      let chronoHtml = divider("▲ Fällig — offene Aufgaben", false);
-      const fut = [["akt-c-over", "Überfällig", over, true, true], ["akt-c-month", "Diesen Monat", month, true, false], ["akt-c-later", "Später", later, false, false]].filter(x => x[2].length);
-      chronoHtml += fut.length ? fut.map(([id, l, it, o, r]) => bucket(id, l, it, t => evTask(t, true), o, r)).join("") : `<div style="font-size:12px;color:var(--subtle);padding:4px 2px;">Keine offenen Aufgaben im Filter.</div>`;
-      chronoHtml += divider("Heute · " + today.toLocaleDateString("de-CH"), true);
-      chronoHtml += divider("▼ Verlauf — Aktivitäten & Erledigtes", false);
-      const pst = [["akt-p-month", "Dieser Monat", pMonth, true], ["akt-p-old", "Älter", pOld, false]].filter(x => x[2].length);
-      chronoHtml += pst.length ? pst.map(([id, l, it, o]) => bucket(id, l, it, rowP, o, false)).join("") : `<div style="font-size:12px;color:var(--subtle);padding:4px 2px;">Kein Verlauf im Filter.</div>`;
+      // Zweispaltig: links Aktivitäten-Verlauf, rechts offene Aufgaben (Desktop),
+      // gestapelt <900px. Ersetzt die vertikale Zukunft/Heute/Verlauf-Stapelung.
+      const colHead = (label, count, accent) =>
+        `<div style="display:flex;align-items:baseline;gap:8px;padding:0 2px 8px;border-bottom:2px solid ${accent};margin-bottom:10px;">
+           <span style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text);">${esc(label)}</span>
+           <span style="font-size:11px;color:var(--subtle);">${count}</span>
+         </div>`;
+
+      const taskCol = [["akt-c-over", "Überfällig", over, true, true], ["akt-c-month", "Diesen Monat", month, true, false], ["akt-c-later", "Später", later, false, false]].filter(x => x[2].length);
+      const actCol  = [["akt-p-month", "Dieser Monat", pMonth, true], ["akt-p-old", "Älter", pOld, false]].filter(x => x[2].length);
+
+      const chronoHtml = `
+        <div class="bbz-akt-split">
+          <section>
+            ${colHead("Aktivitäten · Verlauf", past.length, "#c3d3e3")}
+            ${actCol.length ? actCol.map(([id, l, it, o]) => bucket(id, l, it, rowP, o, false)).join("") : `<div style="font-size:12px;color:var(--subtle);padding:4px 2px;">Kein Verlauf im Filter.</div>`}
+          </section>
+          <section>
+            ${colHead("Offene Aufgaben", openDisp.length, "var(--blue-mid)")}
+            ${taskCol.length ? taskCol.map(([id, l, it, o, r]) => bucket(id, l, it, t => evTask(t, true), o, r)).join("") : `<div style="font-size:12px;color:var(--subtle);padding:4px 2px;">Keine offenen Aufgaben im Filter.</div>`}
+          </section>
+        </div>`;
 
       // ── Steuerung: Segment / Suche / Erfassen ────────────────────────────────
       const segBtn = (v, l) => `<button class="bbz-button ${F.segment === v ? "bbz-button-primary" : "bbz-button-secondary"}" style="border-radius:0;height:34px;font-size:12px;" data-action="kpi-filter" data-scope="akt-segment" data-value="${v}">${l}</button>`;
       const axisBtn = (v, l) => `<button class="bbz-button ${F.axis === v ? "bbz-button-primary" : "bbz-button-secondary"}" style="border-radius:0;height:34px;font-size:12px;" data-action="akt-axis" data-value="${v}">${l}</button>`;
       const chip = (l, v, cnt, style = "") => `<button class="bbz-kpi-chip ${F.faelligkeit === v ? "bbz-kpi-chip-active" : ""}" style="${style}" data-action="kpi-filter" data-scope="akt-faelligkeit" data-value="${v}">${l} <span>${cnt}</span></button>`;
 
-      const leadChart = leadBars.length ? leadBars.map(([name, c]) => {
+      // Lead bbz als dezente Filter-Chips (statt dominanter Balken).
+      // Erkennbar als Filter durch "Filter:"-Label und aktiven Chip-Zustand.
+      const leadChips = leadBars.length ? leadBars.map(([name, c]) => {
         const active = F.lead && name.toLowerCase() === F.lead.toLowerCase();
-        return `<div data-action="kpi-filter" data-scope="akt-lead" data-value="${esc(name)}" title="${esc(name)}: ${c}" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:1px 0;">
-          <span style="font-size:11px;width:96px;flex-shrink:0;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${active ? "var(--amber)" : "var(--muted)"};font-weight:${active ? 700 : 400};">${esc(name)}</span>
-          <div style="flex:1;height:13px;background:var(--line);border-radius:3px;overflow:hidden;"><div style="height:100%;width:${Math.round(c / maxLead * 100)}%;background:${active ? "var(--amber)" : "var(--blue-mid)"};"></div></div>
-          <span style="font-size:11px;width:22px;flex-shrink:0;text-align:right;color:var(--muted);">${c}</span>
-        </div>`;
-      }).join("") : `<div style="font-size:12px;color:var(--muted);padding:4px 0;">Keine Lead-Zuordnung im Segment.</div>`;
+        return `<button class="bbz-kpi-chip ${active ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="akt-lead" data-value="${esc(name)}" title="Nach Lead ${esc(name)} filtern">${esc(name)} <span>${c}</span></button>`;
+      }).join("") : `<span style="font-size:12px;color:var(--muted);">Keine Lead-Zuordnung im Segment.</span>`;
 
       return `
         <div>
@@ -3951,16 +4025,17 @@
             </div>
           </div>
 
-          <!-- Lead-Filter -->
-          <div style="background:var(--panel);border:1px solid var(--line);border-radius:var(--r-xl);padding:11px 14px;margin-bottom:14px;">
-            <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:7px;display:flex;justify-content:space-between;"><span>Lead bbz</span><span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--subtle);">${F.lead ? esc(F.lead) : "alle Leads"}</span></div>
-            <div style="display:grid;gap:2px;">${leadChart}</div>
+          <!-- Lead-Filter: dezente Chip-Zeile -->
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;padding:7px 10px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);">
+            <span style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--subtle);flex-shrink:0;">Filter · Lead bbz</span>
+            ${leadChips}
+            ${F.lead ? `<button class="bbz-kpi-chip" data-action="kpi-filter" data-scope="akt-lead" data-value="${esc(F.lead)}" title="Filter aufheben" style="margin-left:auto;color:var(--red);border-color:var(--red-light);">✕ Filter aufheben</button>` : ""}
           </div>
 
           <!-- Achsen-Umschalter + Legende -->
           <div style="display:flex;gap:10px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
             <div style="display:flex;border-radius:var(--r-sm);overflow:hidden;flex-shrink:0;border:1px solid var(--line);">${axisBtn("firm", "Nach Firma")}${axisBtn("chrono", "Agenda (chronologisch)")}</div>
-            <span style="font-size:11px;color:var(--subtle);">${F.axis === "firm" ? "Beziehungssicht · gruppiert nach Fälligkeit der nächsten Aufgabe" : "Fälligkeits-Agenda · offene Aufgaben zuerst, Verlauf eingeklappt"}</span>
+            <span style="font-size:11px;color:var(--subtle);">${F.axis === "firm" ? "Beziehungssicht · gruppiert nach Fälligkeit der nächsten Aufgabe" : "Zweispaltig · links Aktivitäten-Verlauf, rechts offene Aufgaben"}</span>
             ${F.axis === "firm" ? `<button class="bbz-button bbz-button-secondary" style="margin-left:auto;height:28px;font-size:11px;" data-action="akt-legende">Signal-Legende ${F.legendeOffen ? "▾" : "▸"}</button>` : ""}
           </div>
           ${F.axis === "firm" && F.legendeOffen ? `
@@ -5382,6 +5457,12 @@
         ui.setLoading(false);
         this.render();
       }
+    },
+
+    // Aktivitaets-Detail (read-only, schliessbar) — Layer-Zweck: Details ohne Formular sehen
+    openHistoryDetail(itemId) {
+      state.modal = { type: "history-detail", payload: { itemId: Number(itemId) } };
+      this.render();
     },
 
     openHistoryForm(contactId = null, firmId = null, itemId = null, typ = null) {
