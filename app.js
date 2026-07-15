@@ -845,7 +845,7 @@
         if (aktBucket) {
           const id = aktBucket.dataset.bucket;
           const AF = state.filters.aktivitaeten;
-          const defOpen = { "akt-c-over": true, "akt-c-month": true, "akt-c-later": false, "akt-c-done": false, "akt-p-month": true, "akt-p-old": false, "akt-f-over": true, "akt-f-month": true, "akt-f-later": false, "akt-f-none": false };
+          const defOpen = { "akt-c-over": true, "akt-c-month": true, "akt-c-later": false, "akt-c-done": false, "akt-p-month": true, "akt-p-old": false, "akt-f-rot": true, "akt-f-amber": true, "akt-f-gruen": false, "akt-f-kein": false };
           const cur = (id in AF.bucketOpen) ? AF.bucketOpen[id] : (defOpen[id] ?? true);
           AF.bucketOpen[id] = !cur;
           controller.render(); return;
@@ -2263,6 +2263,7 @@
                 </div>
               </div>
               <div class="bbz-modal-footer">
+                ${mode === "edit" ? `<button type="button" class="bbz-button bbz-button-secondary" style="color:var(--red);border-color:var(--red);" data-action="delete-task" data-id="${itemId}" data-title="${helpers.escapeHtml(task?.title || 'Aufgabe')}">Löschen</button>` : ""}
                 <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Abbrechen</button>
                 <button type="submit" class="bbz-button bbz-button-primary" ${state.meta.loading ? "disabled" : ""}>Speichern</button>
               </div>
@@ -3732,7 +3733,6 @@
               ${row("Notizen", h.notizen ? `<div style="white-space:pre-wrap;line-height:1.55;">${esc(h.notizen)}</div>` : "")}
             </div>
             <div class="bbz-modal-footer">
-              <button type="button" class="bbz-button bbz-button-secondary" style="color:var(--red);border-color:var(--red);" data-action="delete-history" data-id="${h.id}" data-title="${esc(h.typ || "Aktivität")}">Löschen</button>
               <button type="button" class="bbz-button bbz-button-secondary" data-close-modal>Schliessen</button>
               <button type="button" class="bbz-button bbz-button-primary" data-action="edit-history" data-id="${h.id}">Bearbeiten</button>
             </div>
@@ -3829,7 +3829,6 @@
           </a>
           <span style="display:flex;gap:4px;flex-shrink:0;">
             ${iconBtn("edit-history", h.id, "✎", "Bearbeiten", "", false)}
-            ${iconBtn("delete-history", h.id, "✕", "Löschen", ` data-title="${esc(h.typ || "Aktivität")}"`, true)}
           </span>
         </div>`;
       // Aufgabe: FIRMA prominent, Titel darunter; Titel/Zeile oeffnet Bearbeiten.
@@ -3852,7 +3851,7 @@
           </a>
           <span style="display:flex;gap:4px;flex-shrink:0;">
             ${t.isOpen ? iconBtn("complete-task", t.id, "✓", "Als erledigt markieren", "", false) : ""}
-            ${iconBtn("delete-task", t.id, "✕", "Löschen", ` data-title="${esc(t.title)}"`, true)}
+            ${iconBtn("edit-task", t.id, "✎", "Bearbeiten", "", false)}
           </span>
         </div>`;
       };
@@ -3924,25 +3923,32 @@
         </div>`;
       };
 
-      // FIRMA-Achse in Fälligkeits-Buckets (analog Agenda): Überfällig / Diesen Monat / Später / Ohne offene Aufgabe.
-      const firmBucketOf = x => {
-        const n = x.openT[0];
-        if (!n) return "none";
-        if (n.isOverdue) return "over";
-        const d = dl(n);
-        return (d && d <= mo) ? "month" : "later";
-      };
-      const fbk = { over: [], month: [], later: [], none: [] };
-      firmRows.forEach(x => fbk[firmBucketOf(x)].push(x));
+      // FIRMA-Achse: gruppiert nach **Pflege-Signal**, NICHT nach Aufgaben-Fälligkeit.
+      // (Task-Gruppierung verwirrte, v.a. der Sammel-Bucket "Ohne offene Aufgabe".)
+      // Sprache = firmSignal des Firmenboards; die Legende steht direkt darüber.
+      const sigBucketOf = x => (x.sig === "overdue" || x.sig === "never") ? "rot"
+                             : x.sig === "cold" ? "amber"
+                             : x.sig === "ok"   ? "gruen" : "kein";
+      const fbk = { rot: [], amber: [], gruen: [], kein: [] };
+      firmRows.forEach(x => fbk[sigBucketOf(x)].push(x));
       const byTitle = (a, b) => a.f.title.localeCompare(b.f.title, "de");
-      const byNext  = (a, b) => helpers.compareDateAsc(a.openT[0].deadline, b.openT[0].deadline) || byTitle(a, b);
-      fbk.over.sort(byNext); fbk.month.sort(byNext); fbk.later.sort(byNext);
-      fbk.none.sort((a, b) => helpers.compareDateDesc(a.fa[0] && a.fa[0].datum, b.fa[0] && b.fa[0].datum) || byTitle(a, b));
+      // Kernfrage der Beziehungssicht: wer wurde am längsten nicht kontaktiert?
+      // Achtung: helpers.compareDateAsc sortiert fehlende Daten ans ENDE — hier müssen
+      // nie kontaktierte Firmen aber ZUERST stehen. Daher eigene Sortierung.
+      const lastTouchOf = x => (x.fa[0] ? helpers.toDate(x.fa[0].datum) : null);
+      const byLastTouch = (a, b) => {
+        const ad = lastTouchOf(a), bd = lastTouchOf(b);
+        if (!ad && !bd) return byTitle(a, b);
+        if (!ad) return -1;
+        if (!bd) return 1;
+        return (ad - bd) || byTitle(a, b);
+      };
+      fbk.rot.sort(byLastTouch); fbk.amber.sort(byLastTouch); fbk.gruen.sort(byLastTouch); fbk.kein.sort(byTitle);
       const firmBuckets = [
-        ["akt-f-over",  "Überfällig",          fbk.over,  true,  true],
-        ["akt-f-month", "Diesen Monat",        fbk.month, true,  false],
-        ["akt-f-later", "Später",              fbk.later, false, false],
-        ["akt-f-none",  "Ohne offene Aufgabe", fbk.none,  false, false]
+        ["akt-f-rot",   "Nicht aktiv gepflegt", fbk.rot,   true,  true],
+        ["akt-f-amber", "Aufmerksamkeit",       fbk.amber, true,  false],
+        ["akt-f-gruen", "Aktiv gepflegt",       fbk.gruen, false, false],
+        ["akt-f-kein",  "Ohne Signal",          fbk.kein,  false, false]
       ].filter(x => x[2].length);
       firmAxisHtml = firmRows.length
         ? firmBuckets.map(([id, l, it, o, r]) => bucket(id, l, it, firmCard, o, r)).join("")
@@ -4008,7 +4014,13 @@
           </div>
 
           <!-- Zähler-Band -->
-          <div class="bbz-kpis" style="grid-template-columns:1.1fr 1.4fr;margin-bottom:14px;">
+          <div class="bbz-kpis" style="grid-template-columns:1.4fr 1.1fr;margin-bottom:14px;">
+            <div class="bbz-kpi bbz-kpi-blue">
+              <div class="bbz-kpi-label">Aktivitäten</div>
+              <div style="display:flex;align-items:baseline;gap:8px;"><div class="bbz-kpi-value">${scopeActs.length}</div><div style="font-size:11px;color:var(--muted);">total · ${aMonth} Monat · ${aYear} Jahr</div></div>
+              <div style="display:flex;height:16px;border-radius:5px;overflow:hidden;margin-top:10px;background:var(--line-2);">${splitBar}</div>
+              <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:7px;">${splitLeg || '<span style="font-size:11px;color:var(--muted);">keine Aktivitäten</span>'}</div>
+            </div>
             <div class="bbz-kpi bbz-kpi-red">
               <div class="bbz-kpi-label">Aufgaben</div>
               <div style="display:flex;align-items:baseline;gap:8px;"><div class="bbz-kpi-value">${openTasks.length}</div><div style="font-size:11px;color:var(--muted);">offen</div></div>
@@ -4018,12 +4030,6 @@
                 ${chip("Später", "later", cLater)}
                 ${F.faelligkeit ? `<button class="bbz-kpi-chip" data-action="kpi-filter" data-scope="akt-faelligkeit" data-value="">Alle ${cAll}</button>` : `<button class="bbz-kpi-chip" data-action="kpi-filter" data-scope="akt-faelligkeit" data-value="">Alle <span>${cAll}</span></button>`}
               </div>
-            </div>
-            <div class="bbz-kpi bbz-kpi-blue">
-              <div class="bbz-kpi-label">Aktivitäten</div>
-              <div style="display:flex;align-items:baseline;gap:8px;"><div class="bbz-kpi-value">${scopeActs.length}</div><div style="font-size:11px;color:var(--muted);">total · ${aMonth} Monat · ${aYear} Jahr</div></div>
-              <div style="display:flex;height:16px;border-radius:5px;overflow:hidden;margin-top:10px;background:var(--line-2);">${splitBar}</div>
-              <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:7px;">${splitLeg || '<span style="font-size:11px;color:var(--muted);">keine Aktivitäten</span>'}</div>
             </div>
           </div>
 
@@ -4037,7 +4043,7 @@
           <!-- Achsen-Umschalter + Legende -->
           <div style="display:flex;gap:10px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
             <div style="display:flex;border-radius:var(--r-sm);overflow:hidden;flex-shrink:0;border:1px solid var(--line);">${axisBtn("firm", "Nach Firma")}${axisBtn("chrono", "Agenda (chronologisch)")}</div>
-            <span style="font-size:11px;color:var(--subtle);">${F.axis === "firm" ? "Beziehungssicht · gruppiert nach Fälligkeit der nächsten Aufgabe" : "Zweispaltig · links Aktivitäten-Verlauf, rechts offene Aufgaben"}</span>
+            <span style="font-size:11px;color:var(--subtle);">${F.axis === "firm" ? "Beziehungssicht · gruppiert nach Pflege-Signal, längster Kontaktabstand zuerst" : "Zweispaltig · links Aktivitäten-Verlauf, rechts offene Aufgaben"}</span>
             ${F.axis === "firm" ? `<button class="bbz-button bbz-button-secondary" style="margin-left:auto;height:28px;font-size:11px;" data-action="akt-legende">Signal-Legende ${F.legendeOffen ? "▾" : "▸"}</button>` : ""}
           </div>
           ${F.axis === "firm" && F.legendeOffen ? `

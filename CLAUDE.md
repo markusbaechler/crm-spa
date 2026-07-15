@@ -198,11 +198,15 @@ Zähler: total · 30 Tage · 365 Tage. Kontaktart-Split-Bar aus `choices[CRMHist
 (Reihenfolge SP-Choices, sonst alphabetisch).
 
 **Zwei Achsen:**
-- `firm` (Default): **Bank-Cadence-Karten** je Firma mit ≥1 Aktivität/Aufgabe, **gruppiert in
-  Fälligkeits-Buckets** (analog Agenda) nach der nächsten offenen Aufgabe: `akt-f-over`
-  (Überfällig, offen) / `akt-f-month` (Diesen Monat, offen) / `akt-f-later` (Später, zu) /
-  `akt-f-none` (Ohne offene Aufgabe, zu). Buckets klappbar (`akt-bucket`), Cap 8 + „+N weitere".
-  Innerhalb sortiert nach nächster Deadline (none: nach letzter Aktivität). Kopf zeigt Signal-Dot,
+- `firm` (Default): **Bank-Cadence-Karten** je Firma mit ≥1 Aktivität/Aufgabe, **gruppiert nach
+  `firmSignal`** (NICHT nach Aufgaben-Fälligkeit): `akt-f-rot` „Nicht aktiv gepflegt"
+  (overdue+never, offen) / `akt-f-amber` „Aufmerksamkeit" (cold, offen) / `akt-f-gruen`
+  „Aktiv gepflegt" (ok, zu) / `akt-f-kein` „Ohne Signal" (Nicht-Kunden, zu).
+  **Nicht auf Aufgaben-Buckets zurückbauen** — das verwirrte, v.a. der Sammel-Bucket
+  „Ohne offene Aufgabe". Buckets klappbar (`akt-bucket`), Cap 8 + „+N weitere".
+  Sortierung innerhalb: **längster Kontaktabstand zuerst**; nie kontaktierte Firmen ganz oben.
+  Achtung: `helpers.compareDateAsc` sortiert fehlende Daten ans ENDE — daher eigene
+  `byLastTouch`-Sortierung. Kopf zeigt Signal-Dot,
   „Letzter Touch" + „Nächste Aufgabe" (Farbe rot/amber/neutral nach Dringlichkeit) + Lead-Tag.
   Aufklappbar (`akt-firm-expand`) → gemergte Timeline (Aktivitäten+Aufgaben, neueste zuerst) +
   „+ Aktivität"/„+ Aufgabe" (reuse `open-history-form`/`open-task-form` mit `data-firm-id`).
@@ -221,11 +225,14 @@ Zähler: total · 30 Tage · 365 Tage. Kontaktart-Split-Bar aus `choices[CRMHist
 `open-history-form`, `open-task-form`, `edit-task`, `edit-history`, `complete-task`,
 `task-status-change`. Neue Aktionen alle mit `akt-`-Präfix.
 
-**Zeilen-Aktionen (jede Event-Zeile, `iconBtn`-Helper):** Aktivität — Titel/✎ öffnet das
-Detail-/Bearbeiten-Formular (`edit-history`), ✕ löscht (`delete-history`, mit `data-title`).
-Aufgabe — Titel öffnet Bearbeiten (`edit-task`), ✓ markiert erledigt (`complete-task`, nur
-offene), ✕ löscht (`delete-task`, mit `data-title`). Alle Handler existierten bereits; die
-neue View emittiert nur die Buttons mit `data-id`/`data-title`.
+**Zeilen-Aktionen (jede Event-Zeile, `iconBtn`-Helper):** Aktivität — Klick öffnet das
+Detail-Modal, ✎ öffnet Bearbeiten (`edit-history`). Aufgabe — Klick/✎ öffnet Bearbeiten
+(`edit-task`), ✓ markiert erledigt (`complete-task`, nur offene).
+
+**Löschen NUR im Bearbeiten-Modus** (gegen versehentliches Löschen): kein ✕ in Zeilen, kein
+Löschen im read-only Detail-Modal. `renderHistoryForm` hatte den Löschen-Button im
+`mode === "edit"` schon; `renderTaskForm` wurde entsprechend nachgezogen (wirkt auch in
+firmDetail/planning, die dieselbe Form nutzen). **Nicht wieder ✕ in die Zeilen bauen.**
 
 **Zeilen-Darstellung:** In beiden Achsen ist die **Firma prominent** (fett, 13px) — nicht die
 Kontaktart. Aktivität: Firma · Kontaktart(blau) · relatives Datum, Notiz einzeilig darunter.
@@ -233,8 +240,8 @@ Aufgabe: Firma · Fälligkeit, Titel darunter.
 
 **Aktivitäts-Detail-Modal** (`state.modal.type === "history-detail"`, `views.renderHistoryDetail`,
 `controller.openHistoryDetail(id)`, Aktion `open-history-detail`): read-only Vollansicht mit
-**ungekürzten Notizen**, Firma/Kontakt verlinkt. Footer: Löschen / Schliessen / Bearbeiten
-(→ öffnet `history`-Formular). Klick auf eine Aktivitäts-Zeile öffnet dieses Modal (nicht die
+**ungekürzten Notizen**, Firma/Kontakt verlinkt. Footer: Schliessen / Bearbeiten
+(→ öffnet `history`-Formular; dort erst ist Löschen möglich). Klick auf eine Aktivitäts-Zeile öffnet dieses Modal (nicht die
 Firma). Schliessen via `[data-close-modal]` oder Backdrop.
 
 **Lead bbz** ist eine **dezente Chip-Zeile** (`bbz-kpi-chip`, Label „Filter · Lead bbz",
