@@ -3388,8 +3388,7 @@
       const totalActive   = state.enriched.contacts.filter(c => !c.archiviert).length;
       const withHistory   = state.enriched.contacts.filter(c => !c.archiviert && state.enriched.history.some(h => h.contactId === c.id)).length;
       const withOpenTasks = state.enriched.contacts.filter(c => !c.archiviert && state.enriched.tasks.some(t => t.contactId === c.id && t.isOpen)).length;
-      const allOpenTasks  = state.enriched.tasks.filter(t => t.isOpen).length;
-      const overdueTasks  = state.enriched.tasks.filter(t => t.isOpen && t.isOverdue).length;
+      // allOpenTasks/overdueTasks entfielen mit den Kacheln "Offene Tasks" + "Firmen-Cockpit".
 
       return `
         <div>
@@ -3406,20 +3405,36 @@
             </div>
             <!-- Sichtbar nach Filter -->
             ${this.kpiBlock("Angezeigt", rows.length, rows.length < totalActive ? `von ${totalActive}` : "alle aktiven")}
-            <!-- Offene Tasks — klickbar zur Planung -->
-            <div class="bbz-kpi bbz-kpi-clickable" data-action="navigate-planning" style="cursor:pointer;">
-              <div class="bbz-kpi-label">Offene Tasks</div>
-              <div class="bbz-kpi-value">${allOpenTasks}</div>
-              ${overdueTasks > 0
-                ? `<div class="bbz-kpi-meta-alert">${overdueTasks} überfällig — zur Planung →</div>`
-                : `<div class="bbz-kpi-meta-ok">keine überfällig — zur Planung →</div>`}
-            </div>
-            <!-- Zurück zum Cockpit -->
-            <div class="bbz-kpi bbz-kpi-clickable" data-action="kpi-filter" data-scope="navigate" data-value="firms" style="cursor:pointer;">
-              <div class="bbz-kpi-label">Firmen-Cockpit</div>
-              <div class="bbz-kpi-value">${state.enriched.firms.length}</div>
-              <div class="bbz-kpi-meta">← zurück zum Cockpit</div>
-            </div>
+            <!-- Geburtstagskalender (ersetzt "Offene Tasks" + "Firmen-Cockpit").
+                 Nutzt die vorgehaltenen Helper upcomingBirthdays/birthdayLabel — nicht neu bauen. -->
+            ${(() => {
+              const upcoming = helpers.upcomingBirthdays(30);
+              const todayCount = upcoming.filter(b => b.daysUntil === 0).length;
+              return `
+              <div class="bbz-kpi bbz-kpi-wide bbz-kpi-static bbz-kpi-amber">
+                <div style="display:flex;align-items:baseline;gap:8px;">
+                  <div class="bbz-kpi-label">Geburtstage</div>
+                  <a class="bbz-link" data-action="kpi-filter" data-scope="navigate" data-value="birthdays"
+                     style="margin-left:auto;font-size:11px;">alle anzeigen →</a>
+                </div>
+                <div style="display:flex;align-items:baseline;gap:9px;">
+                  <div class="bbz-kpi-value">${upcoming.length}</div>
+                  <div style="font-size:11px;color:var(--muted);">
+                    in 30 Tagen${todayCount ? ` · <b style="color:var(--amber);">${todayCount} heute</b>` : ""}
+                  </div>
+                </div>
+                ${upcoming.length ? `
+                <div style="margin-top:8px;display:flex;flex-direction:column;gap:1px;">
+                  ${upcoming.slice(0, 4).map(b => `
+                    <div class="bbz-bday-row ${b.daysUntil === 0 ? "bbz-bday-today" : ""}" data-action="open-contact" data-id="${b.contact.id}" title="${helpers.escapeHtml(b.contact.fullName)} — ${helpers.formatDate(b.contact.geburtstag)}${b.age ? ` (wird ${b.age})` : ""}">
+                      <span class="bbz-bday-name">${b.daysUntil === 0 ? "🎂 " : ""}${helpers.escapeHtml(b.contact.fullName)}</span>
+                      <span class="bbz-bday-firm">${helpers.escapeHtml(b.contact.firmTitle || "")}</span>
+                      <span class="bbz-bday-when">${helpers.escapeHtml(helpers.birthdayLabel(b.daysUntil, b.nextBirthday))}</span>
+                    </div>`).join("")}
+                  ${upcoming.length > 4 ? `<a class="bbz-link" data-action="kpi-filter" data-scope="navigate" data-value="birthdays" style="font-size:11px;color:var(--muted);padding:3px 0 0;">+ ${upcoming.length - 4} weitere …</a>` : ""}
+                </div>` : `<div style="margin-top:8px;font-size:11.5px;color:var(--subtle);">Keine Geburtstage in den nächsten 30 Tagen.</div>`}
+              </div>`;
+            })()}
           </div>
           <section class="bbz-section">
           <div class="bbz-section-header">

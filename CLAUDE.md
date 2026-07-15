@@ -361,3 +361,27 @@ Zustände: `aktiv` · `pflege` · `offen` · `ohne` · `kein` (nur Segment „al
 Feste Rangfolge **dringend vor unauffällig**: `pflege` ▸ `offen` ▸ `ohne` ▸ `aktiv`;
 Nicht-Kunden und Randfälle → `null` (kein Punkt). Die **Legende wird aus `pflegeMeta`
 generiert** — sie kann also nicht mehr veralten. Nicht durch fixen Text ersetzen.
+
+
+## Kontakte-Screen — KPI-Zeile
+
+Die Kacheln **„Offene Tasks"** und **„Firmen-Cockpit"** wurden **entfernt** (Navigation gehört
+in die Nav, nicht in KPI-Kacheln). An ihrer Stelle steht der **Geburtstagskalender**:
+
+- `.bbz-kpi-wide` (`grid-column: span 2`) belegt den Platz der zwei entfernten Kacheln.
+- `.bbz-kpi-static` = Container ohne Hover-Lift; **die Zeilen darin sind klickbar**
+  (`open-contact`), nicht die Karte.
+- Inhalt: Anzahl Geburtstage in 30 Tagen (+ „N heute"), die nächsten 4 als Liste,
+  „alle anzeigen →" führt auf die Route `birthdays`.
+
+> **Nichts davon ist neu gebaut.** Es nutzt die im Handover vorgehaltenen Helper
+> `helpers.upcomingBirthdays(days, contacts)` und `helpers.birthdayLabel(daysUntil, nextBirthday)`.
+> Diese sind damit **nicht mehr ungenutzt** — der Hinweis „vorgehalten fürs Dashboard" gilt
+> für sie nicht mehr, wohl aber weiterhin für die KPI-Aggregations-Helper.
+
+> **Die Route `birthdays` (`views.birthdayView()`) war bis dahin über die UI unerreichbar** —
+> sie stand in `knownRoutes` und im Dispatch, aber kein Link führte hin. Der „alle anzeigen →"-
+> Link ist jetzt der einzige Einstieg. Wer ihn entfernt, macht die View wieder unerreichbar.
+
+`allOpenTasks`/`overdueTasks` in `views.contacts()` sind mit den Kacheln entfallen
+(die gleichnamigen Locals in `views.firms()` sind davon unberührt).
