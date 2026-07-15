@@ -26,7 +26,7 @@
     },
 
     defaults: {
-      route: "firms",
+      route: "dashboard",   // Dashboard ist die Einstiegsseite
       contactArchiveDefaultHidden: true,
       planningShowOnlyOpen: true,
       // Firma für Privatpersonen ohne Firmenbezug — exakter SP-Titel
@@ -139,6 +139,7 @@
 
     filters: {
       route: CONFIG.defaults.route,
+      dashboard: { sel: "" },   // aktive Metrik -> steuert Kachel-Aufklappung UND Liste unten
       firms: { kategorie: "", klassifizierung: "", vip: false, pflege: "", search: "", legendeOffen: false, sortBy: "title", sortDir: "asc" },
       contacts: { search: "", archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden, sortBy: "fullName", sortDir: "asc" },
       planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, groupBy: "none", sortBy: "deadline", sortDir: "asc", segment: "", leadbbz: "", faelligkeit: "" },
@@ -948,6 +949,16 @@
           controller.render(); return;
         }
 
+        // Dashboard: Metrik waehlen/abwaehlen. Ein Klick steuert BEIDES —
+        // Kachel-Entwicklung oben und Drill-Down-Liste unten.
+        const dashSelect = event.target.closest("[data-action='dash-select']");
+        if (dashSelect) {
+          const v = dashSelect.dataset.value || "";
+          state.filters.dashboard.sel = state.filters.dashboard.sel === v ? "" : v;
+          controller.render();
+          return;
+        }
+
         // Signal-Kategorie im Firmencockpit umschalten (exklusiv, kein Toggle-Aus:
         // "keine Kategorie" waere ein leerer Screen)
         const aktSig = event.target.closest("[data-action='akt-sig']");
@@ -1364,7 +1375,7 @@
       const isMsalRedirect = currentHash.includes("code=") || currentHash.includes("error=") || currentHash.includes("state=")
                           || currentSearch.includes("code=") || currentSearch.includes("error=") || currentSearch.includes("state=");
       // Bekannte App-Routen aus dem Hash lesen — verhindert Ueberschreiben von #admin etc.
-      const knownRoutes = ["firms","contacts","aktivitaeten","planning","history","events","birthdays","admin"];
+      const knownRoutes = ["dashboard","firms","contacts","aktivitaeten","planning","history","events","birthdays","admin"];
       const hashRoute = currentHash.replace("#", "").split("-")[0];
       if (!isMsalRedirect && knownRoutes.includes(hashRoute)) {
         state.filters.route = hashRoute;
@@ -1874,7 +1885,11 @@
         hauptnummer: this.getField(item, f.hauptnummer) || "",
         klassifizierung: this.getField(item, f.klassifizierung) || "",
         vip: helpers.bool(this.getField(item, f.vip)),
-        kategorie: (this.getField(item, f.kategorie) || "").trim()
+        kategorie: (this.getField(item, f.kategorie) || "").trim(),
+        // createdDateTime wird von der Fetch-Schicht fuer ALLE Listen geholt ($select),
+        // war hier aber als einziges Entity nicht gemappt -> Firmen-Entwicklung war unmöglich.
+        spCreated: item?.createdDateTime || "",
+        spCreatedBy: item?.createdBy?.user?.displayName || ""
       };
     },
 
@@ -2077,6 +2092,7 @@
         state.filters.route = "aktivitaeten";
       }
       switch (state.filters.route) {
+        case "dashboard": viewHtml = this.dashboard(); break;
         case "firms": viewHtml = state.selection.firmId ? this.firmDetail() : this.firms(); break;
         case "contacts": viewHtml = state.selection.contactId ? this.contactDetail() : this.contacts(); break;
         case "aktivitaeten": viewHtml = this.aktivitaeten(); break;
@@ -3915,6 +3931,284 @@
             </div>
           </div>
         </div>`;
+    },
+
+    // ══ DASHBOARD — Startseite ═══════════════════════════════════════════════════
+    // Ein einziger Interaktionsmechanismus: jede Zahl ist klickbar (`dash-select`).
+    // Klick = Kachel klappt die Entwicklung auf UND die Liste unten füllt sich.
+    // Nicht zwei Mechanismen daraus machen (Trend hier, Liste dort) — das verwirrt.
+    dashboard() {
+      const F = state.filters.dashboard;
+      const esc = helpers.escapeHtml;
+      const today = helpers.todayStart();
+      const back = n => { const d = new Date(today); d.setDate(d.getDate() - n); return d; };
+      const d30 = back(30), d180 = back(182), d365 = back(365);
+      const inSince = (v, from) => { const d = helpers.toDate(v); return !!(d && d >= from); };
+      const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
+      const sign = n => n > 0 ? `+${n}` : `${n}`;
+      const cls = n => n > 0 ? "var(--green)" : n < 0 ? "var(--red)" : "var(--subtle)";
+
+      const firms = state.enriched.firms;
+      const kunden = firms.filter(f => f.kategorie === "Kunde");
+      const contactsAll = state.enriched.contacts;
+      const contactsActive = contactsAll.filter(c => !c.archiviert);
+      const acts = state.enriched.history;
+      const tasks = state.enriched.tasks;
+      const openTasks = tasks.filter(t => t.isOpen);
+
+      // ── Metrik-Definitionen: EINE Quelle für Kachel, Entwicklung und Liste ────
+      const created = (arr, from) => arr.filter(x => inSince(x.spCreated, from)).length;
+      const lastActOf = f => helpers.toDate(f.latestActivity);
+      const coverBand = f => {
+        const d = lastActOf(f);
+        if (d && d >= d180) return "m6";
+        if (d && d >= d365) return "m12";
+        return "none";
+      };
+      const noMail = c => !(c.email1 || "").trim() && !(c.email2 || "").trim();
+      const noTel  = c => !(c.direktwahl || "").trim() && !(c.mobile || "").trim();
+      const noFunk = c => !(c.funktion || "").trim() && !(c.rolle || "").trim();
+      const noLead = c => !(c.leadbbz0 || "").trim();
+
+      const wk = back(-7);   // heute .. +7
+      const m30f = back(-30);
+      const M = {
+        "firms-kunde":     { lab: "Banken (Kunden)", set: () => kunden, kind: "firm" },
+        "firms-lieferant": { lab: "Lieferanten", set: () => firms.filter(f => f.kategorie === "Lieferant"), kind: "firm" },
+        "firms-uebrige":   { lab: "Übrige", set: () => firms.filter(f => f.kategorie !== "Kunde" && f.kategorie !== "Lieferant"), kind: "firm" },
+        "contacts":        { lab: "Kontakte aktiv", set: () => contactsActive, kind: "contact", totalSet: () => contactsAll },
+        "cover-m6":        { lab: "Banken · Aktivität ≤ 6 Monate", set: () => kunden.filter(f => coverBand(f) === "m6"), kind: "cover" },
+        "cover-m12":       { lab: "Banken · Aktivität 6–12 Monate", set: () => kunden.filter(f => coverBand(f) === "m12"), kind: "cover" },
+        "cover-none":      { lab: "Banken · ohne Aktivität (>12 Mt. oder nie)", set: () => kunden.filter(f => coverBand(f) === "none"), kind: "cover" },
+        "tasks-over":      { lab: "Überfällige Aufgaben", set: () => openTasks.filter(t => t.isOverdue), kind: "task" },
+        "tasks-week":      { lab: "Aufgaben diese Woche", set: () => openTasks.filter(t => { const d = helpers.toDate(t.deadline); return d && !t.isOverdue && d <= wk; }), kind: "task" },
+        "tasks-m30":       { lab: "Aufgaben nächste 30 Tage", set: () => openTasks.filter(t => { const d = helpers.toDate(t.deadline); return d && !t.isOverdue && d <= m30f; }), kind: "task" },
+        "dq-mail":         { lab: "Kontakte ohne E-Mail", set: () => contactsActive.filter(noMail), kind: "dq" },
+        "dq-tel":          { lab: "Kontakte ohne Telefon", set: () => contactsActive.filter(noTel), kind: "dq" },
+        "dq-funk":         { lab: "Kontakte ohne Funktion/Rolle", set: () => contactsActive.filter(noFunk), kind: "dq" },
+        "dq-lead":         { lab: "Kontakte ohne Lead bbz", set: () => contactsActive.filter(noLead), kind: "dq" },
+        "acts":            { lab: "Aktivitäten (Banken)", set: () => acts, kind: "act" }
+      };
+      const sel = M[F.sel] ? F.sel : "";
+      const cnt = k => M[k].set().length;
+
+      // ── Aktivitäten: 12-Monats-Verlauf + Ø/Woche ──────────────────────────────
+      const mKey = d => d.getFullYear() * 12 + d.getMonth();
+      const months = [];
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+        months.push({ k: mKey(d), lab: d.toLocaleDateString("de-CH", { month: "short" }), n: 0 });
+      }
+      let a30 = 0, a365 = 0, earliest = null;
+      acts.forEach(h => {
+        const d = helpers.toDate(h.datum); if (!d) return;
+        if (!earliest || d < earliest) earliest = d;
+        if (d >= d30) a30++;
+        if (d >= d365) a365++;
+        const m = months.find(x => x.k === mKey(d)); if (m) m.n++;
+      });
+      const nowN = months[11].n, prevN = months[10].n, deltaN = nowN - prevN;
+      const maxN = Math.max(1, ...months.map(m => m.n));
+      const totalWeeks = earliest ? Math.max(1, (today - earliest) / (7 * 86400000)) : 1;
+      const num = n => n.toFixed(1).replace(".", ",");
+      const pw30 = num(a30 / (30 / 7)), pw365 = num(a365 / (365 / 7)), pwTot = num(acts.length / totalWeeks);
+
+      // ── Bausteine ────────────────────────────────────────────────────────────
+      const mRow = (k, col, extra = "") => `
+        <div class="bbz-dash-m ${sel === k ? "is-on" : ""}" data-action="dash-select" data-value="${k}">
+          <span style="width:8px;height:8px;border-radius:var(--r-full);flex-shrink:0;background:${col};"></span>
+          <span style="font-size:13px;font-weight:700;flex-shrink:0;width:42px;text-align:right;">${cnt(k)}</span>
+          <span style="font-size:12px;color:var(--muted);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(M[k].lab)}</span>
+          ${extra}<span style="font-size:9px;color:var(--subtle);flex-shrink:0;">▸</span>
+        </div>`;
+
+      // Entwicklung — nur für Entitäten mit spCreated (Firmen/Kontakte)
+      const devHtml = () => {
+        if (!sel || !["firm", "contact"].includes(M[sel].kind)) return "";
+        const set = M[sel].set();
+        const c30 = created(set, d30), c365 = created(set, d365);
+        const tot = (M[sel].totalSet ? M[sel].totalSet() : set).length;
+        const box = (t, v, note, colr) => `<div style="font-size:11px;color:var(--subtle);">${t}<b style="display:block;font-size:16px;font-weight:700;letter-spacing:-.02em;color:${colr || "var(--text)"};">${v}</b><span style="font-size:10px;">${note}</span></div>`;
+        return `<div style="margin-top:9px;padding-top:9px;border-top:1px solid var(--line-2);display:flex;gap:16px;flex-wrap:wrap;">
+          ${box("30 Tage", sign(c30), c30 ? "neu erfasst" : "keine Neuzugänge", cls(c30))}
+          ${box("12 Monate", sign(c365), c365 ? "neu erfasst" : "keine Neuzugänge", cls(c365))}
+          ${box("Gesamt", tot, esc(M[sel].lab))}
+          <div style="font-size:10px;color:var(--subtle);max-width:230px;align-self:flex-end;">Basis: SharePoint-Anlagedatum — bei Migrationen kann es Importe statt Wachstum zeigen.</div>
+        </div>`;
+      };
+
+      // ── Abdeckung Banken: überschneidungsfreie Bänder, Summe = alle Kunden ────
+      const cM6 = cnt("cover-m6"), cM12 = cnt("cover-m12"), cNone = cnt("cover-none");
+      const base = kunden.length || 1;
+      const cum = cM6 + cM12;
+      const bands = [["cover-m6", "var(--green)"], ["cover-m12", "var(--amber)"], ["cover-none", "var(--red)"]];
+
+      // ── Datenqualität: Farbe folgt der Schwere, keine gepflegte Regel ─────────
+      const dqCard = k => {
+        const n = cnt(k), p = pct(n, contactsActive.length);
+        const col = p >= 20 ? "var(--red)" : p >= 10 ? "var(--amber)" : "var(--green)";
+        return `<div class="bbz-kpi ${sel === k ? "bbz-dash-sel" : ""}" data-action="dash-select" data-value="${k}" style="padding:11px 13px;">
+          <div class="bbz-kpi-label">${esc(M[k].lab.replace("Kontakte ", ""))}</div>
+          <div style="display:flex;align-items:baseline;gap:7px;margin-top:3px;">
+            <span style="font-size:24px;font-weight:700;letter-spacing:-.04em;">${n}</span>
+            <span style="font-size:13px;font-weight:700;color:${col};">${p}%</span>
+            <span style="margin-left:auto;font-size:9px;color:var(--subtle);">▸</span>
+          </div>
+          <div style="height:7px;background:var(--line-2);border-radius:4px;overflow:hidden;margin-top:7px;"><i style="display:block;height:100%;width:${p}%;background:${col};"></i></div>
+        </div>`;
+      };
+
+      // ── Drill-Down-Liste ─────────────────────────────────────────────────────
+      const listHtml = (() => {
+        if (!sel) return `<div class="bbz-empty" style="padding:26px;text-align:center;color:var(--subtle);">Klicke oben auf eine Zahl — die passende Liste erscheint hier.</div>`;
+        const kind = M[sel].kind, set = M[sel].set();
+        const cap = 50, shown = set.slice(0, cap);
+        let cols = [], rows = [];
+        if (kind === "firm" || kind === "cover") {
+          cols = ["Firma", "Ort", "Klassifizierung", "Letzte Aktivität", "Kontakte"];
+          rows = shown.map(f => [
+            `<a class="bbz-link" data-action="open-firm" data-id="${f.id}">${esc(f.title)}</a>`,
+            esc(helpers.joinNonEmpty([f.plz, f.ort], " ")) || "—",
+            f.klassifizierung ? esc(f.klassifizierung) : "—",
+            f.latestActivity ? esc(helpers.relativeDate(f.latestActivity)) : `<span style="color:var(--red);">nie</span>`,
+            String(f.contactsCount)
+          ]);
+        } else if (kind === "contact" || kind === "dq") {
+          cols = ["Name", "Firma", "Funktion / Rolle", "E-Mail", "Telefon", "Lead bbz"];
+          const dash = v => (v || "").trim() ? esc(v) : `<span style="color:var(--red);font-weight:600;">—</span>`;
+          rows = shown.map(c => [
+            `<a class="bbz-link" data-action="open-contact" data-id="${c.id}">${esc(c.fullName)}</a>`,
+            esc(c.firmTitle || "—"),
+            dash(helpers.joinNonEmpty([c.funktion, c.rolle], " · ")),
+            dash(c.email1 || c.email2),
+            dash(c.direktwahl || c.mobile),
+            dash(c.leadbbz0)
+          ]);
+        } else if (kind === "task") {
+          cols = ["Aufgabe", "Firma", "Fällig", "Lead bbz"];
+          rows = shown.sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline)).map(t => [
+            `<a class="bbz-link" data-action="edit-task" data-id="${t.id}">${esc(t.title)}</a>`,
+            esc(t.firmTitle || "—"),
+            t.isOverdue ? `<span style="color:var(--red);font-weight:600;">${esc(helpers.relativeDate(t.deadline))} fällig</span>` : (esc(helpers.relativeDate(t.deadline)) || "ohne Termin"),
+            esc(t.leadbbz || "—")
+          ]);
+        } else {
+          cols = ["Aktivität", "Firma", "Datum", "Lead bbz"];
+          rows = shown.sort((a, b) => helpers.compareDateDesc(a.datum, b.datum)).map(h => [
+            `<a class="bbz-link" data-action="open-history-detail" data-id="${h.id}">${esc(h.typ || "Aktivität")}</a>`,
+            esc(h.firmTitle || "—"), esc(helpers.relativeDate(h.datum)), esc(h.leadbbz || "—")
+          ]);
+        }
+        return `
+          <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line);background:var(--panel-2);">
+            <h3 style="margin:0;font-size:13px;font-weight:700;">${esc(M[sel].lab)}</h3>
+            <span style="font-size:11px;font-weight:700;color:var(--blue);background:var(--blue-light);border-radius:var(--r-full);padding:1px 9px;">${set.length}</span>
+            <button class="bbz-button bbz-button-secondary" style="margin-left:auto;height:26px;font-size:11px;padding:0 10px;" data-action="dash-select" data-value="${sel}">✕ Auswahl aufheben</button>
+          </div>
+          ${set.length ? `<div class="bbz-table-wrap"><table class="bbz-table">
+            <thead><tr>${cols.map(c => `<th>${c}</th>`).join("")}</tr></thead>
+            <tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("")}
+              ${set.length > cap ? `<tr><td colspan="${cols.length}" style="color:var(--subtle);font-size:11.5px;">… + ${set.length - cap} weitere — für die vollständige Liste in den jeweiligen Screen wechseln.</td></tr>` : ""}
+            </tbody></table></div>` : `<div class="bbz-empty" style="padding:22px;text-align:center;color:var(--subtle);">Keine Einträge — hier ist nichts offen.</div>`}`;
+      })();
+
+      const secTitle = t => `<div style="font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--subtle);margin:0 0 7px 2px;display:flex;align-items:center;gap:8px;">${esc(t)}<span style="flex:1;height:1px;background:var(--line);"></span></div>`;
+
+      return `
+        <div>
+          <!-- Zeile 1 -->
+          <div class="bbz-kpis" style="grid-template-columns:1.5fr 1fr 1.2fr;">
+            <div class="bbz-kpi bbz-kpi-blue bbz-dash-static">
+              <div class="bbz-kpi-label">Stammdaten</div>
+              <div style="display:flex;align-items:baseline;gap:8px;margin:4px 0 8px;">
+                <span class="bbz-kpi-value">${firms.length}</span><span style="font-size:11.5px;color:var(--muted);">Firmen</span>
+                <span style="font-size:11.5px;color:var(--muted);margin-left:auto;">${contactsActive.length} Kontakte aktiv</span>
+              </div>
+              ${mRow("firms-kunde", "var(--blue)", `<span style="font-size:11px;color:var(--subtle);flex-shrink:0;">${pct(kunden.length, firms.length)}%</span>`)}
+              ${mRow("firms-lieferant", "var(--blue-mid)", `<span style="font-size:11px;color:var(--subtle);flex-shrink:0;">${pct(cnt("firms-lieferant"), firms.length)}%</span>`)}
+              ${mRow("firms-uebrige", "var(--subtle)", `<span style="font-size:11px;color:var(--subtle);flex-shrink:0;">${pct(cnt("firms-uebrige"), firms.length)}%</span>`)}
+              ${mRow("contacts", "var(--green)")}
+              ${devHtml()}
+            </div>
+
+            <div class="bbz-kpi bbz-kpi-red bbz-dash-static">
+              <div class="bbz-kpi-label">Aufgaben</div>
+              <div style="display:flex;align-items:baseline;gap:8px;margin:4px 0 8px;">
+                <span class="bbz-kpi-value">${openTasks.length}</span><span style="font-size:11.5px;color:var(--muted);">offen</span>
+              </div>
+              ${mRow("tasks-over", "var(--red)")}
+              ${mRow("tasks-week", "var(--amber)")}
+              ${mRow("tasks-m30", "var(--blue-mid)")}
+            </div>
+
+            <div class="bbz-kpi bbz-kpi-amber bbz-dash-static">
+              ${(() => {
+                const up = helpers.upcomingBirthdays(30);
+                const td = up.filter(b => b.daysUntil === 0).length;
+                return `
+                <div style="display:flex;align-items:baseline;gap:8px;">
+                  <div class="bbz-kpi-label">Geburtstage</div>
+                  <a class="bbz-link" data-action="kpi-filter" data-scope="navigate" data-value="birthdays" style="margin-left:auto;font-size:11px;">alle anzeigen →</a>
+                </div>
+                <div style="display:flex;align-items:baseline;gap:8px;margin:4px 0 7px;">
+                  <span class="bbz-kpi-value">${up.length}</span>
+                  <span style="font-size:11.5px;color:var(--muted);">in 30 Tagen${td ? ` · <b style="color:var(--amber);">${td} heute</b>` : ""}</span>
+                </div>
+                ${up.length ? up.slice(0, 3).map(b => `
+                  <div class="bbz-bday-row ${b.daysUntil === 0 ? "bbz-bday-today" : ""}" data-action="open-contact" data-id="${b.contact.id}">
+                    <span class="bbz-bday-name">${b.daysUntil === 0 ? "🎂 " : ""}${esc(b.contact.fullName)}</span>
+                    <span class="bbz-bday-firm">${esc(b.contact.firmTitle || "")}</span>
+                    <span class="bbz-bday-when">${esc(helpers.birthdayLabel(b.daysUntil, b.nextBirthday))}</span>
+                  </div>`).join("") : `<div style="font-size:11.5px;color:var(--subtle);">Keine Geburtstage in den nächsten 30 Tagen.</div>`}`;
+              })()}
+            </div>
+          </div>
+
+          <!-- Zeile 2 -->
+          ${secTitle("Aktivitäten · Banken")}
+          <div class="bbz-kpis" style="grid-template-columns:1.4fr 1fr;">
+            <div class="bbz-kpi bbz-kpi-blue bbz-dash-static">
+              <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;">
+                <span class="bbz-kpi-value">${nowN}</span><span style="font-size:11.5px;color:var(--muted);">im ${esc(months[11].lab)}</span>
+                ${deltaN !== 0 ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:var(--r-full);${deltaN > 0 ? "background:#e7f2ea;color:var(--green);" : "background:var(--red-soft);color:var(--red);"}">${deltaN > 0 ? "▲ +" : "▼ "}${deltaN} vs. ${esc(months[10].lab)}</span>` : `<span style="font-size:11px;color:var(--subtle);">unverändert vs. ${esc(months[10].lab)}</span>`}
+                <span style="font-size:11.5px;color:var(--muted);margin-left:auto;">Ø <b>${pw30}</b>/Woche · ${a365} in 12 Mt.</span>
+              </div>
+              <div style="display:flex;align-items:flex-end;gap:4px;height:46px;margin:10px 0 3px;">
+                ${months.map(m => `<div title="${esc(m.lab)}: ${m.n}" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:2px;"><b style="font-size:8px;font-weight:700;color:var(--subtle);">${m.n}</b><i style="display:block;width:100%;height:${Math.round(m.n / maxN * 34) + 3}px;background:${m === months[11] ? "var(--blue)" : "var(--blue-light)"};border-radius:2px 2px 0 0;"></i></div>`).join("")}
+              </div>
+              <div style="display:flex;gap:4px;">${months.map(m => `<span style="flex:1;text-align:center;font-size:8.5px;text-transform:uppercase;color:${m === months[11] ? "var(--blue)" : "var(--subtle)"};font-weight:${m === months[11] ? 700 : 400};">${esc(m.lab)}</span>`).join("")}</div>
+              <div style="margin-top:9px;padding-top:9px;border-top:1px solid var(--line-2);display:flex;gap:16px;flex-wrap:wrap;">
+                ${[["30 Tage", a30, `Ø ${pw30}/Woche`], ["12 Monate", a365, `Ø ${pw365}/Woche`], ["Gesamt", acts.length, `Ø ${pwTot}/Woche`]].map(([t, v, n]) =>
+                  `<div style="font-size:11px;color:var(--subtle);">${t}<b style="display:block;font-size:16px;font-weight:700;color:var(--text);letter-spacing:-.02em;">${v}</b><span style="font-size:10px;">${n}</span></div>`).join("")}
+                <div style="margin-left:auto;align-self:flex-end;">${mRow("acts", "var(--blue)")}</div>
+              </div>
+            </div>
+
+            <div class="bbz-kpi bbz-dash-static">
+              <div class="bbz-kpi-label">Abdeckung Banken</div>
+              <div style="display:flex;align-items:baseline;gap:7px;margin:6px 0 7px;">
+                <span style="font-size:12px;color:var(--muted);">12-Monats-Abdeckung</span>
+                <b style="font-size:17px;">${cum}</b><span style="font-size:11.5px;color:var(--muted);">/ ${kunden.length}</span>
+                <span style="margin-left:auto;font-size:14px;font-weight:700;color:${pct(cum, base) >= 50 ? "var(--green)" : "var(--red)"};">${pct(cum, base)}%</span>
+              </div>
+              <div style="display:flex;height:9px;border-radius:5px;overflow:hidden;background:var(--line-2);margin-bottom:8px;">
+                ${bands.map(([k, c]) => cnt(k) ? `<i style="width:${cnt(k) / base * 100}%;background:${c};" title="${esc(M[k].lab)}: ${cnt(k)}"></i>` : "").join("")}
+              </div>
+              ${bands.map(([k, c]) => mRow(k, c, `<span style="font-size:11px;font-weight:700;color:${c};flex-shrink:0;">${pct(cnt(k), base)}%</span>`)).join("")}
+            </div>
+          </div>
+
+          <!-- Zeile 3 -->
+          ${secTitle(`Datenqualität · ${contactsActive.length} aktive Kontakte`)}
+          <div class="bbz-kpis" style="grid-template-columns:repeat(4,minmax(0,1fr));">
+            ${["dq-mail", "dq-tel", "dq-funk", "dq-lead"].map(dqCard).join("")}
+          </div>
+
+          <!-- Drill-Down -->
+          ${secTitle("Liste")}
+          <section class="bbz-section" style="padding:0;overflow:hidden;">${listHtml}</section>
+        </div>
+      `;
     },
 
     // ══ Zusammengeführte Route: Aktivitäten + Aufgaben in einem Screen ══════════

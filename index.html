@@ -102,6 +102,15 @@
     .bbz-kpis { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin-bottom: 14px; }
     /* Geburtstagskarte belegt den Platz der zwei entfernten KPI-Kacheln */
     .bbz-kpi-wide { grid-column: span 2; }
+    /* Dashboard: Kacheln sind Container, die Metrik-ZEILEN darin sind klickbar */
+    .bbz-dash-static { cursor: default; }
+    .bbz-dash-static:hover { transform: none; box-shadow: none; border-color: var(--line); }
+    .bbz-dash-static:hover::before { height: 3px; }
+    .bbz-dash-m { display: flex; align-items: baseline; gap: 8px; padding: 4px 6px; margin: 0 -6px; border-radius: var(--r-sm); cursor: pointer; }
+    .bbz-dash-m:hover { background: var(--blue-soft); }
+    .bbz-dash-m.is-on { background: var(--blue-light); }
+    .bbz-dash-sel { border-color: var(--blue) !important; box-shadow: 0 0 0 2px var(--blue-light); }
+    @media (max-width: 980px) { .bbz-kpis[style*="1.5fr"], .bbz-kpis[style*="1.4fr"] { grid-template-columns: 1fr !important; } }
     /* Karte ist Container, nicht Button -> kein Hover-Lift, die Zeilen darin sind klickbar */
     .bbz-kpi-static { cursor: default; }
     .bbz-kpi-static:hover { transform: none; box-shadow: none; border-color: var(--line); }
@@ -798,7 +807,8 @@
     </div>
 
     <nav class="bbz-nav">
-      <button class="bbz-nav-btn active" data-route="firms">Firmen</button>
+      <button class="bbz-nav-btn active" data-route="dashboard">Dashboard</button>
+      <button class="bbz-nav-btn" data-route="firms">Firmen</button>
       <button class="bbz-nav-btn" data-route="contacts">Kontakte</button>
       <button class="bbz-nav-btn" data-route="aktivitaeten">Aktivitäten</button>
       <button class="bbz-nav-btn" data-route="events">Events</button>
@@ -828,7 +838,11 @@
   </main>
 
   <nav class="bbz-bottom-nav">
-    <button class="bbz-bottom-btn active" data-route="firms">
+    <button class="bbz-bottom-btn active" data-route="dashboard">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+      Dashboard
+    </button>
+    <button class="bbz-bottom-btn" data-route="firms">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M9 21V7l6-4v18M9 7H4v14M15 21V3"/></svg>
       Firmen
     </button>

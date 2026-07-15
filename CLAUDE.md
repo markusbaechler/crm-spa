@@ -408,3 +408,39 @@ nicht mehr auf „offen".
 > `helpers.isOverdue("")` liefert korrekt `false` — eine unterminierte Aufgabe ist **nicht**
 > überfällig, sondern unterminiert. Das ist der Grund, warum sie in `offen` landet und nicht
 > in `pflege`. Nicht "reparieren".
+
+
+## Dashboard (`views.dashboard()`) — Startseite
+
+**`CONFIG.defaults.route = "dashboard"`** — die App startet hier, nicht mehr im Firmenboard.
+
+**Ein einziger Interaktionsmechanismus:** jede Zahl trägt `data-action="dash-select"`.
+Ein Klick setzt `state.filters.dashboard.sel` und bewirkt **beides gleichzeitig**: die Kachel
+klappt die Entwicklung auf **und** die Drill-Down-Liste unten füllt sich. Erneuter Klick hebt auf.
+**Nicht in zwei Mechanismen aufteilen** (Trend hier, Liste dort) — das war die ursprüngliche
+Doppeldeutigkeit der Anforderung.
+
+Metrik-Registry `M` in der View = **eine Quelle** für Kachel-Zähler, Entwicklung und Liste
+(`set()` liefert die Menge, `kind` steuert die Spalten der Liste). Neue Kennzahl = ein
+Eintrag in `M` + eine `mRow(...)`; die Liste entsteht automatisch.
+
+**Abdeckung Banken** — **überschneidungsfreie Bänder**, Summe = alle Kunden:
+`cover-m6` (≤6 Mt.) / `cover-m12` (6–12 Mt.) / `cover-none` (>12 Mt. oder nie).
+Die Kopfzeile zeigt zusätzlich die kumulierte **12-Monats-Abdeckung** (= m6 + m12), also die
+ursprünglich bestellte Kennzahl. Bänder nicht kumulativ machen — dann summiert der Balken
+nicht mehr auf 100%.
+
+**Datenqualität** (nur aktive Kontakte, `!archiviert`):
+`dq-mail` (weder `email1` noch `email2`) · `dq-tel` (weder `direktwahl` noch `mobile`) ·
+`dq-funk` (weder `funktion` noch `rolle`) · `dq-lead` (kein `leadbbz0`).
+Farbe folgt der Schwere: <10% grün, <20% amber, ≥20% rot — **keine gepflegte Regel**.
+
+> **`normalizer.firm()` mappt jetzt `spCreated`/`spCreatedBy`.** Das Feld war als **einziges**
+> Entity nicht gemappt, obwohl die Fetch-Schicht `createdDateTime` für **alle** Listen holt
+> (`$select`). Ohne diesen Einzeiler gäbe es keine Firmen-Entwicklung. Nicht wieder entfernen.
+
+> **Vorbehalt zur Entwicklung:** `spCreated` ist das **SharePoint-Anlagedatum**, nicht der
+> fachliche Beginn der Beziehung. Bei Migrations-Importen tragen hunderte Datensätze dasselbe
+> Datum — dann zeigt „12 Monate +N" den Import, nicht Wachstum. Steht als Hinweis in der Kachel.
+
+Ø/Woche: 30 Tage = `n/(30/7)`, 12 Monate = `n/(365/7)`, Gesamt = `n/Wochen seit erster Aktivität`.
