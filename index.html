@@ -270,8 +270,37 @@
 
     /* Aktivitaeten-Route: Agenda zweispaltig (links Aktivitaeten, rechts Aufgaben).
        Eigene Klasse statt bbz-history-split: letztere blendet Spalte 2 mobil aus. */
-    .bbz-akt-split { display: grid; grid-template-columns: minmax(0,1.6fr) minmax(290px,0.9fr); gap: 12px; align-items: start; }
+    .bbz-akt-split { display: grid; grid-template-columns: minmax(0,1.5fr) minmax(300px,1fr); gap: 18px; align-items: start; }
     @media (max-width: 900px) { .bbz-akt-split { grid-template-columns: 1fr; } }
+
+    /* Aktivitaet = Timeline (keine Karte). Aufgabe = Karte mit Checkbox.
+       Bewusst UNTERSCHIEDLICHE FORMEN, nicht nur Farben -> keine Verwechslung. */
+    .bbz-akt-tl { position: relative; padding-left: 19px; }
+    .bbz-akt-tl::before { content: ""; position: absolute; left: 4px; top: 8px; bottom: 8px; width: 1px; background: var(--line); }
+    .bbz-akt-ev { position: relative; padding: 7px 8px 8px 0; cursor: pointer; border-radius: var(--r-sm); }
+    .bbz-akt-ev + .bbz-akt-ev { border-top: 1px solid var(--line-2); }
+    .bbz-akt-ev:hover { background: var(--blue-soft); }
+    .bbz-akt-dot { position: absolute; left: -19px; top: 12px; width: 9px; height: 9px; border-radius: var(--r-full); border: 2px solid var(--bg); }
+    .bbz-akt-edit { position: absolute; right: 2px; top: 9px; width: 22px; height: 22px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); color: var(--muted); font-size: 11px; cursor: pointer; padding: 0; opacity: 0; transition: opacity .12s; }
+    .bbz-akt-ev:hover .bbz-akt-edit { opacity: 1; }
+    .bbz-akt-edit:hover { border-color: #a8c8e0; color: var(--blue); }
+    /* Touch-Geraete kennen kein Hover -> Stift immer sichtbar */
+    @media (hover: none) { .bbz-akt-edit { opacity: 1; } }
+
+    .bbz-akt-cb { width: 19px; height: 19px; flex-shrink: 0; border: 2px solid var(--blue-mid); border-radius: 5px; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px; color: transparent; padding: 0; }
+    .bbz-akt-cb:hover { background: var(--blue-light); color: var(--blue-mid); }
+    .bbz-akt-tk-ov .bbz-akt-cb { border-color: var(--red); }
+    .bbz-akt-tk-ov .bbz-akt-cb:hover { background: var(--red-soft); color: var(--red); }
+
+    /* Firmencockpit: auto-fill -> 3 Spalten breit, 2 mittel, 1 mobil. Offene Karte spannt voll. */
+    .bbz-akt-fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 7px; align-items: start; margin-bottom: 4px; }
+    .bbz-akt-fcard { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+    .bbz-akt-fcard.is-open { grid-column: 1 / -1; }
+    .bbz-akt-fhead { display: block; padding: 6px 9px; cursor: pointer; }
+    .bbz-akt-fhead:hover { background: var(--blue-soft); }
+    .bbz-akt-fsplit { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(0,1fr); gap: 16px; }
+    @media (max-width: 760px) { .bbz-akt-fsplit { grid-template-columns: 1fr; } }
+    .bbz-akt-bar:hover i { background: var(--blue-mid) !important; }
 
     /* LAYOUT */
     .bbz-grid       { display: grid; gap: 12px; }

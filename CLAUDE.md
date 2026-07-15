@@ -197,37 +197,53 @@ faelligkeit, expandedFirms[], bucketOpen{}, moreOpen{}, legendeOffen }`.
 Zähler: total · 30 Tage · 365 Tage. Kontaktart-Split-Bar aus `choices[CRMHistory].Kontaktart`
 (Reihenfolge SP-Choices, sonst alphabetisch).
 
-**Zwei Achsen:**
-- `firm` (Default): **Bank-Cadence-Karten** je Firma mit ≥1 Aktivität/Aufgabe, **gruppiert nach
-  `firmSignal`** (NICHT nach Aufgaben-Fälligkeit): `akt-f-rot` „Nicht aktiv gepflegt"
-  (overdue+never, offen) / `akt-f-amber` „Aufmerksamkeit" (cold, offen) / `akt-f-gruen`
-  „Aktiv gepflegt" (ok, zu) / `akt-f-kein` „Ohne Signal" (Nicht-Kunden, zu).
-  **Nicht auf Aufgaben-Buckets zurückbauen** — das verwirrte, v.a. der Sammel-Bucket
-  „Ohne offene Aufgabe". Buckets klappbar (`akt-bucket`), Cap 8 + „+N weitere".
-  Sortierung innerhalb: **längster Kontaktabstand zuerst**; nie kontaktierte Firmen ganz oben.
-  Achtung: `helpers.compareDateAsc` sortiert fehlende Daten ans ENDE — daher eigene
-  `byLastTouch`-Sortierung. Kopf zeigt Signal-Dot,
-  „Letzter Touch" + „Nächste Aufgabe" (Farbe rot/amber/neutral nach Dringlichkeit) + Lead-Tag.
-  Aufklappbar (`akt-firm-expand`) → gemergte Timeline (Aktivitäten+Aufgaben, neueste zuerst) +
-  „+ Aktivität"/„+ Aufgabe" (reuse `open-history-form`/`open-task-form` mit `data-firm-id`).
-- `chrono`: **Zweispaltig** (`.bbz-akt-split`, eigene CSS-Klasse in index.html; stapelt <900px).
-  Die Spalten trennen **Objekttyp**, NICHT Zeit: **links ausschliesslich Aktivitäten**
-  (`akt-p-month` offen / `akt-p-old` zu), **rechts ausschliesslich Aufgaben**
-  (`akt-c-over`, `akt-c-month` offen / `akt-c-later` zu / `akt-c-done` „Erledigt" zu).
-  Jede Gruppe klappbar (`akt-bucket`), **Cap 8** + „+N weitere" (`akt-more`).
-  **Erledigte Aufgaben gehören NIE in den Verlauf.** Sie werden nach *Deadline* einsortiert,
-  die in der Zukunft liegen kann — im „Verlauf" ergäbe das „in 2 Tagen". Sie stehen im
-  Bucket `akt-c-done` (default eingeklappt = ausgeblendet, Zähler sichtbar).
-  **Wichtig:** NICHT `.bbz-history-split` wiederverwenden — die blendet Spalte 2 mobil aus
-  (altes Tab-Bar-Konzept, index.html Z. ~321).
+**Zwei Achsen** (`akt-axis`), **Default `chrono`**:
+- `chrono` **„Agenda" = Hauptansicht.** Zweispaltig (`.bbz-akt-split`, stapelt <900px). Die
+  Spalten trennen **Objekttyp**, nicht Zeit: **links nur Aktivitäten** (`akt-p-week` /
+  `akt-p-month` offen, `akt-p-old` „Früher" zu), **rechts nur Aufgaben** (`akt-c-over`,
+  `akt-c-month` offen; `akt-c-later`, `akt-c-done` „Erledigt" zu).
+  **Erledigte Aufgaben gehören NIE in den Verlauf** — sie werden nach *Deadline* sortiert, die
+  in der Zukunft liegen kann („in 2 Tagen" im Verlauf = Unsinn).
+- `firm` **„Firmencockpit".** **Signal-FILTER statt Rubriken** (`akt-sig`, `F.sig`):
+  `gruen` „Aktiv gepflegt" (Default) / `amber` „Beobachten" / `rot` „Brauchen Pflege" /
+  `kein` „Ohne Signal" (nur bei Segment `alle`). **Immer genau EINE Kategorie sichtbar** —
+  Zweck: keine Kategorie darf die andere erschlagen. **Nicht auf gestapelte Signal-Buckets
+  zurückbauen.** Darin Gliederung nach letztem Kontakt: `akt-f-wk` „Diese Woche" / `akt-f-mon`
+  „Diesen Monat" offen, `akt-f-alt` „Übrige" zu — **gleiche Richtung wie die Agenda (neu→alt)**;
+  Drift fangen die Kategorien `amber`/`rot` ab, nicht die Sortierung.
+  Kacheln im `.bbz-akt-fgrid` (auto-fill, 3/2/1 Spalten), aufgeklappte Kachel spannt voll
+  (`.is-open`) und zeigt Aktivitäten|Aufgaben der Firma (`.bbz-akt-fsplit`).
+  **Der Signal-Punkt entfällt in der Kachel** — im gefilterten Cockpit trägt er keine
+  Information. `firmRows` umfasst **alle** Segment-Firmen, auch nie kontaktierte (Signal
+  `never` → `rot`); nicht auf „nur Firmen mit Daten" filtern, sonst fehlen die dringendsten.
+
+**Visuelle Grammatik (Kern gegen Verwechslung):** Aktivität und Aufgabe haben
+**unterschiedliche FORMEN**, nicht nur Farben.
+- **Aktivität = Timeline** (`.bbz-akt-tl` mit Schiene, `.bbz-akt-ev`, **kein Rahmen**) → „lesen".
+  Punktfarbe = **Kanal**, identisch mit der Mix-Bar im Panel. Klick = Detail-Modal, ✎ bei Hover.
+- **Aufgabe = Karte** (Rahmen, Schatten, linker Akzent) mit **Checkbox** (`.bbz-akt-cb`) und
+  Fälligkeits-Pille → „handeln".
+Firma ist in beiden Zeilen **prominent** (13px fett), Kontaktart/Titel sekundär, Notiz-Vorschau
+einzeilig in `--subtle`.
+
+**Panels** (`bbz-kpis`, links Aktivitäten 1.55fr, rechts Aufgaben 1fr — spiegelt die Agenda):
+- **Aktivitäten:** Anzahl **im laufenden Monat** + **Delta vs. Vormonat** + **6-Monats-Balken**
+  + Ø/Monat + **Kanalmix in %** (12 Mt.). Bewusst **kein „total"** — beantwortet keine Frage.
+  Balken und Mix **reagieren auf Segment/Lead-Filter** (messen die gefilterte Bearbeitung).
+- **Aufgaben:** offen + erledigt-Zähler + Fälligkeits-Chips + **älteste überfällige Aufgabe**.
+  `cDone` ist ein **Gesamtzähler**, kein Monatswert: CRMTasks hat **kein Erledigt-Datum**.
 
 **Wiederverwendete Aktionen (nicht duplizieren):** `open-firm`, `open-contact`,
 `open-history-form`, `open-task-form`, `edit-task`, `edit-history`, `complete-task`,
 `task-status-change`. Neue Aktionen alle mit `akt-`-Präfix.
 
-**Zeilen-Aktionen (jede Event-Zeile, `iconBtn`-Helper):** Aktivität — Klick öffnet das
-Detail-Modal, ✎ öffnet Bearbeiten (`edit-history`). Aufgabe — Klick/✎ öffnet Bearbeiten
-(`edit-task`), ✓ markiert erledigt (`complete-task`, nur offene).
+**Zeilen-Aktionen:** Aktivität — Klick auf die Zeile öffnet das Detail-Modal
+(`open-history-detail`), ✎ öffnet Bearbeiten (`edit-history`). Aufgabe — ✓ erledigt
+(`complete-task`), ✎ bearbeiten (`edit-task`).
+
+> **Handler-Reihenfolge beachten:** `edit-history` MUSS vor `open-history-detail` geprüft
+> werden. Der ✎-Button liegt *innerhalb* der klickbaren Zeile; sonst gewinnt `closest()` den
+> äusseren Detail-Handler und der Stift öffnet das falsche Modal.
 
 **Löschen NUR im Bearbeiten-Modus** (gegen versehentliches Löschen): kein ✕ in Zeilen, kein
 Löschen im read-only Detail-Modal. `renderHistoryForm` hatte den Löschen-Button im
