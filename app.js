@@ -4102,14 +4102,73 @@
             t.isOverdue ? `<span style="color:var(--red);font-weight:600;">${esc(helpers.relativeDate(t.deadline))} fällig</span>` : (esc(helpers.relativeDate(t.deadline)) || `<span style="color:var(--amber);">ohne Termin</span>`), dash(t.leadbbz)]); }
         else { cols = ["Aktivität", "Firma", "Datum", "Lead bbz"];
           rows = shown.slice().sort((a, b) => helpers.compareDateDesc(a.datum, b.datum)).map(h => [`<a class="bbz-link" data-action="open-history-detail" data-id="${h.id}">${esc(h.typ || "Aktivität")}</a>`, esc(h.firmTitle || "—"), esc(helpers.relativeDate(h.datum)), dash(h.leadbbz)]); }
+        // Mobile: die App blendet JEDE .bbz-table-wrap aus (index.html, Mobile-Query).
+        // Ohne Karten-Liste waere die Drill-Down-Liste auf dem Handy unsichtbar.
+        // Bewusst KEINE gequetschte Tabelle: pro Typ die zwei Angaben, die tragen.
+        const mcards = shown.map(x => {
+          if (kind === "firm") {
+            const dot = helpers.pflegeDot(x);
+            return `<div class="bbz-list-card" data-action="open-firm" data-id="${x.id}">
+              ${dot ? `<span class="bbz-signal" style="background:${dot.col};" title="${esc(dot.lab)}"></span>` : `<span style="width:8px;flex-shrink:0;display:inline-block;"></span>`}
+              <div class="bbz-list-card-body">
+                <div class="bbz-list-card-title">${esc(x.title)}</div>
+                <div class="bbz-list-card-sub">${esc(helpers.joinNonEmpty([x.plz, x.ort], " ") || x.kategorie || "")}${x.latestActivity ? " · " + esc(helpers.relativeDate(x.latestActivity)) : " · nie kontaktiert"}</div>
+              </div>
+              <div class="bbz-list-card-right">
+                ${x.klassifizierung ? `<span class="${helpers.firmBadgeClass(x.klassifizierung)}">${esc(x.klassifizierung)}</span>` : ""}
+                <span style="font-size:10px;color:var(--subtle);">${x.contactsCount} Kontakte</span>
+              </div></div>`;
+          }
+          if (kind === "contact" || kind === "bday") {
+            // Im DQ-Kontext ist die FEHLENDE Angabe die Nachricht -> rot statt weggelassen.
+            const miss = v => (v || "").trim() ? esc(v) : `<span style="color:var(--red);font-weight:600;">fehlt</span>`;
+            return `<div class="bbz-list-card" data-action="open-contact" data-id="${x.id}">
+              <div class="bbz-list-card-body">
+                <div class="bbz-list-card-title">${esc(x.fullName)}</div>
+                <div class="bbz-list-card-sub">${esc(x.firmTitle || "—")}${x.funktion || x.rolle ? " · " + esc(helpers.joinNonEmpty([x.funktion, x.rolle], " · ")) : ""}</div>
+                ${sel.startsWith("dq-") ? `<div class="bbz-list-card-sub">${
+                    sel === "dq-mail" ? "E-Mail " + miss(x.email1 || x.email2)
+                  : sel === "dq-tel"  ? "Telefon " + miss(x.direktwahl || x.mobile)
+                  : sel === "dq-funk" ? "Funktion/Rolle " + miss(helpers.joinNonEmpty([x.funktion, x.rolle], " · "))
+                  : sel === "dq-lead" ? "Lead bbz " + miss(x.leadbbz0)
+                  : "Geburtstag " + miss(x.geburtstag ? helpers.formatDate(x.geburtstag) : "")}</div>` : ""}
+              </div>
+              <div class="bbz-list-card-right">
+                <span style="font-size:10px;color:var(--subtle);">${esc(x.leadbbz0 || "—")}</span>
+              </div></div>`;
+          }
+          if (kind === "task") {
+            return `<div class="bbz-list-card" data-action="edit-task" data-id="${x.id}">
+              <div class="bbz-list-card-body">
+                <div class="bbz-list-card-title">${esc(x.title)}</div>
+                <div class="bbz-list-card-sub">${esc(x.firmTitle || "—")}</div>
+              </div>
+              <div class="bbz-list-card-right">
+                ${x.isOverdue ? `<span class="bbz-status-chip bbz-status-overdue">${esc(helpers.relativeDate(x.deadline))} fällig</span>`
+                  : helpers.toDate(x.deadline) ? `<span class="bbz-status-chip bbz-status-open">${esc(helpers.relativeDate(x.deadline))}</span>`
+                  : `<span class="bbz-status-chip" style="background:#fff9eb;color:var(--amber);">ohne Termin</span>`}
+              </div></div>`;
+          }
+          return `<div class="bbz-list-card" data-action="open-history-detail" data-id="${x.id}">
+            <div class="bbz-list-card-body">
+              <div class="bbz-list-card-title">${esc(x.firmTitle || x.contactName || "—")}</div>
+              <div class="bbz-list-card-sub">${esc(x.typ || "Aktivität")}${x.notizen ? " · " + esc(x.notizen) : ""}</div>
+            </div>
+            <div class="bbz-list-card-right"><span style="font-size:10px;color:var(--subtle);">${esc(helpers.relativeDate(x.datum))}</span></div></div>`;
+        }).join("");
+
+        const more = set.length > cap ? `<div style="padding:9px 14px;color:var(--subtle);font-size:11.5px;border-top:1px solid var(--line-2);">… + ${set.length - cap} weitere — vollständig im jeweiligen Screen.</div>` : "";
         return `<div style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line);background:var(--panel-2);flex-wrap:wrap;">
             <h3 style="margin:0;font-size:13px;font-weight:700;">${esc(M[sel].lab)}</h3>
             <span style="font-size:11px;font-weight:700;color:var(--blue);background:var(--blue-light);border-radius:var(--r-full);padding:1px 9px;">${set.length}</span>
             <button class="bbz-button bbz-button-secondary" style="margin-left:auto;height:26px;font-size:11px;padding:0 10px;" data-action="dash-select" data-value="${sel}">✕ Auswahl aufheben</button></div>
-          ${set.length ? `<div class="bbz-table-wrap"><table class="bbz-table"><thead><tr>${cols.map(c => `<th>${c}</th>`).join("")}</tr></thead>
-            <tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("")}
-            ${set.length > cap ? `<tr><td colspan="${cols.length}" style="color:var(--subtle);font-size:11.5px;">… + ${set.length - cap} weitere — vollständig im jeweiligen Screen.</td></tr>` : ""}</tbody></table></div>`
-            : `<div style="padding:22px;text-align:center;color:var(--subtle);font-size:13px;">Keine Einträge — hier ist nichts offen.</div>`}`;
+          ${!set.length ? `<div style="padding:22px;text-align:center;color:var(--subtle);font-size:13px;">Keine Einträge — hier ist nichts offen.</div>` : `
+            <div class="bbz-table-wrap" style="border:none;border-radius:0;">
+              <table class="bbz-table"><thead><tr>${cols.map(c => `<th>${c}</th>`).join("")}</tr></thead>
+              <tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("")}
+              ${set.length > cap ? `<tr><td colspan="${cols.length}" style="color:var(--subtle);font-size:11.5px;">… + ${set.length - cap} weitere — vollständig im jeweiligen Screen.</td></tr>` : ""}</tbody></table>
+            </div>
+            <div class="bbz-card-list bbz-mobile-only">${mcards}</div>${more ? `<div class="bbz-mobile-only">${more}</div>` : ""}`}`;
       })();
 
       // ── Geburtstage ─────────────────────────────────────────────────────────

@@ -454,6 +454,12 @@ ist ein **Anzeigeplatz**: Hover tauscht die Zahl darin — deshalb überhaupt ei
 Formulare erzwingen Firma (`firmaLookupId required`) bzw. Kontakt (`kontaktLookupId required`)
 — diese Fälle entstehen nur über SharePoint direkt, IO-Import oder eine frisch angelegte Firma.
 
+> **⚠ Mobile: die App blendet JEDE `.bbz-table-wrap` bei ≤640px aus** (index.html). Jede Liste
+> braucht deshalb ein Pendant `<div class="bbz-card-list bbz-mobile-only">` mit
+> `.bbz-list-card` — sonst ist sie auf dem Handy **unsichtbar**. Die Drill-Down-Liste des
+> Dashboards hat es (pro `kind` eine eigene Verdichtung; im `dq-*`-Kontext wird die
+> **fehlende** Angabe rot als „fehlt" gezeigt — sie ist dort die Nachricht).
+
 > **`controller.afterRender()`** läuft nach jedem Render und ist auf `route === "dashboard"`
 > gegated. Dort gehört alles hin, was **gemessene Geometrie** braucht (`getTotalLength` für die
 > Linien-Animation) oder **Hover ohne Re-Render** (Chart-Tooltip, Donut-Loch). Die Views
