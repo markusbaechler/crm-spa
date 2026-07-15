@@ -412,35 +412,56 @@ nicht mehr auf „offen".
 
 ## Dashboard (`views.dashboard()`) — Startseite
 
-**`CONFIG.defaults.route = "dashboard"`** — die App startet hier, nicht mehr im Firmenboard.
+**`CONFIG.defaults.route = "dashboard"`.** State: `{ sel, per, foldOpen }`.
 
-**Ein einziger Interaktionsmechanismus:** jede Zahl trägt `data-action="dash-select"`.
-Ein Klick setzt `state.filters.dashboard.sel` und bewirkt **beides gleichzeitig**: die Kachel
-klappt die Entwicklung auf **und** die Drill-Down-Liste unten füllt sich. Erneuter Klick hebt auf.
-**Nicht in zwei Mechanismen aufteilen** (Trend hier, Liste dort) — das war die ursprüngliche
-Doppeldeutigkeit der Anforderung.
+**Drei Zonen nach ÄNDERUNGSFREQUENZ, nicht nach Sachgebiet** — eine Startseite muss zuerst
+„was braucht mich jetzt?" beantworten:
+1. **Handeln** (täglich) — überfällig / diese Woche / ohne Termin. **Einzige Zone mit Rot.**
+   Eine Null ist grau und **nicht klickbar**: nichts zu tun soll auch so aussehen.
+   Darunter die Geburtstagskarte (Aufschlüsselung + **Erfassungsgrad**).
+2. **Steuern** (monatlich) — Zeitreihe + Abdeckungs-Matrix.
+3. **Pflegen** (selten, `dash-fold` einklappbar) — Stammdaten, Datenqualität, stille Wächter.
 
-Metrik-Registry `M` in der View = **eine Quelle** für Kachel-Zähler, Entwicklung und Liste
-(`set()` liefert die Menge, `kind` steuert die Spalten der Liste). Neue Kennzahl = ein
-Eintrag in `M` + eine `mRow(...)`; die Liste entsteht automatisch.
+**Ein Mechanismus:** jede Zahl trägt `data-action="dash-select"` → `F.sel` steuert die
+Drill-Down-Liste unten. Metrik-Registry `M` = **eine Quelle** für Zähler und Liste
+(`set()` liefert die Menge, `kind` die Spalten). Neue Kennzahl = ein Eintrag in `M`.
 
-**Abdeckung Banken** — **überschneidungsfreie Bänder**, Summe = alle Kunden:
-`cover-m6` (≤6 Mt.) / `cover-m12` (6–12 Mt.) / `cover-none` (>12 Mt. oder nie).
-Die Kopfzeile zeigt zusätzlich die kumulierte **12-Monats-Abdeckung** (= m6 + m12), also die
-ursprünglich bestellte Kennzahl. Bänder nicht kumulativ machen — dann summiert der Balken
-nicht mehr auf 100%.
+> **⚠ Raster NUR über Klassen** (`.bbz-dash-g2/g3/g4`, `.bbz-dash-act`, `.bbz-dash-bd`).
+> Gegen inline `grid-template-columns` kommt **keine Media-Query** an (ausser mit
+> `!important`-Hacks) — genau daran scheiterte die erste Fassung. Breakpoints: 1000 / 780 /
+> 620 / 560 / 480px.
 
-**Datenqualität** (nur aktive Kontakte, `!archiviert`):
-`dq-mail` (weder `email1` noch `email2`) · `dq-tel` (weder `direktwahl` noch `mobile`) ·
-`dq-funk` (weder `funktion` noch `rolle`) · `dq-lead` (kein `leadbbz0`).
-Farbe folgt der Schwere: <10% grün, <20% amber, ≥20% rot — **keine gepflegte Regel**.
+**Zeitreihe** (`dash-per`: 30 / 12 / all) als **Fläche, nicht als Balken**. Die Linie zeichnet
+sich links→rechts — **die Animation IST die Zeitachse**.
+> **30 Tage = gleitende 7-Tage-Summe**, nicht Tageswerte. Bei ~0,7 Aktivitäten/Tag ist die
+> Tageskurve Rauschen und ein „Tagesrekord" Unsinn. Die Glättung macht Momentum sichtbar und
+> den Bestwert erst sinnvoll. Messlatte wächst mit der Auflösung: **Beste Woche · Stärkster
+> Monat · Stärkstes Jahr** (Genus in `P.sup` mitführen — „Stärkster Jahr" wäre falsch).
+> **Kein erfundenes Zielwert** — die eigene Historie ist die einzige ehrliche Messlatte.
 
-> **`normalizer.firm()` mappt jetzt `spCreated`/`spCreatedBy`.** Das Feld war als **einziges**
-> Entity nicht gemappt, obwohl die Fetch-Schicht `createdDateTime` für **alle** Listen holt
-> (`$select`). Ohne diesen Einzeiler gäbe es keine Firmen-Entwicklung. Nicht wieder entfernen.
+**Abdeckungs-Matrix** statt Donut: „30%" beantwortet nicht, **welche** 30%. Zeilen =
+Klassifizierung (aus `helpers.klassValues()`) + „ohne Klassifizierung" (⚠, da für sie die
+Priorisierung blind ist) + Gesamt.
+> **Nur der abgedeckte Anteil wird gefüllt, „ohne" ist die leere Spur.** Vorher war „ohne"
+> sattes Rot = 70% jeder Zeile: lauteste Farbe für die nutzloseste Aussage. Nicht zurückbauen.
 
-> **Vorbehalt zur Entwicklung:** `spCreated` ist das **SharePoint-Anlagedatum**, nicht der
-> fachliche Beginn der Beziehung. Bei Migrations-Importen tragen hunderte Datensätze dasselbe
-> Datum — dann zeigt „12 Monate +N" den Import, nicht Wachstum. Steht als Hinweis in der Kachel.
+**Donut** nur bei Stammdaten (echtes Teil-vom-Ganzen). **Weisse Trennlücken** (`GAP`), weil
+`--amber`/`--red`/`--green` in der Helligkeit zu nah liegen und sonst verschmelzen. Das Loch
+ist ein **Anzeigeplatz**: Hover tauscht die Zahl darin — deshalb überhaupt ein Donut.
+**Datenqualität = Ring-Gauges, kein Donut** — die Quoten summieren nicht auf 100%.
 
-Ø/Woche: 30 Tage = `n/(30/7)`, 12 Monate = `n/(365/7)`, Gesamt = `n/Wochen seit erster Aktivität`.
+**Stille Wächter** (`int-firms`/`int-contacts`/`int-orphan`): nur sichtbar, wenn > 0. Die
+Formulare erzwingen Firma (`firmaLookupId required`) bzw. Kontakt (`kontaktLookupId required`)
+— diese Fälle entstehen nur über SharePoint direkt, IO-Import oder eine frisch angelegte Firma.
+
+> **`controller.afterRender()`** läuft nach jedem Render und ist auf `route === "dashboard"`
+> gegated. Dort gehört alles hin, was **gemessene Geometrie** braucht (`getTotalLength` für die
+> Linien-Animation) oder **Hover ohne Re-Render** (Chart-Tooltip, Donut-Loch). Die Views
+> liefern nur HTML-Strings.
+
+> **`normalizer.firm()` mappt `spCreated`/`spCreatedBy`** — war als einziges Entity nicht
+> gemappt, obwohl `createdDateTime` für alle Listen geholt wird. Nicht entfernen.
+> Vorbehalt: es ist das **SharePoint-Anlagedatum**, nicht der fachliche Beziehungsbeginn.
+
+> **CSS-Klammerbilanz prüfen** (`{` == `}`), nicht nur `node --check`. Eine einzige
+> überzählige Klammer verschluckt den Rest des Stylesheets — und `node --check` sieht kein CSS.

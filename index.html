@@ -102,15 +102,137 @@
     .bbz-kpis { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin-bottom: 14px; }
     /* Geburtstagskarte belegt den Platz der zwei entfernten KPI-Kacheln */
     .bbz-kpi-wide { grid-column: span 2; }
-    /* Dashboard: Kacheln sind Container, die Metrik-ZEILEN darin sind klickbar */
+    /* ══ DASHBOARD ══════════════════════════════════════════════════════════
+       Raster als KLASSEN, nicht inline: gegen inline grid-template-columns kommt
+       keine Media-Query an (ausser mit !important). Genau daran scheiterte V1. */
+    .bbz-dash-g3 { display: grid; grid-template-columns: 1.35fr 1fr 1.15fr; gap: 10px; margin-bottom: 16px; align-items: start; }
+    .bbz-dash-g2 { display: grid; grid-template-columns: 1.45fr 1fr; gap: 10px; margin-bottom: 16px; align-items: start; }
+    .bbz-dash-g4 { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; }
+    .bbz-dash-act { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-xl); overflow: hidden; margin-bottom: 16px; }
+    .bbz-dash-bd { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: center; margin-top: 8px; }
+    .bbz-dash-dw { display: flex; align-items: center; gap: 14px; }
+    @media (max-width: 1000px) { .bbz-dash-g3, .bbz-dash-g2 { grid-template-columns: 1fr; } }
+    @media (max-width: 780px)  { .bbz-dash-act { grid-template-columns: 1fr; } .bbz-dash-g4 { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 620px)  { .bbz-dash-bd { grid-template-columns: 1fr; gap: 6px; } }
+    @media (max-width: 480px)  { .bbz-dash-g4 { grid-template-columns: 1fr; } .bbz-dash-dw { flex-direction: column; align-items: stretch; gap: 10px; } .bbz-dash-dw .bbz-dash-donut { align-self: center; } }
+
+    /* Zonen-Kopf */
+    .bbz-zone { display: flex; align-items: baseline; gap: 9px; margin: 0 0 8px 2px; flex-wrap: wrap; }
+    .bbz-zone .no { width: 19px; height: 19px; border-radius: var(--r-full); background: var(--blue); color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; align-self: center; }
+    .bbz-zone h2 { margin: 0; font-size: 11px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
+    .bbz-zone .q { font-size: 11px; color: var(--subtle); }
+    .bbz-zone .ln { flex: 1; height: 1px; background: var(--line); align-self: center; min-width: 10px; }
+    @media (max-width: 520px) { .bbz-zone .q { display: none; } }
+
+    /* ① Handeln — einzige Zone mit Rot */
+    .bbz-ai { background: var(--panel); padding: 14px 15px; cursor: pointer; transition: background .14s; position: relative; }
+    .bbz-ai:hover { background: var(--blue-soft); }
+    .bbz-ai.is-on { background: var(--blue-light); }
+    .bbz-ai.is-hot { background: var(--red-soft); }
+    .bbz-ai.is-hot:hover { background: #f8e3e4; }
+    .bbz-ai.is-zero { cursor: default; } .bbz-ai.is-zero:hover { background: var(--panel); }
+    .bbz-ai .n { font-size: 32px; font-weight: 700; letter-spacing: -.05em; line-height: 1; font-variant-numeric: tabular-nums; }
+    .bbz-ai.is-zero .n { color: var(--subtle); }
+    .bbz-ai .t { font-size: 12px; font-weight: 600; color: var(--muted); margin-top: 2px; }
+    .bbz-ai .s { font-size: 10.5px; color: var(--subtle); }
+    .bbz-ai .ic { position: absolute; top: 12px; right: 13px; font-size: 14px; opacity: .5; }
+
+    /* Donut — weisse Luecken statt neuer Farben (--amber/--red/--green sind zu aehnlich hell) */
+    .bbz-dash-donut { position: relative; flex-shrink: 0; width: 100px; height: 100px; }
+    .bbz-dash-donut svg { display: block; transform: rotate(-90deg); }
+    .bbz-dash-donut circle { fill: none; transition: stroke-dasharray .9s cubic-bezier(.22,.8,.3,1), stroke-width .18s, opacity .18s; cursor: pointer; }
+    .bbz-dash-donut circle:hover { stroke-width: 19; }
+    .bbz-dash-donut .ring { stroke: var(--panel); stroke-width: 15; }
+    .bbz-dash-donut.is-dim circle:not(.is-hot):not(.ring) { opacity: .28; }
+    .bbz-dash-dcen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; text-align: center; }
+    .bbz-dash-dcen .n { font-size: 22px; font-weight: 700; letter-spacing: -.04em; line-height: 1; font-variant-numeric: tabular-nums; }
+    .bbz-dash-dcen .t { font-size: 8.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--subtle); margin-top: 2px; max-width: 72px; line-height: 1.25; }
+
+    /* Zeitreihe als Flaeche: die Linie zeichnet sich links->rechts, die Animation IST die Zeitachse */
+    .bbz-chart { position: relative; margin: 12px 0 2px; }
+    .bbz-chart svg { display: block; width: 100%; height: 104px; overflow: visible; }
+    .bbz-cline { fill: none; stroke: var(--blue); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; transition: stroke-dashoffset 1.15s cubic-bezier(.22,.8,.3,1); }
+    .bbz-carea { fill: url(#bbzcg); opacity: 0; transition: opacity .6s .5s; }
+    .bbz-carea.is-in { opacity: 1; }
+    .bbz-crec { stroke: var(--amber); stroke-width: 1; stroke-dasharray: 3 3; opacity: .55; }
+    .bbz-cdot { fill: var(--panel); stroke: var(--blue); stroke-width: 2; opacity: 0; transition: opacity .15s; }
+    .bbz-cdot.is-on { opacity: 1; }
+    .bbz-chit { fill: transparent; cursor: crosshair; }
+    .bbz-ctip { position: absolute; pointer-events: none; background: var(--text); color: #fff; font-size: 10.5px; font-weight: 700; padding: 3px 7px; border-radius: var(--r-sm); white-space: nowrap; opacity: 0; transform: translate(-50%,-140%); transition: opacity .12s; z-index: 2; }
+    .bbz-ctip.is-on { opacity: 1; }
+    /* Wenige, absolut gesetzte Marken — 30 gequetschte Spans koennen keinen Text tragen */
+    .bbz-ctick { position: relative; height: 11px; margin-top: 3px; }
+    .bbz-ctick span { position: absolute; font-size: 8px; text-transform: uppercase; color: var(--subtle); white-space: nowrap; }
+    .bbz-ctick span:last-child { color: var(--blue); font-weight: 700; }
+    .bbz-clab { display: flex; margin-top: 3px; }
+    .bbz-clab span { flex: 1; text-align: center; font-size: 8px; text-transform: uppercase; color: var(--subtle); white-space: nowrap; overflow: hidden; }
+    .bbz-clab span.is-now { color: var(--blue); font-weight: 700; }
+
+    /* Motivation: eigener Bestwert als Messlatte, kein erfundenes Ziel */
+    .bbz-insight { display: flex; align-items: center; gap: 9px; margin-top: 11px; padding: 9px 11px; border-radius: var(--r-md); background: var(--panel-2); border: 1px solid var(--line); transition: background .3s, border-color .3s; }
+    .bbz-insight.is-rec { background: #fff8e8; border-color: #f0d7a8; }
+    .bbz-insight.is-up { background: #eef6f0; border-color: #c9e2d1; }
+    .bbz-insight .em { font-size: 17px; line-height: 1; flex-shrink: 0; animation: bbzPop .5s .9s cubic-bezier(.22,.8,.3,1) backwards; }
+    .bbz-insight .tx { font-size: 12.5px; font-weight: 700; flex: 1; min-width: 0; }
+    .bbz-insight.is-rec .tx { color: var(--amber); } .bbz-insight.is-up .tx { color: var(--green); }
+    .bbz-insight .sub2 { font-size: 11px; color: var(--muted); font-weight: 400; display: block; margin-top: 1px; }
+    @keyframes bbzPop { 0% { transform: scale(.6); opacity: 0; } 60% { transform: scale(1.15); } 100% { transform: scale(1); opacity: 1; } }
+
+    /* Perioden-Umschalter */
+    .bbz-per { display: inline-flex; border: 1px solid var(--line); border-radius: var(--r-full); overflow: hidden; background: var(--panel-2); }
+    .bbz-per button { border: none; background: none; font-family: inherit; font-size: 11px; font-weight: 700; color: var(--muted); padding: 4px 11px; cursor: pointer; transition: background .15s, color .15s; }
+    .bbz-per button.is-on { background: var(--blue); color: #fff; }
+
+    /* Abdeckungs-Matrix als FORTSCHRITT: gefuellt = abgedeckt, leer = offen.
+       "ohne" als sattes Rot war 70% jeder Zeile — lauteste Farbe, nutzloseste Aussage. */
+    .bbz-mx { margin-top: 10px; }
+    .bbz-mxh { display: flex; gap: 10px; align-items: center; font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--subtle); padding: 0 0 6px; }
+    .bbz-mxr { display: flex; gap: 10px; align-items: center; padding: 6px; margin: 0 -6px; border-radius: var(--r-sm); cursor: pointer; transition: background .12s; }
+    .bbz-mxr:hover { background: var(--blue-soft); } .bbz-mxr.is-on { background: var(--blue-light); }
+    .bbz-mxr.is-tot { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 9px; cursor: default; }
+    .bbz-mxr.is-tot:hover { background: none; }
+    .bbz-mxr .k { font-size: 12px; width: 96px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+    .bbz-mxr.is-tot .k { font-weight: 700; }
+    .bbz-mxr .c { font-size: 11px; color: var(--subtle); width: 26px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+    .bbz-mxb { flex: 1; min-width: 40px; height: 7px; border-radius: 4px; overflow: hidden; background: var(--line-2); display: flex; }
+    .bbz-mxb i { height: 100%; transition: width .7s cubic-bezier(.22,.8,.3,1); }
+    .bbz-mxr:hover .bbz-mxb { background: #e2e9f2; }
+    .bbz-mxr .p { font-size: 12.5px; font-weight: 700; width: 38px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+    .bbz-mxr .warn { font-size: 10px; width: 12px; flex-shrink: 0; color: var(--subtle); }
+    .bbz-mxleg { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--line-2); }
+    .bbz-mxleg span { font-size: 10.5px; color: var(--subtle); display: inline-flex; align-items: center; gap: 5px; }
+    .bbz-mxleg i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+    @media (max-width: 560px) { .bbz-mxr .k { width: 68px; font-size: 11px; } .bbz-mxr .c { display: none; } .bbz-mxh span:nth-child(2) { display: none; } }
+
+    /* Ring-Gauge: vier UNABHAENGIGE Quoten -> kein Donut (die summieren nicht auf 100%) */
+    .bbz-gring { position: relative; width: 46px; height: 46px; flex-shrink: 0; }
+    .bbz-gring svg { transform: rotate(-90deg); }
+    .bbz-gring circle { fill: none; stroke-linecap: round; transition: stroke-dasharray .9s cubic-bezier(.22,.8,.3,1); }
+    .bbz-gcen { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+    /* Klickbare Metrik-Zeile */
+    .bbz-dash-m { display: flex; align-items: baseline; gap: 8px; padding: 4px 6px; margin: 0 -6px; border-radius: var(--r-sm); cursor: pointer; transition: background .12s; }
+    .bbz-dash-m:hover { background: var(--blue-soft); }
+    .bbz-dash-m.is-on { background: var(--blue-light); }
+    .bbz-dash-m .dot { width: 8px; height: 8px; border-radius: var(--r-full); flex-shrink: 0; transition: transform .18s; }
+    .bbz-dash-m:hover .dot { transform: scale(1.5); }
+    .bbz-dash-m .n { font-size: 13px; font-weight: 700; flex-shrink: 0; width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
+    .bbz-dash-m .t { font-size: 12px; color: var(--muted); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .bbz-fold { overflow: hidden; transition: max-height .45s cubic-bezier(.22,.8,.3,1), opacity .3s; }
+    .bbz-fold.is-shut { max-height: 0 !important; opacity: 0; margin: 0; }
+    .bbz-bd-split { display: flex; gap: 5px; flex-wrap: wrap; }
+    .bbz-bd-split span { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: var(--r-full); background: var(--panel-2); border: 1px solid var(--line); color: var(--muted); }
+    .bbz-bd-split span.is-hot { background: #fff5e0; border-color: #f0d7a8; color: var(--amber); }
+
     .bbz-dash-static { cursor: default; }
     .bbz-dash-static:hover { transform: none; box-shadow: none; border-color: var(--line); }
     .bbz-dash-static:hover::before { height: 3px; }
-    .bbz-dash-m { display: flex; align-items: baseline; gap: 8px; padding: 4px 6px; margin: 0 -6px; border-radius: var(--r-sm); cursor: pointer; }
-    .bbz-dash-m:hover { background: var(--blue-soft); }
-    .bbz-dash-m.is-on { background: var(--blue-light); }
     .bbz-dash-sel { border-color: var(--blue) !important; box-shadow: 0 0 0 2px var(--blue-light); }
-    @media (max-width: 980px) { .bbz-kpis[style*="1.5fr"], .bbz-kpis[style*="1.4fr"] { grid-template-columns: 1fr !important; } }
+    /* Animation ist Bedeutung, nicht Deko — wer sie abschaltet, verliert keine Information */
+    @media (prefers-reduced-motion: reduce) {
+      .bbz-cline, .bbz-carea, .bbz-mxb i, .bbz-dash-donut circle, .bbz-gring circle, .bbz-insight .em { transition: none !important; animation: none !important; }
+    }
     /* Karte ist Container, nicht Button -> kein Hover-Lift, die Zeilen darin sind klickbar */
     .bbz-kpi-static { cursor: default; }
     .bbz-kpi-static:hover { transform: none; box-shadow: none; border-color: var(--line); }

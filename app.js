@@ -139,7 +139,7 @@
 
     filters: {
       route: CONFIG.defaults.route,
-      dashboard: { sel: "" },   // aktive Metrik -> steuert Kachel-Aufklappung UND Liste unten
+      dashboard: { sel: "", per: "30", foldOpen: true },   // sel = aktive Metrik (steuert die Liste), per = Zeitfenster, foldOpen = Zone 3
       firms: { kategorie: "", klassifizierung: "", vip: false, pflege: "", search: "", legendeOffen: false, sortBy: "title", sortDir: "asc" },
       contacts: { search: "", archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden, sortBy: "fullName", sortDir: "asc" },
       planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, groupBy: "none", sortBy: "deadline", sortDir: "asc", segment: "", leadbbz: "", faelligkeit: "" },
@@ -949,8 +949,15 @@
           controller.render(); return;
         }
 
-        // Dashboard: Metrik waehlen/abwaehlen. Ein Klick steuert BEIDES —
-        // Kachel-Entwicklung oben und Drill-Down-Liste unten.
+        // Dashboard: Zeitfenster der Zeitreihe
+        const dashPer = event.target.closest("[data-action='dash-per']");
+        if (dashPer) { state.filters.dashboard.per = dashPer.dataset.value || "30"; controller.render(); return; }
+
+        // Dashboard: Zone 3 ein-/ausklappen
+        const dashFold = event.target.closest("[data-action='dash-fold']");
+        if (dashFold) { state.filters.dashboard.foldOpen = !state.filters.dashboard.foldOpen; controller.render(); return; }
+
+        // Dashboard: Metrik waehlen/abwaehlen -> steuert die Drill-Down-Liste unten.
         const dashSelect = event.target.closest("[data-action='dash-select']");
         if (dashSelect) {
           const v = dashSelect.dataset.value || "";
@@ -3937,275 +3944,314 @@
     // Ein einziger Interaktionsmechanismus: jede Zahl ist klickbar (`dash-select`).
     // Klick = Kachel klappt die Entwicklung auf UND die Liste unten füllt sich.
     // Nicht zwei Mechanismen daraus machen (Trend hier, Liste dort) — das verwirrt.
+    // ══ DASHBOARD — Startseite ═══════════════════════════════════════════════════
+    // Drei Zonen nach ÄNDERUNGSFREQUENZ, nicht nach Sachgebiet:
+    //   ① Handeln (täglich, einzige Zone mit Rot) ② Steuern (monatlich) ③ Pflegen (selten, einklappbar)
+    // Ein einziger Mechanismus: jede Zahl trägt `dash-select` -> Auswahl steuert die Liste unten.
+    // Raster kommen aus KLASSEN (.bbz-dash-g2/g3/g4) — inline grid-template-columns wäre für
+    // Media-Queries unerreichbar. Genau daran scheiterte die erste Fassung.
     dashboard() {
       const F = state.filters.dashboard;
       const esc = helpers.escapeHtml;
       const today = helpers.todayStart();
       const back = n => { const d = new Date(today); d.setDate(d.getDate() - n); return d; };
-      const d30 = back(30), d180 = back(182), d365 = back(365);
-      const inSince = (v, from) => { const d = helpers.toDate(v); return !!(d && d >= from); };
+      const fwd  = n => { const d = new Date(today); d.setDate(d.getDate() + n); return d; };
+      const d30 = back(30), d182 = back(182), d365 = back(365);
       const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
-      const sign = n => n > 0 ? `+${n}` : `${n}`;
-      const cls = n => n > 0 ? "var(--green)" : n < 0 ? "var(--red)" : "var(--subtle)";
+      const num = n => n.toFixed(1).replace(".", ",");
 
       const firms = state.enriched.firms;
       const kunden = firms.filter(f => f.kategorie === "Kunde");
       const contactsAll = state.enriched.contacts;
-      const contactsActive = contactsAll.filter(c => !c.archiviert);
+      const cA = contactsAll.filter(c => !c.archiviert);
       const acts = state.enriched.history;
-      const tasks = state.enriched.tasks;
-      const openTasks = tasks.filter(t => t.isOpen);
+      const openTasks = state.enriched.tasks.filter(t => t.isOpen);
+      const dl = t => helpers.toDate(t.deadline);
 
-      // ── Metrik-Definitionen: EINE Quelle für Kachel, Entwicklung und Liste ────
-      const created = (arr, from) => arr.filter(x => inSince(x.spCreated, from)).length;
-      const lastActOf = f => helpers.toDate(f.latestActivity);
-      const coverBand = f => {
-        const d = lastActOf(f);
-        if (d && d >= d180) return "m6";
-        if (d && d >= d365) return "m12";
-        return "none";
-      };
-      const noMail = c => !(c.email1 || "").trim() && !(c.email2 || "").trim();
-      const noTel  = c => !(c.direktwahl || "").trim() && !(c.mobile || "").trim();
-      const noFunk = c => !(c.funktion || "").trim() && !(c.rolle || "").trim();
-      const noLead = c => !(c.leadbbz0 || "").trim();
-
-      const wk = back(-7);   // heute .. +7
-      const m30f = back(-30);
+      // ── Metrik-Registry: EINE Quelle für Zähler und Liste ────────────────────
+      const coverBand = f => { const d = helpers.toDate(f.latestActivity);
+        return d && d >= d182 ? "m6" : d && d >= d365 ? "m12" : "none"; };
+      const klassOf = f => (f.klassifizierung || "").trim();
+      const klassVals = helpers.klassValues();
       const M = {
-        "firms-kunde":     { lab: "Banken (Kunden)", set: () => kunden, kind: "firm" },
-        "firms-lieferant": { lab: "Lieferanten", set: () => firms.filter(f => f.kategorie === "Lieferant"), kind: "firm" },
-        "firms-uebrige":   { lab: "Übrige", set: () => firms.filter(f => f.kategorie !== "Kunde" && f.kategorie !== "Lieferant"), kind: "firm" },
-        "contacts":        { lab: "Kontakte aktiv", set: () => contactsActive, kind: "contact", totalSet: () => contactsAll },
-        "cover-m6":        { lab: "Banken · Aktivität ≤ 6 Monate", set: () => kunden.filter(f => coverBand(f) === "m6"), kind: "cover" },
-        "cover-m12":       { lab: "Banken · Aktivität 6–12 Monate", set: () => kunden.filter(f => coverBand(f) === "m12"), kind: "cover" },
-        "cover-none":      { lab: "Banken · ohne Aktivität (>12 Mt. oder nie)", set: () => kunden.filter(f => coverBand(f) === "none"), kind: "cover" },
-        "tasks-over":      { lab: "Überfällige Aufgaben", set: () => openTasks.filter(t => t.isOverdue), kind: "task" },
-        "tasks-week":      { lab: "Aufgaben diese Woche", set: () => openTasks.filter(t => { const d = helpers.toDate(t.deadline); return d && !t.isOverdue && d <= wk; }), kind: "task" },
-        "tasks-m30":       { lab: "Aufgaben nächste 30 Tage", set: () => openTasks.filter(t => { const d = helpers.toDate(t.deadline); return d && !t.isOverdue && d <= m30f; }), kind: "task" },
-        "dq-mail":         { lab: "Kontakte ohne E-Mail", set: () => contactsActive.filter(noMail), kind: "dq" },
-        "dq-tel":          { lab: "Kontakte ohne Telefon", set: () => contactsActive.filter(noTel), kind: "dq" },
-        "dq-funk":         { lab: "Kontakte ohne Funktion/Rolle", set: () => contactsActive.filter(noFunk), kind: "dq" },
-        "dq-lead":         { lab: "Kontakte ohne Lead bbz", set: () => contactsActive.filter(noLead), kind: "dq" },
-        "acts":            { lab: "Aktivitäten (Banken)", set: () => acts, kind: "act" }
+        "firms-kunde":     { lab: "Banken (Kunden)", kind: "firm", set: () => kunden },
+        "firms-lieferant": { lab: "Lieferanten", kind: "firm", set: () => firms.filter(f => f.kategorie === "Lieferant") },
+        "firms-uebrige":   { lab: "Übrige", kind: "firm", set: () => firms.filter(f => f.kategorie !== "Kunde" && f.kategorie !== "Lieferant") },
+        "contacts":        { lab: "Kontakte aktiv", kind: "contact", set: () => cA },
+        "tasks-over":      { lab: "Überfällige Aufgaben", kind: "task", set: () => openTasks.filter(t => t.isOverdue) },
+        "tasks-week":      { lab: "Aufgaben diese Woche fällig", kind: "task", set: () => openTasks.filter(t => { const d = dl(t); return d && !t.isOverdue && d <= fwd(7); }) },
+        "tasks-undated":   { lab: "Aufgaben ohne Termin", kind: "task", set: () => openTasks.filter(t => !dl(t)) },
+        "bday-today":      { lab: "Geburtstag heute", kind: "bday", set: () => helpers.upcomingBirthdays(30).filter(b => b.daysUntil === 0).map(b => b.contact) },
+        "cover-m6":        { lab: "Banken · Aktivität ≤ 6 Monate", kind: "firm", set: () => kunden.filter(f => coverBand(f) === "m6") },
+        "cover-m12":       { lab: "Banken · Aktivität 6–12 Monate", kind: "firm", set: () => kunden.filter(f => coverBand(f) === "m12") },
+        "cover-none":      { lab: "Banken · ohne Aktivität (>12 Mt. oder nie)", kind: "firm", set: () => kunden.filter(f => coverBand(f) === "none") },
+        "dq-mail":         { lab: "Kontakte ohne E-Mail", kind: "contact", set: () => cA.filter(c => !(c.email1 || "").trim() && !(c.email2 || "").trim()) },
+        "dq-tel":          { lab: "Kontakte ohne Telefon", kind: "contact", set: () => cA.filter(c => !(c.direktwahl || "").trim() && !(c.mobile || "").trim()) },
+        "dq-funk":         { lab: "Kontakte ohne Funktion/Rolle", kind: "contact", set: () => cA.filter(c => !(c.funktion || "").trim() && !(c.rolle || "").trim()) },
+        "dq-lead":         { lab: "Kontakte ohne Lead bbz", kind: "contact", set: () => cA.filter(c => !(c.leadbbz0 || "").trim()) },
+        "dq-bday":         { lab: "Kontakte ohne Geburtstag", kind: "contact", set: () => cA.filter(c => !c.geburtstag) },
+        // Stille Wächter: Formular erzwingt Firma bzw. Kontakt — diese Fälle entstehen nur über
+        // SharePoint direkt, IO-Import oder eine frisch angelegte Firma. Nur zeigen, wenn > 0.
+        "int-firms":       { lab: "Firmen ohne Kontakte", kind: "firm", set: () => firms.filter(f => f.contactsCount === 0), warn: "können keine Aktivität tragen" },
+        "int-contacts":    { lab: "Kontakte ohne Firma", kind: "contact", set: () => contactsAll.filter(c => !c.firm), warn: "Aktivität erreicht keine Firma" },
+        "int-orphan":      { lab: "Verwaiste Aktivitäten", kind: "act", set: () => acts.filter(h => !h.firmId), warn: "Kontakt nicht auflösbar" }
       };
+      klassVals.forEach(k => { M["cov-" + k] = { lab: `${k} · Abdeckung`, kind: "firm", set: () => kunden.filter(f => klassOf(f) === k) }; });
+      M["cov-__nk"] = { lab: "Kunden ohne Klassifizierung", kind: "firm", set: () => kunden.filter(f => !klassOf(f)) };
       const sel = M[F.sel] ? F.sel : "";
       const cnt = k => M[k].set().length;
 
-      // ── Aktivitäten: 12-Monats-Verlauf + Ø/Woche ──────────────────────────────
+      // ── ② Zeitreihe: gleitende 7-Tage-Summe statt Tagesrauschen ──────────────
+      // Bei ~0,7 Aktivitäten/Tag ist die Tageskurve Rauschen und ein "Tagesrekord" Unsinn.
+      // Die Glättung macht Momentum sichtbar UND den Bestwert erst sinnvoll ("beste Woche").
+      const dayKey = d => Math.floor((d - new Date(2000, 0, 1)) / 86400000);
       const mKey = d => d.getFullYear() * 12 + d.getMonth();
-      const months = [];
-      for (let i = 11; i >= 0; i--) {
-        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-        months.push({ k: mKey(d), lab: d.toLocaleDateString("de-CH", { month: "short" }), n: 0 });
-      }
+      const daily = new Array(30).fill(0);
+      const months = []; for (let i = 11; i >= 0; i--) { const d = new Date(today.getFullYear(), today.getMonth() - i, 1); months.push({ k: mKey(d), lab: d.toLocaleDateString("de-CH", { month: "short" }), n: 0 }); }
+      const years = new Map();
       let a30 = 0, a365 = 0, earliest = null;
-      acts.forEach(h => {
-        const d = helpers.toDate(h.datum); if (!d) return;
+      acts.forEach(h => { const d = helpers.toDate(h.datum); if (!d) return;
         if (!earliest || d < earliest) earliest = d;
-        if (d >= d30) a30++;
+        const off = dayKey(today) - dayKey(d);
+        if (off >= 0 && off < 30) { daily[29 - off]++; a30++; }
         if (d >= d365) a365++;
         const m = months.find(x => x.k === mKey(d)); if (m) m.n++;
+        years.set(d.getFullYear(), (years.get(d.getFullYear()) || 0) + 1);
       });
-      const nowN = months[11].n, prevN = months[10].n, deltaN = nowN - prevN;
-      const maxN = Math.max(1, ...months.map(m => m.n));
-      const totalWeeks = earliest ? Math.max(1, (today - earliest) / (7 * 86400000)) : 1;
-      const num = n => n.toFixed(1).replace(".", ",");
-      const pw30 = num(a30 / (30 / 7)), pw365 = num(a365 / (365 / 7)), pwTot = num(acts.length / totalWeeks);
-
-      // ── Bausteine ────────────────────────────────────────────────────────────
-      const mRow = (k, col, extra = "") => `
-        <div class="bbz-dash-m ${sel === k ? "is-on" : ""}" data-action="dash-select" data-value="${k}">
-          <span style="width:8px;height:8px;border-radius:var(--r-full);flex-shrink:0;background:${col};"></span>
-          <span style="font-size:13px;font-weight:700;flex-shrink:0;width:42px;text-align:right;">${cnt(k)}</span>
-          <span style="font-size:12px;color:var(--muted);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(M[k].lab)}</span>
-          ${extra}<span style="font-size:9px;color:var(--subtle);flex-shrink:0;">▸</span>
-        </div>`;
-
-      // Entwicklung — nur für Entitäten mit spCreated (Firmen/Kontakte)
-      const devHtml = () => {
-        if (!sel || !["firm", "contact"].includes(M[sel].kind)) return "";
-        const set = M[sel].set();
-        const c30 = created(set, d30), c365 = created(set, d365);
-        const tot = (M[sel].totalSet ? M[sel].totalSet() : set).length;
-        const box = (t, v, note, colr) => `<div style="font-size:11px;color:var(--subtle);">${t}<b style="display:block;font-size:16px;font-weight:700;letter-spacing:-.02em;color:${colr || "var(--text)"};">${v}</b><span style="font-size:10px;">${note}</span></div>`;
-        return `<div style="margin-top:9px;padding-top:9px;border-top:1px solid var(--line-2);display:flex;gap:16px;flex-wrap:wrap;">
-          ${box("30 Tage", sign(c30), c30 ? "neu erfasst" : "keine Neuzugänge", cls(c30))}
-          ${box("12 Monate", sign(c365), c365 ? "neu erfasst" : "keine Neuzugänge", cls(c365))}
-          ${box("Gesamt", tot, esc(M[sel].lab))}
-          <div style="font-size:10px;color:var(--subtle);max-width:230px;align-self:flex-end;">Basis: SharePoint-Anlagedatum — bei Migrationen kann es Importe statt Wachstum zeigen.</div>
-        </div>`;
+      const roll = (arr, w) => arr.map((_, i) => i < w - 1 ? null : arr.slice(i - w + 1, i + 1).reduce((a, b) => a + b, 0)).filter(v => v !== null);
+      const yearKeys = [...years.keys()].sort();
+      const weeks = earliest ? Math.max(1, (today - earliest) / (7 * 86400000)) : 1;
+      const PER = {
+        "30":  { n: a30, delta: a30 - roll(daily, 7)[0], pw: num(a30 / (30 / 7)), ab: new Set(acts.filter(h => { const d = helpers.toDate(h.datum); return d && d >= d30 && h.firmId; }).map(h => h.firmId)).size,
+                 span: "letzte 30 Tage · gleitende 7-Tage-Summe", sub: "in 30 Tagen", unit: "Woche", sup: "Beste Woche",
+                 pts: roll(daily, 7), ticks: [[0, "vor 24 T."], [.5, "vor 12 T."], [1, "heute"]] },
+        "12":  { n: a365, delta: months[11].n - months[10].n, pw: num(a365 / (365 / 7)), ab: new Set(acts.filter(h => { const d = helpers.toDate(h.datum); return d && d >= d365 && h.firmId; }).map(h => h.firmId)).size,
+                 span: "letzte 12 Monate · Monatswerte", sub: "in 12 Monaten", unit: "Monat", sup: "Stärkster Monat",
+                 pts: months.map(m => m.n), labs: months.map(m => m.lab) },
+        "all": { n: acts.length, delta: 0, pw: num(acts.length / weeks), ab: new Set(acts.filter(h => h.firmId).map(h => h.firmId)).size,
+                 span: "seit Beginn · Jahreswerte", sub: "gesamt", unit: "Jahr", sup: "Stärkstes Jahr",
+                 pts: yearKeys.map(y => years.get(y)), labs: yearKeys.map(String) }
       };
+      const per = PER[F.per] ? F.per : "30";
+      const P = PER[per];
+      const pts = P.pts.length ? P.pts : [0];
+      const nP = pts.length, mx = Math.max(...pts, 1);
+      const W = 1000, H = 104, pad = 6;
+      const X = i => nP === 1 ? W / 2 : pad + i * (W - 2 * pad) / (nP - 1);
+      const Y = v => H - pad - (v / mx) * (H - 2 * pad - 10);
+      const linePath = pts.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" ");
+      const areaPath = `${linePath} L${X(nP - 1).toFixed(1)},${H} L${X(0).toFixed(1)},${H} Z`;
+      const yRec = Y(mx);
+      const cur = pts[nP - 1], avg = pts.reduce((a, b) => a + b, 0) / nP, isRec = cur === mx && cur > 0;
+      const prevBest = Math.max(...pts.slice(0, -1), 0);
+      const insCls = isRec ? "is-rec" : cur > avg ? "is-up" : "";
+      const insEm  = isRec ? "🔥" : cur > avg ? "📈" : "📉";
+      const insTx  = isRec ? `${P.sup} seit Beginn — ${cur} Aktivitäten<span class="sub2">Vorheriger Bestwert: ${prevBest}. Haltet das Tempo.</span>`
+                   : cur > avg ? `Über dem Schnitt<span class="sub2">${cur} vs. Ø ${num(avg)} pro ${P.unit} · noch ${mx - cur} bis zum Bestwert (${mx})</span>`
+                   : `Unter dem Schnitt<span class="sub2">${cur} vs. Ø ${num(avg)} pro ${P.unit} · ${Math.max(1, Math.ceil(avg - cur))} mehr, und ihr seid wieder drüber</span>`;
 
-      // ── Abdeckung Banken: überschneidungsfreie Bänder, Summe = alle Kunden ────
-      const cM6 = cnt("cover-m6"), cM12 = cnt("cover-m12"), cNone = cnt("cover-none");
-      const base = kunden.length || 1;
-      const cum = cM6 + cM12;
-      const bands = [["cover-m6", "var(--green)"], ["cover-m12", "var(--amber)"], ["cover-none", "var(--red)"]];
+      // ── ② Abdeckungs-Matrix: Fortschritt, nicht Versagen ─────────────────────
+      const mxRows = [...klassVals.map(k => ({ key: "cov-" + k, lab: k })), { key: "cov-__nk", lab: "ohne Klassif.", warn: true }]
+        .map(r => { const set = M[r.key].set();
+          const a = set.filter(f => coverBand(f) === "m6").length, b = set.filter(f => coverBand(f) === "m12").length;
+          return { ...r, a, b, c: set.length - a - b, n: set.length }; })
+        .filter(r => r.n > 0);
+      const T = mxRows.reduce((o, r) => ({ a: o.a + r.a, b: o.b + r.b, c: o.c + r.c, n: o.n + r.n }), { a: 0, b: 0, c: 0, n: 0 });
+      const pcol = p => p >= 40 ? "var(--green)" : p >= 20 ? "var(--amber)" : "var(--red)";
+      // Nur der abgedeckte Anteil wird gefüllt — die leere Spur IST "ohne Aktivität".
+      const mxBar = r => `<div class="bbz-mxb">${r.a ? `<i style="width:${r.a / r.n * 100}%;background:var(--green);"></i>` : ""}${r.b ? `<i style="width:${r.b / r.n * 100}%;background:var(--amber);opacity:.75;"></i>` : ""}</div>`;
+      const mxRow = (r, tot) => `<div class="bbz-mxr ${tot ? "is-tot" : ""} ${sel === r.key ? "is-on" : ""}" ${tot ? "" : `data-action="dash-select" data-value="${r.key}"`} title="${esc(r.lab)}: ${r.a} ≤6 Mt. · ${r.b} 6–12 Mt. · ${r.c} ohne">
+          <span class="k">${esc(r.lab)}</span><span class="c">${r.n}</span>${mxBar(r)}
+          <span class="p" style="color:${pcol(pct(r.a + r.b, r.n))}">${pct(r.a + r.b, r.n)}%</span>
+          <span class="warn">${r.warn ? `<span title="Für diese Kunden ist die Priorisierung blind.">⚠</span>` : ""}</span></div>`;
 
-      // ── Datenqualität: Farbe folgt der Schwere, keine gepflegte Regel ─────────
-      const dqCard = k => {
-        const n = cnt(k), p = pct(n, contactsActive.length);
-        const col = p >= 20 ? "var(--red)" : p >= 10 ? "var(--amber)" : "var(--green)";
-        return `<div class="bbz-kpi ${sel === k ? "bbz-dash-sel" : ""}" data-action="dash-select" data-value="${k}" style="padding:11px 13px;">
-          <div class="bbz-kpi-label">${esc(M[k].lab.replace("Kontakte ", ""))}</div>
-          <div style="display:flex;align-items:baseline;gap:7px;margin-top:3px;">
-            <span style="font-size:24px;font-weight:700;letter-spacing:-.04em;">${n}</span>
-            <span style="font-size:13px;font-weight:700;color:${col};">${p}%</span>
-            <span style="margin-left:auto;font-size:9px;color:var(--subtle);">▸</span>
-          </div>
-          <div style="height:7px;background:var(--line-2);border-radius:4px;overflow:hidden;margin-top:7px;"><i style="display:block;height:100%;width:${p}%;background:${col};"></i></div>
-        </div>`;
+      // ── Bausteine ───────────────────────────────────────────────────────────
+      const mRow = (k, col, extra = "") => `<div class="bbz-dash-m ${sel === k ? "is-on" : ""}" data-action="dash-select" data-value="${k}">
+        <span class="dot" style="background:${col};"></span><span class="n">${cnt(k)}</span>
+        <span class="t">${esc(M[k].lab)}</span>${extra}<span style="font-size:9px;color:var(--subtle);flex-shrink:0;">▸</span></div>`;
+      const aiTile = (k, t, s2, ic, hot) => { const n = cnt(k), zero = n === 0;
+        return `<div class="bbz-ai ${zero ? "is-zero" : (hot ? "is-hot" : "")} ${sel === k ? "is-on" : ""}" ${zero ? "" : `data-action="dash-select" data-value="${k}"`}>
+          <span class="ic">${ic}</span><div class="n" ${hot && n ? 'style="color:var(--red);"' : ""}>${n}</div>
+          <div class="t">${esc(t)}</div><div class="s">${esc(s2)}</div></div>`; };
+      const zone = (no, h2, q, right, muted) => `<div class="bbz-zone"><span class="no" ${muted ? 'style="background:var(--muted);"' : ""}>${no}</span><h2>${esc(h2)}</h2><span class="q">${esc(q)}</span><span class="ln"></span>${right}</div>`;
+
+      // ── Donut ───────────────────────────────────────────────────────────────
+      const C = 2 * Math.PI * 48, GAP = 4;
+      const donut = (id, data, total) => { let off = 0;
+        const segs = data.map(([k, lab, n, col]) => { const len = Math.max(0, n / total * C - GAP);
+          const s = `<circle data-action="dash-select" data-value="${k}" data-cn="${n}" data-cl="${esc(lab)}" data-cc="${col}" r="48" cx="60" cy="60" stroke="${col}" stroke-width="15" stroke-dasharray="${len} ${C}" stroke-dashoffset="${-off}"></circle>`;
+          off += n / total * C; return s; }).join("");
+        return `<div class="bbz-dash-donut" id="${id}"><svg viewBox="0 0 120 120"><circle class="ring" r="48" cx="60" cy="60"></circle>${segs}</svg>`;
       };
+      const firmSegs = [["firms-kunde", "Banken (Kunden)", cnt("firms-kunde"), "var(--blue)"], ["firms-lieferant", "Lieferanten", cnt("firms-lieferant"), "var(--blue-mid)"], ["firms-uebrige", "Übrige", cnt("firms-uebrige"), "var(--subtle)"]].filter(x => x[2] > 0);
 
-      // ── Drill-Down-Liste ─────────────────────────────────────────────────────
+      // ── Drill-Down-Liste ────────────────────────────────────────────────────
       const listHtml = (() => {
-        if (!sel) return `<div class="bbz-empty" style="padding:26px;text-align:center;color:var(--subtle);">Klicke oben auf eine Zahl — die passende Liste erscheint hier.</div>`;
-        const kind = M[sel].kind, set = M[sel].set();
-        const cap = 50, shown = set.slice(0, cap);
+        if (!sel) return `<div style="padding:24px;text-align:center;color:var(--subtle);font-size:13px;">Klicke auf eine Zahl, ein Donut-Segment oder eine Matrix-Zeile — die Liste erscheint hier.</div>`;
+        const kind = M[sel].kind, set = M[sel].set(), cap = 50, shown = set.slice(0, cap);
+        const dash = v => (v || "").trim() ? esc(v) : `<span style="color:var(--red);font-weight:600;">—</span>`;
         let cols = [], rows = [];
-        if (kind === "firm" || kind === "cover") {
-          cols = ["Firma", "Ort", "Klassifizierung", "Letzte Aktivität", "Kontakte"];
-          rows = shown.map(f => [
-            `<a class="bbz-link" data-action="open-firm" data-id="${f.id}">${esc(f.title)}</a>`,
-            esc(helpers.joinNonEmpty([f.plz, f.ort], " ")) || "—",
-            f.klassifizierung ? esc(f.klassifizierung) : "—",
-            f.latestActivity ? esc(helpers.relativeDate(f.latestActivity)) : `<span style="color:var(--red);">nie</span>`,
-            String(f.contactsCount)
-          ]);
-        } else if (kind === "contact" || kind === "dq") {
-          cols = ["Name", "Firma", "Funktion / Rolle", "E-Mail", "Telefon", "Lead bbz"];
-          const dash = v => (v || "").trim() ? esc(v) : `<span style="color:var(--red);font-weight:600;">—</span>`;
-          rows = shown.map(c => [
-            `<a class="bbz-link" data-action="open-contact" data-id="${c.id}">${esc(c.fullName)}</a>`,
-            esc(c.firmTitle || "—"),
-            dash(helpers.joinNonEmpty([c.funktion, c.rolle], " · ")),
-            dash(c.email1 || c.email2),
-            dash(c.direktwahl || c.mobile),
-            dash(c.leadbbz0)
-          ]);
-        } else if (kind === "task") {
-          cols = ["Aufgabe", "Firma", "Fällig", "Lead bbz"];
-          rows = shown.sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline)).map(t => [
-            `<a class="bbz-link" data-action="edit-task" data-id="${t.id}">${esc(t.title)}</a>`,
-            esc(t.firmTitle || "—"),
-            t.isOverdue ? `<span style="color:var(--red);font-weight:600;">${esc(helpers.relativeDate(t.deadline))} fällig</span>` : (esc(helpers.relativeDate(t.deadline)) || "ohne Termin"),
-            esc(t.leadbbz || "—")
-          ]);
-        } else {
-          cols = ["Aktivität", "Firma", "Datum", "Lead bbz"];
-          rows = shown.sort((a, b) => helpers.compareDateDesc(a.datum, b.datum)).map(h => [
-            `<a class="bbz-link" data-action="open-history-detail" data-id="${h.id}">${esc(h.typ || "Aktivität")}</a>`,
-            esc(h.firmTitle || "—"), esc(helpers.relativeDate(h.datum)), esc(h.leadbbz || "—")
-          ]);
-        }
-        return `
-          <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line);background:var(--panel-2);">
+        if (kind === "firm") { cols = ["Firma", "Kategorie", "Klassifizierung", "Letzte Aktivität", "Kontakte"];
+          rows = shown.map(f => [`<a class="bbz-link" data-action="open-firm" data-id="${f.id}">${esc(f.title)}</a>`, esc(f.kategorie || "—"), dash(f.klassifizierung),
+            f.latestActivity ? esc(helpers.relativeDate(f.latestActivity)) : `<span style="color:var(--red);font-weight:600;">nie</span>`, String(f.contactsCount)]); }
+        else if (kind === "contact" || kind === "bday") { cols = ["Name", "Firma", "Funktion / Rolle", "E-Mail", "Telefon", "Lead bbz"];
+          rows = shown.map(c => [`<a class="bbz-link" data-action="open-contact" data-id="${c.id}">${esc(c.fullName)}</a>`, esc(c.firmTitle || "—"),
+            dash(helpers.joinNonEmpty([c.funktion, c.rolle], " · ")), dash(c.email1 || c.email2), dash(c.direktwahl || c.mobile), dash(c.leadbbz0)]); }
+        else if (kind === "task") { cols = ["Aufgabe", "Firma", "Fällig", "Lead bbz"];
+          rows = shown.slice().sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline)).map(t => [`<a class="bbz-link" data-action="edit-task" data-id="${t.id}">${esc(t.title)}</a>`, esc(t.firmTitle || "—"),
+            t.isOverdue ? `<span style="color:var(--red);font-weight:600;">${esc(helpers.relativeDate(t.deadline))} fällig</span>` : (esc(helpers.relativeDate(t.deadline)) || `<span style="color:var(--amber);">ohne Termin</span>`), dash(t.leadbbz)]); }
+        else { cols = ["Aktivität", "Firma", "Datum", "Lead bbz"];
+          rows = shown.slice().sort((a, b) => helpers.compareDateDesc(a.datum, b.datum)).map(h => [`<a class="bbz-link" data-action="open-history-detail" data-id="${h.id}">${esc(h.typ || "Aktivität")}</a>`, esc(h.firmTitle || "—"), esc(helpers.relativeDate(h.datum)), dash(h.leadbbz)]); }
+        return `<div style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line);background:var(--panel-2);flex-wrap:wrap;">
             <h3 style="margin:0;font-size:13px;font-weight:700;">${esc(M[sel].lab)}</h3>
             <span style="font-size:11px;font-weight:700;color:var(--blue);background:var(--blue-light);border-radius:var(--r-full);padding:1px 9px;">${set.length}</span>
-            <button class="bbz-button bbz-button-secondary" style="margin-left:auto;height:26px;font-size:11px;padding:0 10px;" data-action="dash-select" data-value="${sel}">✕ Auswahl aufheben</button>
-          </div>
-          ${set.length ? `<div class="bbz-table-wrap"><table class="bbz-table">
-            <thead><tr>${cols.map(c => `<th>${c}</th>`).join("")}</tr></thead>
+            <button class="bbz-button bbz-button-secondary" style="margin-left:auto;height:26px;font-size:11px;padding:0 10px;" data-action="dash-select" data-value="${sel}">✕ Auswahl aufheben</button></div>
+          ${set.length ? `<div class="bbz-table-wrap"><table class="bbz-table"><thead><tr>${cols.map(c => `<th>${c}</th>`).join("")}</tr></thead>
             <tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("")}
-              ${set.length > cap ? `<tr><td colspan="${cols.length}" style="color:var(--subtle);font-size:11.5px;">… + ${set.length - cap} weitere — für die vollständige Liste in den jeweiligen Screen wechseln.</td></tr>` : ""}
-            </tbody></table></div>` : `<div class="bbz-empty" style="padding:22px;text-align:center;color:var(--subtle);">Keine Einträge — hier ist nichts offen.</div>`}`;
+            ${set.length > cap ? `<tr><td colspan="${cols.length}" style="color:var(--subtle);font-size:11.5px;">… + ${set.length - cap} weitere — vollständig im jeweiligen Screen.</td></tr>` : ""}</tbody></table></div>`
+            : `<div style="padding:22px;text-align:center;color:var(--subtle);font-size:13px;">Keine Einträge — hier ist nichts offen.</div>`}`;
       })();
 
-      const secTitle = t => `<div style="font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--subtle);margin:0 0 7px 2px;display:flex;align-items:center;gap:8px;">${esc(t)}<span style="flex:1;height:1px;background:var(--line);"></span></div>`;
+      // ── Geburtstage ─────────────────────────────────────────────────────────
+      const up = helpers.upcomingBirthdays(30);
+      const bToday = up.filter(b => b.daysUntil === 0).length, bWeek = up.filter(b => b.daysUntil <= 7).length;
+      const bCov = cA.length - cnt("dq-bday"), bPct = pct(bCov, cA.length);
+
+      // ── ③ Stille Wächter ────────────────────────────────────────────────────
+      const guards = ["int-firms", "int-contacts", "int-orphan"].filter(k => cnt(k) > 0);
+      const dqKeys = ["dq-mail", "dq-tel", "dq-funk", "dq-lead", "dq-bday"];
+      const dqWarn = dqKeys.filter(k => pct(cnt(k), cA.length) >= 20).length;
+      const dqCard = k => { const n = cnt(k), p = pct(n, cA.length), col = p >= 20 ? "var(--red)" : p >= 10 ? "var(--amber)" : "var(--green)";
+        return `<div class="bbz-kpi ${sel === k ? "bbz-dash-sel" : ""}" data-action="dash-select" data-value="${k}" style="cursor:pointer;padding:9px 10px;">
+          <div class="bbz-kpi-label" style="font-size:9px;">${esc(M[k].lab.replace("Kontakte ", ""))}</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:5px;">
+            <div class="bbz-gring"><svg viewBox="0 0 120 120" width="46" height="46"><circle r="48" cx="60" cy="60" stroke="var(--line-2)" stroke-width="14"></circle>
+              <circle r="48" cx="60" cy="60" stroke="${col}" stroke-width="14" stroke-dasharray="${p / 100 * C} ${C}"></circle></svg>
+              <div class="bbz-gcen" style="color:${col};">${p}%</div></div>
+            <div style="font-size:19px;font-weight:700;letter-spacing:-.04em;">${n}</div>
+            <span style="margin-left:auto;font-size:9px;color:var(--subtle);">▸</span>
+          </div></div>`; };
+
+      const perBtn = (v, l) => `<button class="${per === v ? "is-on" : ""}" data-action="dash-per" data-value="${v}">${l}</button>`;
 
       return `
         <div>
-          <!-- Zeile 1 -->
-          <div class="bbz-kpis" style="grid-template-columns:1.5fr 1fr 1.2fr;">
-            <div class="bbz-kpi bbz-kpi-blue bbz-dash-static">
-              <div class="bbz-kpi-label">Stammdaten</div>
-              <div style="display:flex;align-items:baseline;gap:8px;margin:4px 0 8px;">
-                <span class="bbz-kpi-value">${firms.length}</span><span style="font-size:11.5px;color:var(--muted);">Firmen</span>
-                <span style="font-size:11.5px;color:var(--muted);margin-left:auto;">${contactsActive.length} Kontakte aktiv</span>
-              </div>
-              ${mRow("firms-kunde", "var(--blue)", `<span style="font-size:11px;color:var(--subtle);flex-shrink:0;">${pct(kunden.length, firms.length)}%</span>`)}
-              ${mRow("firms-lieferant", "var(--blue-mid)", `<span style="font-size:11px;color:var(--subtle);flex-shrink:0;">${pct(cnt("firms-lieferant"), firms.length)}%</span>`)}
-              ${mRow("firms-uebrige", "var(--subtle)", `<span style="font-size:11px;color:var(--subtle);flex-shrink:0;">${pct(cnt("firms-uebrige"), firms.length)}%</span>`)}
-              ${mRow("contacts", "var(--green)")}
-              ${devHtml()}
-            </div>
+          ${zone(1, "Handeln", "Was braucht mich jetzt?", `<span style="font-size:11px;color:var(--subtle);">täglich</span>`)}
+          <div class="bbz-dash-act">
+            ${aiTile("tasks-over", "überfällig", "Aufgaben", "⚠", true)}
+            ${aiTile("tasks-week", "diese Woche fällig", "Aufgaben", "📅", false)}
+            ${aiTile("tasks-undated", "ohne Termin", "Aufgaben · unsichtbar in der Agenda", "◻", false)}
+          </div>
 
-            <div class="bbz-kpi bbz-kpi-red bbz-dash-static">
-              <div class="bbz-kpi-label">Aufgaben</div>
-              <div style="display:flex;align-items:baseline;gap:8px;margin:4px 0 8px;">
-                <span class="bbz-kpi-value">${openTasks.length}</span><span style="font-size:11.5px;color:var(--muted);">offen</span>
+          <div class="bbz-kpi bbz-kpi-amber bbz-dash-static" style="margin-bottom:16px;">
+            <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
+              <div class="bbz-kpi-label">Geburtstage</div>
+              <div class="bbz-bd-split">
+                ${bToday ? `<span class="is-hot">${bToday} heute</span>` : ""}
+                ${bWeek ? `<span>${bWeek} diese Woche</span>` : ""}
+                ${up.length ? `<span>${up.length} diesen Monat</span>` : ""}
               </div>
-              ${mRow("tasks-over", "var(--red)")}
-              ${mRow("tasks-week", "var(--amber)")}
-              ${mRow("tasks-m30", "var(--blue-mid)")}
+              <span style="font-size:11px;color:var(--subtle);margin-left:auto;">Erfassungsgrad <b style="color:${bPct >= 80 ? "var(--green)" : bPct >= 50 ? "var(--amber)" : "var(--red)"};">${bPct}%</b> · ${bCov}/${cA.length}</span>
+              <a class="bbz-link" data-action="kpi-filter" data-scope="navigate" data-value="birthdays" style="font-size:11px;">alle anzeigen →</a>
             </div>
-
-            <div class="bbz-kpi bbz-kpi-amber bbz-dash-static">
-              ${(() => {
-                const up = helpers.upcomingBirthdays(30);
-                const td = up.filter(b => b.daysUntil === 0).length;
-                return `
-                <div style="display:flex;align-items:baseline;gap:8px;">
-                  <div class="bbz-kpi-label">Geburtstage</div>
-                  <a class="bbz-link" data-action="kpi-filter" data-scope="navigate" data-value="birthdays" style="margin-left:auto;font-size:11px;">alle anzeigen →</a>
-                </div>
-                <div style="display:flex;align-items:baseline;gap:8px;margin:4px 0 7px;">
-                  <span class="bbz-kpi-value">${up.length}</span>
-                  <span style="font-size:11.5px;color:var(--muted);">in 30 Tagen${td ? ` · <b style="color:var(--amber);">${td} heute</b>` : ""}</span>
-                </div>
-                ${up.length ? up.slice(0, 3).map(b => `
-                  <div class="bbz-bday-row ${b.daysUntil === 0 ? "bbz-bday-today" : ""}" data-action="open-contact" data-id="${b.contact.id}">
-                    <span class="bbz-bday-name">${b.daysUntil === 0 ? "🎂 " : ""}${esc(b.contact.fullName)}</span>
-                    <span class="bbz-bday-firm">${esc(b.contact.firmTitle || "")}</span>
-                    <span class="bbz-bday-when">${esc(helpers.birthdayLabel(b.daysUntil, b.nextBirthday))}</span>
-                  </div>`).join("") : `<div style="font-size:11.5px;color:var(--subtle);">Keine Geburtstage in den nächsten 30 Tagen.</div>`}`;
-              })()}
+            <div class="bbz-dash-bd">
+              <div style="display:flex;align-items:baseline;gap:7px;">
+                <span class="bbz-kpi-value">${up.length}</span><span style="font-size:11.5px;color:var(--muted);">in 30 Tagen</span>
+              </div>
+              <div>${up.length ? up.slice(0, 3).map(b => `<div class="bbz-bday-row ${b.daysUntil === 0 ? "bbz-bday-today" : ""}" data-action="open-contact" data-id="${b.contact.id}">
+                  <span class="bbz-bday-name">${b.daysUntil === 0 ? "🎂 " : ""}${esc(b.contact.fullName)}</span>
+                  <span class="bbz-bday-firm">${esc(b.contact.firmTitle || "")}</span>
+                  <span class="bbz-bday-when">${esc(helpers.birthdayLabel(b.daysUntil, b.nextBirthday))}${b.age ? " · wird " + b.age : ""}</span></div>`).join("")
+                : `<div style="font-size:11.5px;color:var(--subtle);">Keine Geburtstage in den nächsten 30 Tagen.</div>`}</div>
             </div>
           </div>
 
-          <!-- Zeile 2 -->
-          ${secTitle("Aktivitäten · Banken")}
-          <div class="bbz-kpis" style="grid-template-columns:1.4fr 1fr;">
+          ${zone(2, "Steuern", "Läuft die Marktbearbeitung?", `<span style="font-size:11px;color:var(--subtle);">monatlich</span>`)}
+          <div class="bbz-dash-g2">
             <div class="bbz-kpi bbz-kpi-blue bbz-dash-static">
-              <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;">
-                <span class="bbz-kpi-value">${nowN}</span><span style="font-size:11.5px;color:var(--muted);">im ${esc(months[11].lab)}</span>
-                ${deltaN !== 0 ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:var(--r-full);${deltaN > 0 ? "background:#e7f2ea;color:var(--green);" : "background:var(--red-soft);color:var(--red);"}">${deltaN > 0 ? "▲ +" : "▼ "}${deltaN} vs. ${esc(months[10].lab)}</span>` : `<span style="font-size:11px;color:var(--subtle);">unverändert vs. ${esc(months[10].lab)}</span>`}
-                <span style="font-size:11.5px;color:var(--muted);margin-left:auto;">Ø <b>${pw30}</b>/Woche · ${a365} in 12 Mt.</span>
+              <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;">
+                <span class="bbz-kpi-value">${P.n}</span><span style="font-size:11.5px;color:var(--muted);">${esc(P.sub)}</span>
+                ${P.delta ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:var(--r-full);${P.delta > 0 ? "background:#e7f2ea;color:var(--green);" : "background:var(--red-soft);color:var(--red);"}">${P.delta > 0 ? "▲ +" : "▼ "}${P.delta} vs. Vorperiode</span>` : ""}
+                <div class="bbz-per" style="margin-left:auto;">${perBtn("30", "30 Tage")}${perBtn("12", "12 Monate")}${perBtn("all", "Gesamt")}</div>
               </div>
-              <div style="display:flex;align-items:flex-end;gap:4px;height:46px;margin:10px 0 3px;">
-                ${months.map(m => `<div title="${esc(m.lab)}: ${m.n}" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:2px;"><b style="font-size:8px;font-weight:700;color:var(--subtle);">${m.n}</b><i style="display:block;width:100%;height:${Math.round(m.n / maxN * 34) + 3}px;background:${m === months[11] ? "var(--blue)" : "var(--blue-light)"};border-radius:2px 2px 0 0;"></i></div>`).join("")}
+              <div class="bbz-chart" id="bbzChart"><div class="bbz-ctip" id="bbzTip"></div>
+                <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+                  <defs><linearGradient id="bbzcg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--blue)" stop-opacity=".22"/><stop offset="100%" stop-color="var(--blue)" stop-opacity="0"/></linearGradient></defs>
+                  <line class="bbz-crec" x1="0" y1="${yRec.toFixed(1)}" x2="${W}" y2="${yRec.toFixed(1)}"></line>
+                  <path class="bbz-carea" d="${areaPath}"></path>
+                  <path class="bbz-cline" d="${linePath}"></path>
+                  ${pts.map((v, i) => `<circle class="bbz-cdot" data-i="${i}" cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="3.5"></circle>`).join("")}
+                  ${pts.map((v, i) => `<rect class="bbz-chit" data-i="${i}" data-v="${v}" data-l="${esc((P.labs && P.labs[i]) || (P.unit + " " + (i + 1)))}" data-x="${(X(i) / W * 100).toFixed(2)}" data-y="${Y(v).toFixed(1)}" x="${(X(i) - (W / nP / 2)).toFixed(1)}" y="0" width="${(W / nP).toFixed(1)}" height="${H}"></rect>`).join("")}
+                </svg>
+                <div style="position:absolute;right:0;top:${(yRec - 13).toFixed(0)}px;font-size:8.5px;font-weight:700;color:var(--amber);letter-spacing:.04em;">BESTWERT ${mx}</div>
               </div>
-              <div style="display:flex;gap:4px;">${months.map(m => `<span style="flex:1;text-align:center;font-size:8.5px;text-transform:uppercase;color:${m === months[11] ? "var(--blue)" : "var(--subtle)"};font-weight:${m === months[11] ? 700 : 400};">${esc(m.lab)}</span>`).join("")}</div>
-              <div style="margin-top:9px;padding-top:9px;border-top:1px solid var(--line-2);display:flex;gap:16px;flex-wrap:wrap;">
-                ${[["30 Tage", a30, `Ø ${pw30}/Woche`], ["12 Monate", a365, `Ø ${pw365}/Woche`], ["Gesamt", acts.length, `Ø ${pwTot}/Woche`]].map(([t, v, n]) =>
-                  `<div style="font-size:11px;color:var(--subtle);">${t}<b style="display:block;font-size:16px;font-weight:700;color:var(--text);letter-spacing:-.02em;">${v}</b><span style="font-size:10px;">${n}</span></div>`).join("")}
-                <div style="margin-left:auto;align-self:flex-end;">${mRow("acts", "var(--blue)")}</div>
+              <div class="${P.ticks ? "bbz-ctick" : "bbz-clab"}">
+                ${P.ticks ? P.ticks.map(([at, l]) => `<span style="left:${at * 100}%;transform:translateX(${at === 0 ? "0" : at === 1 ? "-100%" : "-50%"});">${esc(l)}</span>`).join("")
+                          : P.labs.map((l, i) => `<span class="${i === nP - 1 ? "is-now" : ""}">${esc(l)}</span>`).join("")}
+              </div>
+              <div class="bbz-insight ${insCls}"><span class="em">${insEm}</span><div class="tx">${insTx}</div></div>
+              <div style="margin-top:9px;padding-top:9px;border-top:1px solid var(--line-2);display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end;">
+                <div style="font-size:11px;color:var(--subtle);">Ø/Woche<b style="display:block;font-size:16px;color:var(--text);font-variant-numeric:tabular-nums;">${P.pw}</b></div>
+                <div style="font-size:11px;color:var(--subtle);">Banken aktiv<b style="display:block;font-size:16px;color:var(--text);">${P.ab}</b></div>
+                <div style="font-size:11px;color:var(--subtle);margin-left:auto;">${esc(P.span)}</div>
               </div>
             </div>
 
             <div class="bbz-kpi bbz-dash-static">
-              <div class="bbz-kpi-label">Abdeckung Banken</div>
-              <div style="display:flex;align-items:baseline;gap:7px;margin:6px 0 7px;">
-                <span style="font-size:12px;color:var(--muted);">12-Monats-Abdeckung</span>
-                <b style="font-size:17px;">${cum}</b><span style="font-size:11.5px;color:var(--muted);">/ ${kunden.length}</span>
-                <span style="margin-left:auto;font-size:14px;font-weight:700;color:${pct(cum, base) >= 50 ? "var(--green)" : "var(--red)"};">${pct(cum, base)}%</span>
+              <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
+                <div class="bbz-kpi-label">Abdeckung Banken</div><span style="font-size:11px;color:var(--subtle);">Sind wir bei den richtigen aktiv?</span>
               </div>
-              <div style="display:flex;height:9px;border-radius:5px;overflow:hidden;background:var(--line-2);margin-bottom:8px;">
-                ${bands.map(([k, c]) => cnt(k) ? `<i style="width:${cnt(k) / base * 100}%;background:${c};" title="${esc(M[k].lab)}: ${cnt(k)}"></i>` : "").join("")}
+              <div class="bbz-mx">
+                <div class="bbz-mxh"><span style="width:96px;">Klassifizierung</span><span style="width:26px;text-align:right;">n</span><span style="flex:1;">Abdeckung</span><span style="width:38px;text-align:right;">%</span><span style="width:12px;"></span></div>
+                ${mxRows.map(r => mxRow(r, false)).join("")}
+                ${mxRow({ key: "", lab: "Gesamt", ...T }, true)}
+                <div class="bbz-mxleg">
+                  <span><i style="background:var(--green);"></i>Aktivität ≤ 6 Monate</span>
+                  <span><i style="background:var(--amber);opacity:.75;"></i>6–12 Monate</span>
+                  <span><i style="background:var(--line-2);border:1px solid var(--line);"></i>ohne Aktivität</span>
+                </div>
               </div>
-              ${bands.map(([k, c]) => mRow(k, c, `<span style="font-size:11px;font-weight:700;color:${c};flex-shrink:0;">${pct(cnt(k), base)}%</span>`)).join("")}
             </div>
           </div>
 
-          <!-- Zeile 3 -->
-          ${secTitle(`Datenqualität · ${contactsActive.length} aktive Kontakte`)}
-          <div class="bbz-kpis" style="grid-template-columns:repeat(4,minmax(0,1fr));">
-            ${["dq-mail", "dq-tel", "dq-funk", "dq-lead"].map(dqCard).join("")}
+          ${zone(3, "Pflegen", dqWarn ? `${dqWarn} Qualitätswarnung${dqWarn > 1 ? "en" : ""}` : "keine Auffälligkeiten",
+            `<button class="bbz-button bbz-button-secondary" style="height:24px;font-size:10.5px;padding:0 9px;" data-action="dash-fold">${F.foldOpen === false ? "▸ ausklappen" : "▾ einklappen"}</button>`, true)}
+          <div class="bbz-fold ${F.foldOpen === false ? "is-shut" : ""}" style="max-height:1600px;">
+            <div class="bbz-dash-g2">
+              <div class="bbz-kpi bbz-kpi-blue bbz-dash-static">
+                <div class="bbz-kpi-label">Stammdaten</div>
+                <div class="bbz-dash-dw" style="margin-top:8px;">
+                  ${donut("bbzDFirms", firmSegs, firms.length || 1)}
+                    <div class="bbz-dash-dcen"><div class="n" id="bbzDFirmsN">${firms.length}</div><div class="t" id="bbzDFirmsT">Gesamt</div></div>
+                  </div>
+                  <div style="flex:1;min-width:0;">
+                    ${mRow("firms-kunde", "var(--blue)", `<span style="font-size:11px;color:var(--subtle);flex-shrink:0;">${pct(cnt("firms-kunde"), firms.length)}%</span>`)}
+                    ${mRow("firms-lieferant", "var(--blue-mid)", `<span style="font-size:11px;color:var(--subtle);flex-shrink:0;">${pct(cnt("firms-lieferant"), firms.length)}%</span>`)}
+                    ${mRow("firms-uebrige", "var(--subtle)", `<span style="font-size:11px;color:var(--subtle);flex-shrink:0;">${pct(cnt("firms-uebrige"), firms.length)}%</span>`)}
+                    ${mRow("contacts", "var(--green)")}
+                  </div>
+                </div>
+              </div>
+              <div class="bbz-kpi bbz-dash-static">
+                <div class="bbz-kpi-label">Datenqualität · ${cA.length} aktive Kontakte</div>
+                <div class="bbz-dash-g4" style="margin-top:8px;">${dqKeys.map(dqCard).join("")}</div>
+              </div>
+            </div>
+            ${guards.length ? `
+            <div style="background:var(--panel);border:1px solid #f0d7a8;border-left:3px solid var(--amber);border-radius:var(--r-xl);padding:13px 15px;margin-bottom:16px;">
+              <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
+                <div class="bbz-kpi-label" style="color:var(--amber);">Integrität der Verkettung</div><span style="font-size:11px;color:var(--subtle);">Aktivität → Kontakt → Firma</span>
+              </div>
+              <div style="margin-top:8px;">${guards.map(k => `<div class="bbz-dash-m ${sel === k ? "is-on" : ""}" data-action="dash-select" data-value="${k}">
+                <span class="n" style="color:var(--amber);font-size:16px;">${cnt(k)}</span><span class="t" style="color:var(--text);font-weight:600;flex:0;">${esc(M[k].lab)}</span>
+                <span class="t" style="color:var(--subtle);">→ ${esc(M[k].warn)}</span><span style="font-size:9px;color:var(--subtle);">▸</span></div>`).join("")}</div>
+              <div style="background:#fffdf5;border:1px solid #f0e3b8;border-radius:var(--r-md);padding:9px 11px;font-size:12px;color:#6b5300;line-height:1.5;margin-top:9px;">
+                <b style="color:var(--amber);">ⓘ Warum das zählt:</b> Aktivitäten hängen an <b>Kontakten</b>, nicht an Firmen. Wo die Kette bricht, fehlen Einträge in jeder Abdeckungszahl — lautlos.
+              </div>
+            </div>` : ""}
           </div>
 
-          <!-- Drill-Down -->
-          ${secTitle("Liste")}
+          ${zone("▸", "Liste", "Drill-Down der gewählten Zahl", "", true)}
           <section class="bbz-section" style="padding:0;overflow:hidden;">${listHtml}</section>
         </div>
       `;
@@ -6226,6 +6272,58 @@
     render() {
       ui.renderShell();
       ui.renderView(views.renderRoute());
+      this.afterRender();
+    },
+
+    // Nachbearbeitung nach jedem Render. Die Views liefern HTML-Strings — Dinge, die
+    // gemessene Geometrie brauchen (Pfadlaenge) oder Hover ohne Re-Render, gehoeren hierhin.
+    afterRender() {
+      if (state.filters.route !== "dashboard") return;
+      const rm = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+      // Flaechen-Chart: Linie zeichnet sich links->rechts. Die Animation IST die Zeitachse.
+      const line = document.querySelector(".bbz-cline");
+      const area = document.querySelector(".bbz-carea");
+      if (line && area) {
+        if (rm) { area.classList.add("is-in"); }
+        else {
+          const L = line.getTotalLength ? line.getTotalLength() : 2000;
+          line.style.strokeDasharray = L; line.style.strokeDashoffset = L;
+          requestAnimationFrame(() => { line.style.strokeDashoffset = 0; area.classList.add("is-in"); });
+        }
+      }
+      // Chart-Hover: Punkt + Tooltip, ohne Re-Render
+      const chart = document.getElementById("bbzChart"), tip = document.getElementById("bbzTip");
+      if (chart && tip) {
+        chart.querySelectorAll(".bbz-chit").forEach(r => {
+          const dot = chart.querySelector(`.bbz-cdot[data-i="${r.dataset.i}"]`);
+          r.addEventListener("mouseenter", () => {
+            dot?.classList.add("is-on"); tip.classList.add("is-on");
+            tip.textContent = `${r.dataset.l}: ${r.dataset.v}`;
+            tip.style.left = r.dataset.x + "%"; tip.style.top = r.dataset.y + "px";
+          });
+          r.addEventListener("mouseleave", () => { dot?.classList.remove("is-on"); tip.classList.remove("is-on"); });
+        });
+      }
+      // Donut-Hover: das Loch ist ein Anzeigeplatz — Hover tauscht die Zahl darin aus.
+      // Das ist der Grund fuer den Donut; ein Balken kann das nicht.
+      const d = document.getElementById("bbzDFirms");
+      if (d) {
+        const n = document.getElementById("bbzDFirmsN"), t = document.getElementById("bbzDFirmsT");
+        const base = n?.textContent, baseT = t?.textContent;
+        d.querySelectorAll("circle[data-cn]").forEach(c => {
+          c.addEventListener("mouseenter", () => {
+            d.classList.add("is-dim"); c.classList.add("is-hot");
+            if (n) { n.textContent = c.dataset.cn; n.style.color = c.dataset.cc; }
+            if (t) t.textContent = c.dataset.cl;
+          });
+          c.addEventListener("mouseleave", () => {
+            d.classList.remove("is-dim"); c.classList.remove("is-hot");
+            if (n) { n.textContent = base; n.style.color = ""; }
+            if (t) t.textContent = baseT;
+          });
+        });
+      }
     },
 
     // Event Nachbearbeitung: Teilnahmen speichern
