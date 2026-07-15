@@ -139,12 +139,12 @@
 
     filters: {
       route: CONFIG.defaults.route,
-      firms: { kategorie: "Kunde", klassifizierung: "", vip: false, search: "", legendeOffen: false, sortBy: "title", sortDir: "asc" },
+      firms: { kategorie: "", klassifizierung: "", vip: false, pflege: "", search: "", legendeOffen: false, sortBy: "title", sortDir: "asc" },
       contacts: { search: "", archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden, sortBy: "fullName", sortDir: "asc" },
       planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, groupBy: "none", sortBy: "deadline", sortDir: "asc", segment: "", leadbbz: "", faelligkeit: "" },
       history: { search: "", kontaktart: "", viewMode: "firms", lens: "", granularitaet: "monat", periode: "", expandedFirms: [] },
       // Zusammengeführte Aktivitäten+Aufgaben-Route (ersetzt planning + history)
-      aktivitaeten: { segment: "kunden", axis: "chrono", search: "", lead: "", faelligkeit: "", sig: "gruen", monat: "", expandedFirms: [], bucketOpen: {}, moreOpen: {}, legendeOffen: false },
+      aktivitaeten: { segment: "kunden", axis: "chrono", search: "", lead: "", faelligkeit: "", sig: "aktiv", monat: "", expandedFirms: [], bucketOpen: {}, moreOpen: {}, legendeOffen: false },
       events: { search: "", onlyWithOpenTasks: false, sortBy: "contactName", sortDir: "asc", segment: "", selectedEvent: "" },
       admin: { zeitfenster: "30" }
     },
@@ -302,10 +302,38 @@
       if (!firm) return "bbz-detail-band-default";
       if (firm.vip) return "bbz-detail-band bbz-detail-band-vip";
       const v = String(firm.klassifizierung || "").toUpperCase();
+      // Akquisition ZUERST: "AKQUISITION".includes("A") ist true und landete sonst im A-Band.
+      if (v.includes("AKQUISITION")) return "bbz-detail-band bbz-detail-band-default";
       if (v.includes("A")) return "bbz-detail-band bbz-detail-band-a";
       if (v.includes("B")) return "bbz-detail-band bbz-detail-band-b";
       if (v.includes("C")) return "bbz-detail-band bbz-detail-band-c";
       return "bbz-detail-band bbz-detail-band-default";
+    },
+
+    // Status/Aktivität als EIN Element — klickbar, oeffnet das jeweilige Modal
+    // (Aufgabe -> Bearbeiten-Formular, Aktivität -> Detail-Modal). Precedence: Task > Aktivität.
+    statusAktivitaetHtml(firm) {
+      const overdue = firm.tasks.filter(t => t.isOpen && t.isOverdue);
+      if (overdue.length) {
+        const oldest = [...overdue].sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline))[0];
+        return `<a class="bbz-link bbz-danger" data-action="edit-task" data-id="${oldest.id}" title="${helpers.escapeHtml(oldest.title)}">seit ${helpers.agePhrase(oldest.deadline)} fällig</a>`;
+      }
+      const nextOpen = firm.tasks.filter(t => t.isOpen).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline))[0];
+      if (nextOpen) {
+        return `<a class="bbz-link" data-action="edit-task" data-id="${nextOpen.id}" title="${helpers.escapeHtml(nextOpen.title)}">laufender Task</a>`;
+      }
+      const last = helpers.toDate(firm.latestActivity);
+      if (last) {
+        const today = helpers.todayStart();
+        const months = (today.getFullYear() - last.getFullYear()) * 12 + (today.getMonth() - last.getMonth());
+        if (months <= 24) {
+          const entry = firm.history[0];
+          return entry
+            ? `<a class="bbz-link" data-action="open-history-detail" data-id="${entry.id}" title="${helpers.formatDate(firm.latestActivity)}">vor ${helpers.agePhrase(firm.latestActivity)}</a>`
+            : `<span title="${helpers.formatDate(firm.latestActivity)}">vor ${helpers.agePhrase(firm.latestActivity)}</span>`;
+        }
+      }
+      return `<span class="bbz-muted">keine aktuellen Aktivitäten</span>`;
     },
 
     statusClass(status, deadline) {
@@ -418,6 +446,41 @@
     // "never"   — noch kein History-Eintrag (für ALLE Kunden)
     // "cold"    — letzte Aktivität > 12 Monate (exakte Monatsdifferenz)
     // "ok"      — Kunde on track (keine der obigen Bedingungen)
+    // ══ Pflege-Status: EINE Quelle für Firmen-Screen UND Aktivitäten-Cockpit ══════
+    // Bewusst ÜBERLAPPEND: jeder Zustand ist eine eigene Frage, keine Kategorie.
+    // Eine Firma darf gleichzeitig "aktiv" und "pflege" sein (frischer Kontakt + überfällige
+    // Aufgabe) — beide Aussagen stimmen. Nicht zu exklusiven Kategorien umbauen.
+    // Nicht duplizieren: früher lagen hier zwei Vokabulare (firmSignal vs. Firmen-Chips),
+    // die dieselben Wörter mit verschiedener Bedeutung benutzten.
+    pflegeMeta: {
+      aktiv:  { lab: "Aktiv gepflegt",  col: "var(--green)",  note: "Aktivität in den letzten 24 Monaten oder offene Aufgabe mit Termin." },
+      pflege: { lab: "Braucht Pflege",  col: "var(--red)",    note: "Offene Aufgabe, die terminlich verfallen ist." },
+      offen:  { lab: "Beobachten",      col: "var(--amber)",  note: "Offene Aufgabe ohne Datum/Termin — in der Agenda unsichtbar, weil sie durch alle Fälligkeits-Buckets fällt." },
+      ohne:   { lab: "Ohne Aktivität",  col: "var(--subtle)", note: "Keine Aktivität und keine Aufgabe seit über 24 Monaten." },
+      kein:   { lab: "Nicht-Kunden",    col: "var(--subtle)", note: "Lieferanten und Übrige — der Pflege-Status gilt nur für Kunden." }
+    },
+
+    pflegePredicate(kind) {
+      const today = helpers.todayStart();
+      const m24 = new Date(today); m24.setMonth(m24.getMonth() - 24);
+      const isKunde   = f => f.kategorie === "Kunde";
+      const hasDate   = t => !!helpers.toDate(t.deadline);
+      const recentAct = f => { const d = helpers.toDate(f.latestActivity); return !!(d && d >= m24); };
+      const recentTsk = f => (f.tasks || []).some(t => { const d = helpers.toDate(t.deadline); return d && d >= m24; });
+      const map = {
+        // 24-Mt.-Grenze ist NÖTIG: ohne sie wäre eine Firma mit Besuch von vor 3 Jahren
+        // gleichzeitig "aktiv gepflegt" UND "ohne Aktivität".
+        aktiv:  f => isKunde(f) && (recentAct(f) || (f.tasks || []).some(t => t.isOpen && hasDate(t))),
+        pflege: f => isKunde(f) && (f.tasks || []).some(t => t.isOpen && t.isOverdue),
+        offen:  f => isKunde(f) && (f.tasks || []).some(t => t.isOpen && !hasDate(t)),
+        // Ausschluss offener Aufgaben ist NÖTIG: sonst wäre eine Firma mit unterminierter
+        // Aufgabe gleichzeitig "beobachten" UND "ohne Aktivität".
+        ohne:   f => isKunde(f) && !recentAct(f) && !recentTsk(f) && !(f.tasks || []).some(t => t.isOpen),
+        kein:   f => !isKunde(f)
+      };
+      return map[kind] || (() => true);
+    },
+
     firmSignal(firm) {
       if (firm.kategorie !== "Kunde") return "";
       if (firm.openTasksCount > 0 && firm.tasks.some(t => t.isOpen && t.isOverdue)) return "overdue";
@@ -603,8 +666,10 @@
           const value = kpiFilter.dataset.value;
           if (scope === "firms-kategorie") {
             state.filters.firms.kategorie = value;
-            // Stufe-2-Filter gelten nur für Kunden -> beim Wechsel weg zuruecksetzen
-            if (value !== "Kunde") { state.filters.firms.klassifizierung = ""; state.filters.firms.vip = false; }
+            // A/B/C/Akquisition + VIP + Pflege bleiben bewusst erhalten (auch bei "Alle").
+          } else if (scope === "firms-pflege") {
+            const FF = state.filters.firms;
+            FF.pflege = FF.pflege === value ? "" : value;
           } else if (scope === "firms-klassifizierung") {
             state.filters.firms.klassifizierung = value;
           } else if (scope === "firms-vip") {
@@ -631,7 +696,7 @@
             // Signal ebenso: "kein" (Nicht-Kunden) existiert nur im Segment "alle".
             state.filters.aktivitaeten.lead = "";
             state.filters.aktivitaeten.faelligkeit = "";
-            state.filters.aktivitaeten.sig = "gruen";
+            state.filters.aktivitaeten.sig = "aktiv";
             state.filters.aktivitaeten.monat = "";
           } else if (scope === "akt-faelligkeit") {
             const AF = state.filters.aktivitaeten;
@@ -847,7 +912,7 @@
         // Signal-Kategorie im Firmencockpit umschalten (exklusiv, kein Toggle-Aus:
         // "keine Kategorie" waere ein leerer Screen)
         const aktSig = event.target.closest("[data-action='akt-sig']");
-        if (aktSig) { state.filters.aktivitaeten.sig = aktSig.dataset.value || "gruen"; controller.render(); return; }
+        if (aktSig) { state.filters.aktivitaeten.sig = aktSig.dataset.value || "aktiv"; controller.render(); return; }
 
         // Achse umschalten: Agenda / Firmencockpit
         const aktAxis = event.target.closest("[data-action='akt-axis']");
@@ -2155,6 +2220,10 @@
                     <input class="bbz-input" name="hauptnummer" value="${helpers.escapeHtml(firm?.hauptnummer || "")}" />
                   </div>
                   <div class="bbz-field">
+                    <label>Kategorie</label>
+                    ${helpers.choiceSelectHtml("kategorie", LF, "Kategorie", firm?.kategorie || "Kunde", true)}
+                  </div>
+                  <div class="bbz-field">
                     <label>Klassifizierung</label>
                     ${helpers.choiceSelectHtml("klassifizierung", LF, "Klassifizierung", firm?.klassifizierung || "")}
                   </div>
@@ -2858,15 +2927,30 @@
 
     firms() {
       const filters = state.filters.firms;
-      const isKunde = filters.kategorie === "Kunde";
+
+      // Klassifizierungs-Werte NIE hardcoden: SP-Choices, sonst aus dem Datenbestand ableiten.
+      // Frueher ["A","B","C"] + startsWith(k) -> "Akquisition".startsWith("A") === true,
+      // d.h. Akquisitions-Firmen zaehlten und filterten stillschweigend als A. Jetzt exakter Match.
+      const klassValues = (state.meta.choices?.[CONFIG.lists.firms]?.["Klassifizierung"]?.length
+        ? state.meta.choices[CONFIG.lists.firms]["Klassifizierung"]
+        : [...new Set(state.enriched.firms.map(f => (f.klassifizierung || "").trim()).filter(Boolean))]
+            .sort((a, b) => a.localeCompare(b, "de")));
+
+      // Pflege-Prädikate kommen aus helpers — EINE Quelle, geteilt mit dem
+      // Aktivitäten-Cockpit. Hier nicht neu definieren.
+      const pflegePreds = Object.fromEntries(Object.keys(helpers.pflegeMeta).map(k => [k, helpers.pflegePredicate(k)]));
+      const pflegeCount = k => state.enriched.firms.filter(pflegePreds[k]).length;
+
       const filteredFirms = state.enriched.firms.filter(firm => {
         const search = filters.search.trim().toLowerCase();
         const searchMatch = !search || [firm.title, firm.ort, firm.klassifizierung, firm.hauptnummer, firm.adresse, firm.land, ...firm.contacts.map(c => c.fullName)].some(v => helpers.textIncludes(v, search));
-        const kategorieMatch = firm.kategorie === filters.kategorie;
-        // Stufe-2-Filter (Klassifizierung/VIP) greifen nur bei Kunden
-        const klassMatch = !isKunde || !filters.klassifizierung || String(firm.klassifizierung || "").toUpperCase().startsWith(filters.klassifizierung.toUpperCase());
-        const vipMatch = !isKunde || !filters.vip || firm.vip;
-        return searchMatch && kategorieMatch && klassMatch && vipMatch;
+        // Leere Kategorie = "Alle"
+        const kategorieMatch = !filters.kategorie || firm.kategorie === filters.kategorie;
+        // Stufe 2 bleibt immer aktiv — auch bei "Alle" (Vorgabe Auftraggeber)
+        const klassMatch = !filters.klassifizierung || String(firm.klassifizierung || "").trim() === filters.klassifizierung;
+        const vipMatch = !filters.vip || firm.vip;
+        const pflegeMatch = !filters.pflege || (pflegePreds[filters.pflege] ? pflegePreds[filters.pflege](firm) : true);
+        return searchMatch && kategorieMatch && klassMatch && vipMatch && pflegeMatch;
       });
       const firmSortDir = filters.sortDir === "asc" ? 1 : -1;
       const rows = [...filteredFirms].sort((a, b) => {
@@ -2903,23 +2987,34 @@
               </div>
             </div>
             <div class="bbz-section-body">
-              <!-- Stufe 1: Kategorie -->
+              <!-- Stufe 1: Kategorie — Default "Alle" -->
               <div class="bbz-kpi-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+                <button class="bbz-kpi-chip bbz-chip-lg ${!filters.kategorie ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-kategorie" data-value="">Alle <span>${state.enriched.firms.length}</span></button>
                 ${[["Kunde","Kunden"],["Lieferant","Lieferanten"],["Übrige","Übrige"]].map(([val,label]) =>
-                  `<button class="bbz-kpi-chip ${filters.kategorie === val ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-kategorie" data-value="${val}">${label} <span>${katCount(val)}</span></button>`
+                  `<button class="bbz-kpi-chip bbz-chip-lg ${filters.kategorie === val ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-kategorie" data-value="${val}">${label} <span>${katCount(val)}</span></button>`
                 ).join("")}
               </div>
-              ${isKunde ? `
-              <!-- Stufe 2: Klassifizierung + VIP (nur bei Kunden) -->
-              <div class="bbz-kpi-chips" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
-                <button class="bbz-kpi-chip ${!filters.klassifizierung ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-klassifizierung" data-value="">Alle</button>
-                ${["A","B","C"].map(k => {
-                  const cnt = state.enriched.firms.filter(f => f.kategorie === "Kunde" && String(f.klassifizierung||"").toUpperCase().startsWith(k)).length;
-                  return `<button class="bbz-kpi-chip ${filters.klassifizierung === k ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-klassifizierung" data-value="${k}">${k} <span>${cnt}</span></button>`;
+
+              <!-- Stufe 2: Klassifizierung + VIP — bleiben immer sichtbar (auch bei "Alle") -->
+              <div class="bbz-kpi-chips" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
+                <button class="bbz-kpi-chip bbz-chip-lg ${!filters.klassifizierung ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-klassifizierung" data-value="">Alle</button>
+                ${klassValues.map(k => {
+                  const cnt = state.enriched.firms.filter(f => String(f.klassifizierung || "").trim() === k).length;
+                  return `<button class="bbz-kpi-chip bbz-chip-lg ${filters.klassifizierung === k ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-klassifizierung" data-value="${helpers.escapeHtml(k)}">${helpers.escapeHtml(k)} <span>${cnt}</span></button>`;
                 }).join("")}
-                <span style="width:1px;height:20px;background:var(--line);margin:0 4px;"></span>
-                <button class="bbz-kpi-chip ${filters.vip ? "bbz-kpi-chip-active-gold" : ""}" data-action="kpi-filter" data-scope="firms-vip" data-value="yes">♛ VIP <span>${state.enriched.firms.filter(f => f.kategorie === "Kunde" && f.vip).length}</span></button>
-              </div>` : ""}
+                <span style="width:1px;height:22px;background:var(--line);margin:0 4px;"></span>
+                <button class="bbz-kpi-chip bbz-chip-lg ${filters.vip ? "bbz-kpi-chip-active-gold" : ""}" data-action="kpi-filter" data-scope="firms-vip" data-value="yes">♛ VIP <span>${state.enriched.firms.filter(f => f.vip).length}</span></button>
+              </div>
+
+              <!-- Stufe 3: Pflege-Status (greift nur bei Kunden, überlappend, Toggle) -->
+              <div class="bbz-kpi-chips" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+                <span style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--subtle);margin-right:2px;">Pflege · Kunden</span>
+                ${[["aktiv","Aktiv gepflegt","var(--green)"],["pflege","Braucht Pflege","var(--red)"],["offen","Beobachten","var(--amber)"],["ohne","Ohne Aktivität","var(--subtle)"]].map(([k,label,col]) =>
+                  `<button class="bbz-kpi-chip bbz-chip-lg ${filters.pflege === k ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-pflege" data-value="${k}" title="${label}">
+                     <span style="width:8px;height:8px;border-radius:var(--r-full);background:${col};${filters.pflege === k ? "box-shadow:0 0 0 2px rgba(255,255,255,.55);" : ""}"></span>${label} <span>${pflegeCount(k)}</span></button>`
+                ).join("")}
+              </div>
+
               <div style="margin-bottom:10px;">
                 <input class="bbz-input" style="width:100%;height:40px;font-size:14px;" data-filter="firms-search" type="text"
                   placeholder="Suche nach Firma, Ort, Ansprechpartner ..."
@@ -2965,32 +3060,16 @@
                         : signal === "ok"
                         ? `<span class="bbz-signal bbz-signal-green" title="Aktiv"></span>`
                         : `<span class="bbz-signal bbz-signal-none"></span>`;
-                      const rowClass = signal === "overdue" ? "bbz-row-alert"
-                        : (signal === "cold" || signal === "never") ? "bbz-row-cold"
-                        : signal === "ok" ? "bbz-row-ok"
-                        : "";
+                      // Keine farbige Zeilenhinterlegung mehr — der Signal-Dot reicht.
+                      // Ganze Zeilen einzufaerben erzeugte zu viel Rauschen. Nicht wieder einbauen.
                       return `
-                      <tr class="${rowClass}">
+                      <tr>
                         <td style="width:28px;padding-right:4px;">${signalDot}</td>
                         <td><a class="bbz-link" data-action="open-firm" data-id="${firm.id}">${helpers.escapeHtml(firm.title)}</a><div class="bbz-subtext">${helpers.escapeHtml(firm.hauptnummer || "—")}</div></td>
                         <td>${helpers.escapeHtml(helpers.joinNonEmpty([firm.plz, firm.ort], " ")) || '<span class="bbz-muted">—</span>'}</td>
                         <td>${firm.klassifizierung ? `<span class="${helpers.firmBadgeClass(firm.klassifizierung)}">${helpers.escapeHtml(firm.klassifizierung)}</span>` : '<span class="bbz-muted">—</span>'}</td>
                         <td>${firm.contactsCount}</td>
-                        <td>${(() => {
-                          const overdue = firm.tasks.filter(t => t.isOpen && t.isOverdue);
-                          if (overdue.length) {
-                            const oldest = [...overdue].sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline))[0];
-                            return `<span class="bbz-danger">seit ${helpers.agePhrase(oldest.deadline)} fällig</span>`;
-                          }
-                          if (firm.openTasksCount > 0) return "laufender Task";
-                          const last = helpers.toDate(firm.latestActivity);
-                          if (last) {
-                            const today = helpers.todayStart();
-                            const months = (today.getFullYear() - last.getFullYear()) * 12 + (today.getMonth() - last.getMonth());
-                            if (months <= 24) return `<span title="${helpers.formatDate(firm.latestActivity)}">vor ${helpers.agePhrase(firm.latestActivity)}</span>`;
-                          }
-                          return `<span class="bbz-muted">keine aktuellen Aktivitäten</span>`;
-                        })()}</td>
+                        <td>${helpers.statusAktivitaetHtml(firm)}</td>
                       </tr>`; }).join("") : `<tr><td colspan="6">${ui.emptyBlock("Keine Firmen für die aktuelle Filterung gefunden.")}</td></tr>`}
                   </tbody>
                 </table>
@@ -3969,26 +4048,27 @@
 
       // ── FIRMENCOCKPIT ────────────────────────────────────────────────────────
       // Signal-FILTER statt Rubriken: genau eine Kategorie sichtbar, keine dominiert.
-      const sigOf = f => {
-        const sg = helpers.firmSignal(f);
-        return (sg === "overdue" || sg === "never") ? "rot" : sg === "cold" ? "amber" : sg === "ok" ? "gruen" : "kein";
-      };
+      // Pflege-Status aus helpers — IDENTISCH mit dem Firmen-Screen. Nicht neu definieren
+      // und nicht auf firmSignal zurückbauen: dieselben Wörter hatten früher hier und dort
+      // verschiedene Bedeutungen ("Beobachten" = >12 Mt. vs. Aufgabe ohne Termin).
+      const sigMeta = { aktiv: helpers.pflegeMeta.aktiv, pflege: helpers.pflegeMeta.pflege,
+                        offen: helpers.pflegeMeta.offen, ohne: helpers.pflegeMeta.ohne };
+      if (F.segment === "alle") sigMeta.kein = helpers.pflegeMeta.kein;
+      const sigPred = Object.fromEntries(Object.keys(sigMeta).map(k => [k, helpers.pflegePredicate(k)]));
+      const sigSel = sigMeta[F.sig] ? F.sig : "aktiv";
+
       // Alle Segment-Firmen — auch nie kontaktierte (die sind gerade die dringendsten).
       const firmRows = segFirms.map(f => {
         const fa = dispActs.filter(h => h.firmId === f.id).sort((a, b) => helpers.compareDateDesc(a.datum, b.datum));
         const ft = dispTasks.filter(t => t.firmId === f.id);
         const openT = ft.filter(t => t.isOpen).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
         const ld = fa[0] ? helpers.toDate(fa[0].datum) : null;
-        return { f, fa, ft, openT, sig: sigOf(f), age: ld ? dayDiff(ld) : Infinity };
+        return { f, fa, ft, openT, age: ld ? dayDiff(ld) : Infinity };
       });
-      const sigMeta = { gruen: { lab: "Aktiv gepflegt", col: "var(--green)", note: "Gegliedert nach letztem Kontakt — neuste zuerst, wie in der Agenda." },
-                        amber: { lab: "Beobachten", col: "var(--amber)", note: "Über 12 Monate kein Kontakt." },
-                        rot:   { lab: "Brauchen Pflege", col: "var(--red)", note: "Überfällige Aufgabe oder nie kontaktiert." } };
-      if (F.segment === "alle") sigMeta.kein = { lab: "Ohne Signal", col: "var(--subtle)", note: "Lieferanten und Übrige — das Pflege-Signal gilt nur für Kunden." };
-      const sigSel = sigMeta[F.sig] ? F.sig : "gruen";
-      const sigCount = k => firmRows.filter(x => x.sig === k).length;
+      // Zustände überlappen -> zählen per Prädikat, nicht per fester Kategorie.
+      const sigCount = k => firmRows.filter(x => sigPred[k](x.f)).length;
 
-      const firmCard = ({ f, fa, ft, openT, sig, age }) => {
+      const firmCard = ({ f, fa, ft, openT, age }) => {
         const expanded = F.expandedFirms.includes(f.id);
         const last = fa[0], next = openT[0];
         const col = last ? artColor(last.typ || "—") : "var(--line)";
@@ -4031,7 +4111,7 @@
         </div>`;
       };
 
-      const sigRows = firmRows.filter(x => x.sig === sigSel);
+      const sigRows = firmRows.filter(x => sigPred[sigSel](x.f));
       const fGroups = [
         ["akt-f-wk",  "Diese Woche",  sigRows.filter(x => x.age <= 7)],
         ["akt-f-mon", "Diesen Monat", sigRows.filter(x => x.age > 7 && x.age <= 30)],
@@ -5138,10 +5218,17 @@
         return;
       }
 
+      const kategorie = (fd.get("kategorie") || "").trim();
+      if (!kategorie) {
+        ui.setMessage("Kategorie ist ein Pflichtfeld (Kunde / Lieferant / Übrige).", "error");
+        return;
+      }
+
       const fields = {
         Title: fd.get("title").trim(),
         VIP:   form.querySelector("[name='vip']")?.checked ?? false,
         // Immer senden — null löscht den Wert in SP
+        Kategorie:      kategorie,
         Adresse:        fd.get("adresse")?.trim()      || null,
         PLZ:            fd.get("plz")?.trim()           || null,
         Ort:            fd.get("ort")?.trim()            || null,

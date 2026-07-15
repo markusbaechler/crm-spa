@@ -273,3 +273,61 @@ dominant und nicht als Filter erkennbar).
 
 **Styling:** nur bestehende Tokens/`bbz-*`-Klassen; Event-Zeilen als Inline-Styles mit
 CSS-Variablen (Muster wie `historyView`). Neue CSS-Klassen in `index.html` nur wenn Media-Queries nötig sind (z. B. `.bbz-akt-split`).
+
+
+## Firmen-Screen (`views.firms()`) — Filter & Fallen
+
+**Drei Chip-Zeilen, alle `bbz-chip-lg`, alle immer sichtbar:**
+1. **Kategorie** — `Alle` (**Default**, `filters.kategorie === ""`) / Kunden / Lieferanten / Übrige.
+2. **Klassifizierung + VIP** — bleiben **auch bei „Alle" sichtbar** (Vorgabe Auftraggeber);
+   NICHT wieder an `kategorie === "Kunde"` koppeln.
+3. **Pflege · Kunden** (`firms-pflege`, Toggle, **überlappend**, greift nur auf Kunden).
+
+> **⚠ Klassifizierung NIE hardcoden.** Früher `["A","B","C"]` + `startsWith(k)` →
+> `"Akquisition".startsWith("A") === true`, d.h. Akquisitions-Firmen zählten und filterten
+> stillschweigend als **A**. Jetzt: Werte aus `state.meta.choices[CRMFirms].Klassifizierung`
+> (Fallback: distinct aus dem Datenbestand) + **exakter Match**. Gleicher Bug steckte in
+> `ui.detailBandClass` (`v.includes("A")`) → dort wird **Akquisition zuerst** geprüft.
+> Die Kontakt-Picker (`filterSegment`, `startsWith`) haben denselben Bug — noch offen.
+
+**Pflege-Prädikate** — Quelle: `helpers.pflegePredicate(kind)` + `helpers.pflegeMeta`
+(bewusst überlappend — jeder Chip ist eine Frage, keine Kategorie):
+| Chip | Definition |
+|---|---|
+| `aktiv` Aktiv gepflegt | Aktivität in **24 Mt.** ODER offene Aufgabe **mit** Termin |
+| `pflege` Braucht Pflege | offene Aufgabe, die **überfällig** ist |
+| `offen` Beobachten | offene Aufgabe **ohne** Datum/Termin |
+| `ohne` Ohne Aktivität | keine Aktivität in 24 Mt. UND keine Aufgabe mit Datum in 24 Mt. UND **keine offene Aufgabe** |
+
+> Die 24-Mt.-Grenze bei `aktiv` und der `!openTask`-Ausschluss bei `ohne` sind **nötig**:
+> ohne sie wäre eine Firma mit Besuch von 2023 gleichzeitig „aktiv gepflegt" UND „ohne
+> Aktivität", und eine Firma mit unterminierter Aufgabe „beobachten" UND „ohne Aktivität".
+
+**Keine farbige Zeilenhinterlegung** (`bbz-row-alert/cold/ok` entfernt) — der Signal-Dot
+reicht, ganze Zeilen einzufärben war Rauschen. **Nicht wieder einbauen.**
+
+**Status/Aktivität** ist klickbar (`helpers.statusAktivitaetHtml`, eine Quelle für Desktop
+und Mobile): Aufgabe → `edit-task`, Aktivität → `open-history-detail`. Precedence Task > Aktivität.
+
+**Firma erfassen/bearbeiten:** `Kategorie` ist **Pflichtfeld** im Formular UND in
+`handleFirmModalSubmit` (`fields.Kategorie`). Beides nötig — das Formularfeld allein speichert
+stumm nicht, weil der Submit eine explizite Feldliste baut.
+
+> **Vokabel-Kollision aufgelöst:** Firmen-Screen und Aktivitäten-Cockpit nutzen jetzt
+> **denselben Helper** (`helpers.pflegePredicate` / `helpers.pflegeMeta`). Ein Vokabular,
+> eine Definition, eine Codestelle. **Nicht wieder lokal nachbauen.**
+
+
+## Pflege-Status: eine Quelle für zwei Screens
+
+`helpers.pflegeMeta` (Label/Farbe/Erklärung) und `helpers.pflegePredicate(kind)` sind die
+**einzige** Definition. Genutzt von:
+- `views.firms()` → Chip-Zeile „Pflege · Kunden" (`firms-pflege`, Toggle)
+- `views.aktivitaeten()` → Firmencockpit-Signalfilter (`akt-sig`, exklusiv, Default `aktiv`)
+
+Zustände: `aktiv` · `pflege` · `offen` · `ohne` · `kein` (nur Segment „alle").
+
+> **`firmSignal` ist NICHT abgelöst.** Es liefert weiterhin die **Dots** in der Firmen-Tabelle
+> (overdue/never/cold/ok, 12-Mt.-Grenze). Die Pflege-Prädikate sind die **Filter-Sprache**
+> (24-Mt.-Grenze). Zwei verschiedene Jobs — aber die *Wörter* gehören jetzt nur noch den
+> Prädikaten. Wer den Dot-Job ändert, muss `firmSignal` anfassen, nicht `pflegePredicate`.
