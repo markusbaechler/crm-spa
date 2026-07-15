@@ -277,11 +277,21 @@ CSS-Variablen (Muster wie `historyView`). Neue CSS-Klassen in `index.html` nur w
 
 ## Firmen-Screen (`views.firms()`) — Filter & Fallen
 
-**Drei Chip-Zeilen, alle `bbz-chip-lg`, alle immer sichtbar:**
+**Header** = Titel + Zähler-Badge + **Suche** + „+ Firma" in EINER Zeile. Die Suche stand
+früher unter den Chips und wurde übersehen. Untertitel zeigt die **aktive Filterkette**
+(`activeFilterLabel`), nicht mehr „X Firmen in dieser Ansicht". Clear-Button:
+`firms-search-clear`.
+
+**Chip-Zeilen, alle `bbz-chip-lg`:**
 1. **Kategorie** — `Alle` (**Default**, `filters.kategorie === ""`) / Kunden / Lieferanten / Übrige.
-2. **Klassifizierung + VIP** — bleiben **auch bei „Alle" sichtbar** (Vorgabe Auftraggeber);
-   NICHT wieder an `kategorie === "Kunde"` koppeln.
-3. **Pflege · Kunden** (`firms-pflege`, Toggle, **überlappend**, greift nur auf Kunden).
+2. **Klassifizierung + VIP** — **nur wenn `kategorie === "Kunde"`**.
+3. **Pflege** (`firms-pflege`, Toggle, **überlappend**) — **nur wenn `kategorie === "Kunde"`**.
+
+> Stufe 2+3 sind **doppelt abgesichert**: sie werden nur gerendert *und* nur angewendet
+> (`!isKunde || ...`), wenn Kunden aktiv ist; zusätzlich setzt der `firms-kategorie`-Handler
+> `klassifizierung`/`vip`/`pflege` beim Verlassen von „Kunde" zurück. Ohne beides würde ein
+> unsichtbarer Filter als **Geisterfilter** weiterwirken. Die Zähler in Stufe 2+3 zählen
+> ebenfalls nur Kunden.
 
 > **⚠ Klassifizierung NIE hardcoden.** Früher `["A","B","C"]` + `startsWith(k)` →
 > `"Akquisition".startsWith("A") === true`, d.h. Akquisitions-Firmen zählten und filterten

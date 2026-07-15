@@ -645,6 +645,10 @@
         const openFirm = event.target.closest("[data-action='open-firm']");
         if (openFirm) { controller.openFirm(openFirm.dataset.id); return; }
 
+        // Suche im Firmen-Header leeren
+        const firmsSearchClear = event.target.closest("[data-action='firms-search-clear']");
+        if (firmsSearchClear) { state.filters.firms.search = ""; controller.render(); return; }
+
         const navPlanning = event.target.closest("[data-action='navigate-planning']");
         if (navPlanning) { event.preventDefault(); controller.navigate("aktivitaeten"); return; }
 
@@ -666,7 +670,13 @@
           const value = kpiFilter.dataset.value;
           if (scope === "firms-kategorie") {
             state.filters.firms.kategorie = value;
-            // A/B/C/Akquisition + VIP + Pflege bleiben bewusst erhalten (auch bei "Alle").
+            // Subfilter zuruecksetzen: sie sind ausserhalb von "Kunden" unsichtbar und
+            // wuerden sonst als Geisterfilter weiterwirken.
+            if (value !== "Kunde") {
+              state.filters.firms.klassifizierung = "";
+              state.filters.firms.vip = false;
+              state.filters.firms.pflege = "";
+            }
           } else if (scope === "firms-pflege") {
             const FF = state.filters.firms;
             FF.pflege = FF.pflege === value ? "" : value;
@@ -2927,6 +2937,8 @@
 
     firms() {
       const filters = state.filters.firms;
+      // Stufe 2+3 gelten nur fuer Kunden -> nur dann rendern (und nur dann anwenden).
+      const isKunde = filters.kategorie === "Kunde";
 
       // Klassifizierungs-Werte NIE hardcoden: SP-Choices, sonst aus dem Datenbestand ableiten.
       // Frueher ["A","B","C"] + startsWith(k) -> "Akquisition".startsWith("A") === true,
@@ -2946,12 +2958,21 @@
         const searchMatch = !search || [firm.title, firm.ort, firm.klassifizierung, firm.hauptnummer, firm.adresse, firm.land, ...firm.contacts.map(c => c.fullName)].some(v => helpers.textIncludes(v, search));
         // Leere Kategorie = "Alle"
         const kategorieMatch = !filters.kategorie || firm.kategorie === filters.kategorie;
-        // Stufe 2 bleibt immer aktiv — auch bei "Alle" (Vorgabe Auftraggeber)
-        const klassMatch = !filters.klassifizierung || String(firm.klassifizierung || "").trim() === filters.klassifizierung;
-        const vipMatch = !filters.vip || firm.vip;
-        const pflegeMatch = !filters.pflege || (pflegePreds[filters.pflege] ? pflegePreds[filters.pflege](firm) : true);
+        // Stufe 2+3 greifen nur bei Kunden — sie sind sonst gar nicht sichtbar.
+        const klassMatch = !isKunde || !filters.klassifizierung || String(firm.klassifizierung || "").trim() === filters.klassifizierung;
+        const vipMatch = !isKunde || !filters.vip || firm.vip;
+        const pflegeMatch = !isKunde || !filters.pflege || (pflegePreds[filters.pflege] ? pflegePreds[filters.pflege](firm) : true);
         return searchMatch && kategorieMatch && klassMatch && vipMatch && pflegeMatch;
       });
+      // Sprechender Header-Untertitel statt "X Firmen in dieser Ansicht"
+      const activeBits = [];
+      activeBits.push(filters.kategorie ? ({ Kunde: "Kunden", Lieferant: "Lieferanten", "Übrige": "Übrige" }[filters.kategorie] || filters.kategorie) : "alle Kategorien");
+      if (isKunde && filters.klassifizierung) activeBits.push(filters.klassifizierung);
+      if (isKunde && filters.vip) activeBits.push("VIP");
+      if (isKunde && filters.pflege && helpers.pflegeMeta[filters.pflege]) activeBits.push(helpers.pflegeMeta[filters.pflege].lab);
+      if (filters.search.trim()) activeBits.push(`Suche „${filters.search.trim()}“`);
+      const activeFilterLabel = activeBits.join(" · ");
+
       const firmSortDir = filters.sortDir === "asc" ? 1 : -1;
       const rows = [...filteredFirms].sort((a, b) => {
         if (filters.sortBy === "title")          return a.title.localeCompare(b.title, "de") * firmSortDir;
@@ -2977,49 +2998,59 @@
       return `
         <div>
           <section class="bbz-section">
-            <div class="bbz-section-header">
-              <div>
-                <div class="bbz-section-title">Firmen</div>
-                <div class="bbz-section-subtitle">${filteredFirms.length} ${filteredFirms.length === 1 ? "Firma" : "Firmen"} in dieser Ansicht</div>
+            <!-- Header: Titel + Zaehler + SUCHE + Aktion in einer Zeile.
+                 Die Suche stand frueher unter den Chips und wurde uebersehen. -->
+            <div class="bbz-section-header" style="align-items:center;gap:14px;flex-wrap:wrap;">
+              <div style="flex-shrink:0;">
+                <div class="bbz-section-title" style="display:flex;align-items:baseline;gap:9px;">
+                  Firmen
+                  <span style="font-size:12px;font-weight:600;color:var(--blue);background:var(--blue-light);border-radius:var(--r-full);padding:1px 9px;">${filteredFirms.length}</span>
+                </div>
+                <div class="bbz-section-subtitle">von ${state.enriched.firms.length} · ${activeFilterLabel}</div>
               </div>
-              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+              <div class="bbz-firms-search" style="flex:1;min-width:220px;position:relative;">
+                <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;color:var(--subtle);pointer-events:none;">🔍</span>
+                <input class="bbz-input" style="width:100%;height:38px;font-size:14px;padding-left:34px;padding-right:${filters.search ? "34px" : "12px"};"
+                  data-filter="firms-search" type="text"
+                  placeholder="Firma, Ort oder Ansprechpartner suchen …"
+                  value="${helpers.escapeHtml(filters.search)}" />
+                ${filters.search ? `<button data-action="firms-search-clear" title="Suche leeren" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:20px;height:20px;border:none;border-radius:var(--r-full);background:var(--line);color:var(--muted);font-size:11px;line-height:1;cursor:pointer;padding:0;">✕</button>` : ""}
+              </div>
+              <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
                 <button class="bbz-button bbz-button-primary" data-action="open-firm-form">+ Firma</button>
               </div>
             </div>
             <div class="bbz-section-body">
               <!-- Stufe 1: Kategorie — Default "Alle" -->
-              <div class="bbz-kpi-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+              <div class="bbz-kpi-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:${isKunde ? "8px" : "10px"};">
                 <button class="bbz-kpi-chip bbz-chip-lg ${!filters.kategorie ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-kategorie" data-value="">Alle <span>${state.enriched.firms.length}</span></button>
                 ${[["Kunde","Kunden"],["Lieferant","Lieferanten"],["Übrige","Übrige"]].map(([val,label]) =>
                   `<button class="bbz-kpi-chip bbz-chip-lg ${filters.kategorie === val ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-kategorie" data-value="${val}">${label} <span>${katCount(val)}</span></button>`
                 ).join("")}
               </div>
 
-              <!-- Stufe 2: Klassifizierung + VIP — bleiben immer sichtbar (auch bei "Alle") -->
+              ${isKunde ? `
+              <!-- Stufe 2+3 NUR bei Kunden: Klassifizierung/VIP/Pflege gelten nur fuer Kunden.
+                   Bei "Alle" wirkten sie deplatziert. -->
               <div class="bbz-kpi-chips" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
                 <button class="bbz-kpi-chip bbz-chip-lg ${!filters.klassifizierung ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-klassifizierung" data-value="">Alle</button>
                 ${klassValues.map(k => {
-                  const cnt = state.enriched.firms.filter(f => String(f.klassifizierung || "").trim() === k).length;
+                  const cnt = state.enriched.firms.filter(f => f.kategorie === "Kunde" && String(f.klassifizierung || "").trim() === k).length;
                   return `<button class="bbz-kpi-chip bbz-chip-lg ${filters.klassifizierung === k ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-klassifizierung" data-value="${helpers.escapeHtml(k)}">${helpers.escapeHtml(k)} <span>${cnt}</span></button>`;
                 }).join("")}
                 <span style="width:1px;height:22px;background:var(--line);margin:0 4px;"></span>
-                <button class="bbz-kpi-chip bbz-chip-lg ${filters.vip ? "bbz-kpi-chip-active-gold" : ""}" data-action="kpi-filter" data-scope="firms-vip" data-value="yes">♛ VIP <span>${state.enriched.firms.filter(f => f.vip).length}</span></button>
+                <button class="bbz-kpi-chip bbz-chip-lg ${filters.vip ? "bbz-kpi-chip-active-gold" : ""}" data-action="kpi-filter" data-scope="firms-vip" data-value="yes">♛ VIP <span>${state.enriched.firms.filter(f => f.kategorie === "Kunde" && f.vip).length}</span></button>
               </div>
 
-              <!-- Stufe 3: Pflege-Status (greift nur bei Kunden, überlappend, Toggle) -->
               <div class="bbz-kpi-chips" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
-                <span style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--subtle);margin-right:2px;">Pflege · Kunden</span>
-                ${[["aktiv","Aktiv gepflegt","var(--green)"],["pflege","Braucht Pflege","var(--red)"],["offen","Beobachten","var(--amber)"],["ohne","Ohne Aktivität","var(--subtle)"]].map(([k,label,col]) =>
-                  `<button class="bbz-kpi-chip bbz-chip-lg ${filters.pflege === k ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-pflege" data-value="${k}" title="${label}">
-                     <span style="width:8px;height:8px;border-radius:var(--r-full);background:${col};${filters.pflege === k ? "box-shadow:0 0 0 2px rgba(255,255,255,.55);" : ""}"></span>${label} <span>${pflegeCount(k)}</span></button>`
-                ).join("")}
-              </div>
+                <span style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--subtle);margin-right:2px;">Pflege</span>
+                ${["aktiv","pflege","offen","ohne"].map(k => {
+                  const meta = helpers.pflegeMeta[k];
+                  return `<button class="bbz-kpi-chip bbz-chip-lg ${filters.pflege === k ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-pflege" data-value="${k}" title="${helpers.escapeHtml(meta.note)}">
+                     <span style="width:8px;height:8px;border-radius:var(--r-full);background:${meta.col};${filters.pflege === k ? "box-shadow:0 0 0 2px rgba(255,255,255,.55);" : ""}"></span>${helpers.escapeHtml(meta.lab)} <span>${pflegeCount(k)}</span></button>`;
+                }).join("")}
+              </div>` : ""}
 
-              <div style="margin-bottom:10px;">
-                <input class="bbz-input" style="width:100%;height:40px;font-size:14px;" data-filter="firms-search" type="text"
-                  placeholder="Suche nach Firma, Ort, Ansprechpartner ..."
-                  value="${helpers.escapeHtml(filters.search)}" />
-              </div>
               <!-- Signal-Legende (aufklappbar) -->
               <div style="margin-bottom:10px;">
                 <button style="background:none;border:none;padding:0;color:var(--blue);font-size:12px;font-weight:600;cursor:pointer;" data-action="toggle-firm-legende">${filters.legendeOffen ? "▾" : "▸"} Was bedeuten die Punkte?</button>
