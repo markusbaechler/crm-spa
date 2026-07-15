@@ -214,7 +214,8 @@ Zähler: total · 30 Tage · 365 Tage. Kontaktart-Split-Bar aus `choices[CRMHist
   Kacheln im `.bbz-akt-fgrid` (auto-fill, 3/2/1 Spalten), aufgeklappte Kachel spannt voll
   (`.is-open`) und zeigt Aktivitäten|Aufgaben der Firma (`.bbz-akt-fsplit`).
   **Der Signal-Punkt entfällt in der Kachel** — im gefilterten Cockpit trägt er keine
-  Information. `firmRows` umfasst **alle** Segment-Firmen, auch nie kontaktierte (Signal
+  Information. **Kein Platzhalter „keine offene Aufgabe"** — der Text war reines Rauschen;
+  fehlt die nächste Aufgabe, bleibt die Stelle leer. Nicht wieder einbauen. `firmRows` umfasst **alle** Segment-Firmen, auch nie kontaktierte (Signal
   `never` → `rot`); nicht auf „nur Firmen mit Daten" filtern, sonst fehlen die dringendsten.
 
 **Visuelle Grammatik (Kern gegen Verwechslung):** Aktivität und Aufgabe haben
@@ -230,6 +231,12 @@ einzeilig in `--subtle`.
 - **Aktivitäten:** Anzahl **im laufenden Monat** + **Delta vs. Vormonat** + **6-Monats-Balken**
   + Ø/Monat + **Kanalmix in %** (12 Mt.). Bewusst **kein „total"** — beantwortet keine Frage.
   Balken und Mix **reagieren auf Segment/Lead-Filter** (messen die gefilterte Bearbeitung).
+- **Die Balken sind ein Filter** (`akt-monat`, `F.monat` = Monatsschlüssel `year*12+month`,
+  Toggle). Klick setzt den Monat und erzwingt `axis="chrono"`. **Wirkt NUR auf die
+  Agenda-Aktivitäten** — nicht auf Aufgaben und **nicht auf das Firmencockpit**: dort würde ein
+  Monatsfilter „Letzter Touch" verfälschen. Bei aktivem Filter zeigt die Aktivitäten-Spalte
+  **eine** Gruppe `akt-p-sel` (Monatsname), weil Woche/Monat/Früher dann sinnlos wäre
+  (alles fiele in „Früher"). Aufheben über den ✕-Chip im Panelkopf.
 - **Aufgaben:** offen + erledigt-Zähler + Fälligkeits-Chips + **älteste überfällige Aufgabe**.
   `cDone` ist ein **Gesamtzähler**, kein Monatswert: CRMTasks hat **kein Erledigt-Datum**.
 

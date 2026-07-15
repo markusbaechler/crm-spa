@@ -144,7 +144,7 @@
       planning: { search: "", onlyOpen: CONFIG.defaults.planningShowOnlyOpen, groupBy: "none", sortBy: "deadline", sortDir: "asc", segment: "", leadbbz: "", faelligkeit: "" },
       history: { search: "", kontaktart: "", viewMode: "firms", lens: "", granularitaet: "monat", periode: "", expandedFirms: [] },
       // Zusammengeführte Aktivitäten+Aufgaben-Route (ersetzt planning + history)
-      aktivitaeten: { segment: "kunden", axis: "chrono", search: "", lead: "", faelligkeit: "", sig: "gruen", expandedFirms: [], bucketOpen: {}, moreOpen: {}, legendeOffen: false },
+      aktivitaeten: { segment: "kunden", axis: "chrono", search: "", lead: "", faelligkeit: "", sig: "gruen", monat: "", expandedFirms: [], bucketOpen: {}, moreOpen: {}, legendeOffen: false },
       events: { search: "", onlyWithOpenTasks: false, sortBy: "contactName", sortDir: "asc", segment: "", selectedEvent: "" },
       admin: { zeitfenster: "30" }
     },
@@ -632,6 +632,7 @@
             state.filters.aktivitaeten.lead = "";
             state.filters.aktivitaeten.faelligkeit = "";
             state.filters.aktivitaeten.sig = "gruen";
+            state.filters.aktivitaeten.monat = "";
           } else if (scope === "akt-faelligkeit") {
             const AF = state.filters.aktivitaeten;
             AF.faelligkeit = AF.faelligkeit === value ? "" : value;
@@ -831,6 +832,18 @@
         }
 
         // ── Zusammengeführte Aktivitäten-Route ──────────────────────────────
+        // Balken im Monatsvergleich = Monatsfilter fuer die Aktivitaeten-Spalte (Toggle).
+        // Wirkt bewusst NUR auf die Agenda-Aktivitaeten, nicht auf Aufgaben oder das
+        // Firmencockpit: dort wuerde ein Monatsfilter "Letzter Touch" verfaelschen.
+        const aktMonat = event.target.closest("[data-action='akt-monat']");
+        if (aktMonat) {
+          const AF = state.filters.aktivitaeten;
+          const v = aktMonat.dataset.value || "";
+          AF.monat = (AF.monat === v) ? "" : v;
+          if (AF.monat) AF.axis = "chrono";   // Filter ist nur in der Agenda sichtbar
+          controller.render(); return;
+        }
+
         // Signal-Kategorie im Firmencockpit umschalten (exklusiv, kein Toggle-Aus:
         // "keine Kategorie" waere ein leerer Screen)
         const aktSig = event.target.closest("[data-action='akt-sig']");
@@ -854,7 +867,7 @@
         if (aktBucket) {
           const id = aktBucket.dataset.bucket;
           const AF = state.filters.aktivitaeten;
-          const defOpen = { "akt-p-week": true, "akt-p-month": true, "akt-p-old": false, "akt-c-over": true, "akt-c-month": true, "akt-c-later": false, "akt-c-done": false, "akt-f-wk": true, "akt-f-mon": true, "akt-f-alt": false };
+          const defOpen = { "akt-p-sel": true, "akt-p-week": true, "akt-p-month": true, "akt-p-old": false, "akt-c-over": true, "akt-c-month": true, "akt-c-later": false, "akt-c-done": false, "akt-f-wk": true, "akt-f-mon": true, "akt-f-alt": false };
           const cur = (id in AF.bucketOpen) ? AF.bucketOpen[id] : (defOpen[id] ?? true);
           AF.bucketOpen[id] = !cur;
           controller.render(); return;
@@ -3800,12 +3813,25 @@
       const nowN = months[5].n, prevN = months[4].n, deltaN = nowN - prevN;
       const maxN = Math.max(1, ...months.map(m => m.n));
       const avg = (acts12.length / 12).toFixed(1).replace(".", ",");
-      const barsHtml = months.map(m => `
-        <div class="bbz-akt-bar" title="${esc(m.lab)}: ${m.n} Aktivitäten" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:3px;">
-          <b style="font-size:9px;font-weight:700;color:var(--subtle);">${m.n}</b>
-          <i style="display:block;width:100%;height:${Math.round(m.n / maxN * 40) + 4}px;background:${m === months[5] ? "var(--blue)" : "var(--blue-light)"};border-radius:3px 3px 0 0;"></i>
-        </div>`).join("");
-      const barLabHtml = months.map(m => `<span style="flex:1;text-align:center;font-size:9.5px;text-transform:uppercase;color:${m === months[5] ? "var(--blue)" : "var(--subtle)"};font-weight:${m === months[5] ? 700 : 400};">${esc(m.lab)}</span>`).join("");
+      // Balken sind Filter: Klick waehlt den Monat, erneuter Klick hebt auf.
+      const monSel = F.monat ? Number(F.monat) : null;
+      const barsHtml = months.map(m => {
+        const on = monSel === m.k;
+        const dim = monSel !== null && !on;
+        const col = on ? "var(--blue)" : (m === months[5] && monSel === null ? "var(--blue)" : "var(--blue-light)");
+        return `<div class="bbz-akt-bar" data-action="akt-monat" data-value="${m.k}" role="button" tabindex="0"
+          title="${esc(m.lab)}: ${m.n} Aktivitäten — klicken zum Filtern"
+          style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:3px;cursor:pointer;opacity:${dim ? ".45" : "1"};">
+          <b style="font-size:9px;font-weight:700;color:${on ? "var(--blue)" : "var(--subtle)"};">${m.n}</b>
+          <i style="display:block;width:100%;height:${Math.round(m.n / maxN * 40) + 4}px;background:${col};border-radius:3px 3px 0 0;${on ? "box-shadow:0 0 0 2px var(--blue-light);" : ""}"></i>
+        </div>`;
+      }).join("");
+      const barLabHtml = months.map(m => {
+        const on = monSel === m.k;
+        const hi = on || (m === months[5] && monSel === null);
+        return `<span style="flex:1;text-align:center;font-size:9.5px;text-transform:uppercase;color:${hi ? "var(--blue)" : "var(--subtle)"};font-weight:${hi ? 700 : 400};opacity:${monSel !== null && !on ? ".45" : "1"};">${esc(m.lab)}</span>`;
+      }).join("");
+      const monSelLab = monSel !== null ? (months.find(m => m.k === monSel)?.lab || "") : "";
 
       const artOrder = state.meta.choices?.[CONFIG.lists.history]?.["Kontaktart"] || [];
       const artCounts = new Map();
@@ -3884,7 +3910,7 @@
       };
 
       // ── Gruppen-Helper ───────────────────────────────────────────────────────
-      const defOpenMap = { "akt-p-week": true, "akt-p-month": true, "akt-p-old": false,
+      const defOpenMap = { "akt-p-sel": true, "akt-p-week": true, "akt-p-month": true, "akt-p-old": false,
                            "akt-c-over": true, "akt-c-month": true, "akt-c-later": false, "akt-c-done": false,
                            "akt-f-wk": true, "akt-f-mon": true, "akt-f-alt": false };
       const isOpenBucket = id => (id in F.bucketOpen) ? F.bucketOpen[id] : (defOpenMap[id] ?? true);
@@ -3899,12 +3925,18 @@
       };
 
       // ── AGENDA (Hauptansicht) ────────────────────────────────────────────────
-      const actsSorted = dispActs.slice().sort((a, b) => helpers.compareDateDesc(a.datum, b.datum));
+      // Monatsfilter wirkt nur hier (Agenda-Aktivitaeten), nicht auf Aufgaben/Firmencockpit.
+      const monPass = h => { if (monSel === null) return true; const d = helpers.toDate(h.datum); return d && mKey(d) === monSel; };
+      const agendaActs = dispActs.filter(monPass);
+      const actsSorted = agendaActs.slice().sort((a, b) => helpers.compareDateDesc(a.datum, b.datum));
       const ageOf = h => { const d = helpers.toDate(h.datum); return d ? dayDiff(d) : Infinity; };
-      const aWeek = actsSorted.filter(h => ageOf(h) <= 7);
-      const aMon  = actsSorted.filter(h => { const a = ageOf(h); return a > 7 && a <= 30; });
-      const aOld  = actsSorted.filter(h => ageOf(h) > 30);
-      const actGroups = [["akt-p-week", "Diese Woche", aWeek], ["akt-p-month", "Diesen Monat", aMon], ["akt-p-old", "Früher", aOld]].filter(g => g[2].length);
+      // Bei aktivem Monatsfilter waere Woche/Monat/Früher sinnlos (alles landet in "Früher")
+      // -> eine einzige, offene Gruppe mit dem Monatsnamen.
+      const actGroups = monSel !== null
+        ? [["akt-p-sel", `${monSelLab} — gefiltert`, actsSorted]].filter(g => g[2].length)
+        : [["akt-p-week", "Diese Woche", actsSorted.filter(h => ageOf(h) <= 7)],
+           ["akt-p-month", "Diesen Monat", actsSorted.filter(h => { const a = ageOf(h); return a > 7 && a <= 30; })],
+           ["akt-p-old", "Früher", actsSorted.filter(h => ageOf(h) > 30)]].filter(g => g[2].length);
 
       const openDisp = dispTasks.filter(t => t.isOpen);
       const tOver  = openDisp.filter(t => t.isOverdue).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
@@ -3922,7 +3954,7 @@
       const agendaHtml = `
         <div class="bbz-akt-split">
           <section>
-            ${colHead("Aktivitäten", `Verlauf · ${dispActs.length}`, "#c3d3e3")}
+            ${colHead("Aktivitäten", monSel !== null ? `${monSelLab} · ${agendaActs.length}` : `Verlauf · ${agendaActs.length}`, "#c3d3e3")}
             ${actGroups.length ? actGroups.map(([id, lab, items]) =>
               grpHead(id, lab, items.length, false) + (isOpenBucket(id) ? capped(id, items, h => evAct(h, true), `<div class="bbz-akt-tl">`, `</div>`) : "")
             ).join("") : `<div style="font-size:12px;color:var(--subtle);padding:4px 2px;">Keine Aktivitäten im Filter.</div>`}
@@ -3963,8 +3995,9 @@
         const ageTxt = last
           ? `<span style="font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0;">${esc(helpers.relativeDate(last.datum))}</span>`
           : `<span style="font-size:11px;color:var(--subtle);white-space:nowrap;flex-shrink:0;">nie kontaktiert</span>`;
-        const nextCol = next ? (next.isOverdue ? "color:var(--red);font-weight:600;" : (dl(next) && dl(next) <= mo ? "color:var(--amber);font-weight:600;" : "color:var(--text);")) : "color:var(--subtle);";
-        const nextTxt = next ? `→ ${esc(next.title)} · ${next.isOverdue ? esc(helpers.relativeDate(next.deadline)) + " fällig" : esc(helpers.relativeDate(next.deadline))}` : "→ keine offene Aufgabe";
+        const nextCol = next ? (next.isOverdue ? "color:var(--red);font-weight:600;" : (dl(next) && dl(next) <= mo ? "color:var(--amber);font-weight:600;" : "color:var(--text);")) : "";
+        // Kein Platzhalter, wenn keine offene Aufgabe existiert — das war reines Rauschen.
+        const nextTxt = next ? `→ ${esc(next.title)} · ${next.isOverdue ? esc(helpers.relativeDate(next.deadline)) + " fällig" : esc(helpers.relativeDate(next.deadline))}` : "";
         const leads = [...new Set([...fa, ...ft].map(leadOf).filter(Boolean))].join(", ");
         const merged = [...fa.map(h => ({ k: "a", it: h })), ...ft.map(t => ({ k: "t", it: t }))];
         return `<div class="bbz-akt-fcard ${expanded ? "is-open" : ""}">
@@ -3978,7 +4011,7 @@
             <div style="display:flex;align-items:baseline;gap:6px;margin-top:1px;">
               <span style="width:7px;height:7px;border-radius:var(--r-full);flex-shrink:0;background:${col};"></span>
               ${last ? `<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;flex-shrink:0;color:${col};">${esc(last.typ || "")}</span>` : ""}
-              <span style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1;${nextCol}">${nextTxt}</span>
+              ${next ? `<span style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1;${nextCol}">${nextTxt}</span>` : `<span style="flex:1;"></span>`}
               ${leads ? `<span style="font-size:9.5px;color:var(--subtle);white-space:nowrap;flex-shrink:0;">${esc(leads)}</span>` : ""}
             </div>
           </div>
@@ -4042,7 +4075,9 @@
                 <span style="font-size:12px;color:var(--muted);">im ${esc(months[5].lab)}</span>
                 ${deltaN !== 0 ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:var(--r-full);${deltaN > 0 ? "background:#e7f2ea;color:var(--green);" : "background:var(--red-soft);color:var(--red);"}">${deltaN > 0 ? "▲ +" : "▼ "}${deltaN} vs. ${esc(months[4].lab)}</span>`
                              : `<span style="font-size:11px;color:var(--subtle);">unverändert vs. ${esc(months[4].lab)}</span>`}
-                <span style="font-size:12px;color:var(--muted);margin-left:auto;">Ø ${avg}/Mt. · ${acts12.length} in 12 Mt.</span>
+                ${monSel !== null
+                  ? `<button class="bbz-kpi-chip" data-action="akt-monat" data-value="${monSel}" style="margin-left:auto;color:var(--red);border-color:var(--red-light);" title="Monatsfilter aufheben">✕ Filter: ${esc(monSelLab)}</button>`
+                  : `<span style="font-size:12px;color:var(--muted);margin-left:auto;">Ø ${avg}/Mt. · ${acts12.length} in 12 Mt.</span>`}
               </div>
               <div style="display:flex;align-items:flex-end;gap:7px;height:52px;margin:11px 0 3px;">${barsHtml}</div>
               <div style="display:flex;gap:7px;">${barLabHtml}</div>
