@@ -482,6 +482,36 @@
       return map[kind] || (() => true);
     },
 
+    // ══ Kontakt-Auswahl: EINE Quelle fuer Aktivitaets- UND Aufgaben-Formular ═══════
+    // Vorher standen ~500 Namen in SharePoint-Reihenfolge im Dropdown: unsortiert und
+    // ungruppiert. Man konnte einen Namen nicht finden, nur suchen — das war die groesste
+    // Erfassungsbremse der App (1,2 erfasste Aktivitaeten pro Woche im ganzen Team).
+    // Jetzt: nach Firma gruppiert (<optgroup>) und alphabetisch. Browser-Typeahead greift.
+    contactOptionsHtml(selectedId, firmFilter, keepId) {
+      const list = state.enriched.contacts
+        .filter(c => !c.archiviert || (keepId && String(c.id) === String(keepId)))
+        .filter(c => !firmFilter || String(c.firmId) === String(firmFilter))
+        .sort((a, b) => (a.firmTitle || "\uffff").localeCompare(b.firmTitle || "\uffff", "de")
+                     || (a.fullName || "").localeCompare(b.fullName || "", "de"));
+      const byFirm = new Map();
+      list.forEach(c => { const k = c.firmTitle || "— ohne Firma —";
+        if (!byFirm.has(k)) byFirm.set(k, []); byFirm.get(k).push(c); });
+      return [...byFirm.entries()].map(([firm, cs]) =>
+        `<optgroup label="${helpers.escapeHtml(firm)}" data-firm-id="${cs[0].firmId || ""}">${cs.map(c =>
+          `<option value="${c.id}" ${String(selectedId) === String(c.id) ? "selected" : ""}>${helpers.escapeHtml(c.fullName || c.nachname)}</option>`
+        ).join("")}</optgroup>`).join("");
+    },
+
+    // Firmen-Vorfilter fuer die Kontakt-Auswahl: nur Firmen, die Kontakte haben.
+    contactFirmFilterHtml(selected) {
+      const rows = state.enriched.firms
+        .filter(f => f.contacts.some(c => !c.archiviert))
+        .sort((a, b) => a.title.localeCompare(b.title, "de"));
+      const total = state.enriched.contacts.filter(c => !c.archiviert).length;
+      return `<option value="">— alle Firmen (${total} Kontakte) —</option>` + rows.map(f =>
+        `<option value="${f.id}" ${String(selected) === String(f.id) ? "selected" : ""}>${helpers.escapeHtml(f.title)} (${f.contacts.filter(c => !c.archiviert).length})</option>`).join("");
+    },
+
     // ══ Klassifizierung: EINE Quelle, exakter Vergleich ══════════════════════════
     // NIE ["A","B","C"] hardcoden und NIE mit startsWith()/includes() vergleichen:
     // "Akquisition".startsWith("A") === true -> Akquisitions-Firmen liefen als A durch
@@ -674,6 +704,10 @@
       document.addEventListener("click", (event) => {
         const openFirm = event.target.closest("[data-action='open-firm']");
         if (openFirm) { controller.openFirm(openFirm.dataset.id); return; }
+
+        // Notausgang aus dem Fehler-Screen
+        const reloadApp = event.target.closest("[data-action='reload-app']");
+        if (reloadApp) { location.reload(); return; }
 
         // Suche im Firmen-Header leeren
         const firmsSearchClear = event.target.closest("[data-action='firms-search-clear']");
@@ -1322,6 +1356,22 @@
 
       // isPrivat-Label: dynamisch aktualisieren wenn Firma im Kontaktformular wechselt
       document.addEventListener("change", (event) => {
+        // Firmen-Vorfilter im Aktivitaets-/Aufgaben-Formular: baut NUR das Kontakt-Select neu.
+        // Ein controller.render() wuerde das Modal komplett neu erzeugen und getippte
+        // Notizen verwerfen — deshalb hier bewusst direkte DOM-Manipulation.
+        const cFirmFilter = event.target.closest("[data-filter='form-contact-firm']");
+        if (cFirmFilter) {
+          const box = cFirmFilter.closest(".bbz-modal");
+          const sel = box?.querySelector("select[name='kontaktLookupId']");
+          if (sel) {
+            const cur = sel.value;
+            sel.innerHTML = `<option value="">— bitte waehlen —</option>`
+              + helpers.contactOptionsHtml(cur, cFirmFilter.value, sel.dataset.keep || null);
+            // War die Auswahl weggefiltert, wird sie zurueckgesetzt statt still falsch zu bleiben
+            if (String(sel.value) !== String(cur)) sel.value = "";
+          }
+        }
+
         const firmSelect = event.target.closest("[data-modal-form='contact'] select[name='firmaLookupId']");
         if (firmSelect && state.meta.privateFirmId !== null) {
           const isPrivat = String(firmSelect.value) === String(state.meta.privateFirmId);
@@ -2089,7 +2139,38 @@
       return `<div class="bbz-mini-item"><div class="bbz-mini-title">${title}</div><div class="bbz-mini-meta">${meta}</div></div>`;
     },
 
+    // Fehler-Absicherung: ohne sie fuehrt EIN Fehler in EINER View zu einer komplett
+    // weissen App — der Nutzer sieht nichts, nicht mal einen Hinweis. Der Wrapper faengt
+    // das ab, zeigt die Meldung und laesst Nav + Modal-Schliessen funktionsfaehig.
     renderRoute() {
+      try {
+        return this.renderRouteInner();
+      } catch (err) {
+        console.error("[bbz] Render-Fehler in Route '" + state.filters.route + "':", err);
+        return `
+          <section class="bbz-section">
+            <div class="bbz-section-header"><div><div class="bbz-section-title">Anzeigefehler</div>
+              <div class="bbz-section-subtitle">Route „${helpers.escapeHtml(state.filters.route)}“ konnte nicht dargestellt werden</div></div></div>
+            <div class="bbz-section-body">
+              <div style="border:1px solid var(--red-light);background:var(--red-soft);border-radius:var(--r-md);padding:12px 14px;">
+                <div style="font-weight:700;color:var(--red);margin-bottom:5px;">${helpers.escapeHtml(String(err && err.message || err))}</div>
+                <div style="font-size:12px;color:var(--muted);">Die Daten sind nicht verloren — nur diese Ansicht ist betroffen.
+                Wechsle über die Navigation auf einen anderen Screen oder lade die Seite neu.</div>
+              </div>
+              <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">
+                <button class="bbz-button bbz-button-primary" data-action="kpi-filter" data-scope="navigate" data-value="firms">Zu den Firmen</button>
+                <button class="bbz-button bbz-button-secondary" data-action="reload-app">Seite neu laden</button>
+              </div>
+              <details style="margin-top:10px;">
+                <summary style="cursor:pointer;font-size:12px;color:var(--subtle);">Technische Details</summary>
+                <pre style="white-space:pre-wrap;font-size:11px;color:var(--muted);margin-top:6px;">${helpers.escapeHtml(String(err && err.stack || ""))}</pre>
+              </details>
+            </div>
+          </section>`;
+      }
+    },
+
+    renderRouteInner() {
       if (state.meta.loading) return ui.loadingBlock();
 
       let viewHtml = "";
@@ -2312,6 +2393,9 @@
       const itemId = Number(payload.itemId || 0) || null;
       const entry = mode === "edit" ? state.enriched.history.find(h => h.id === itemId) || null : null;
       const prefillContactId = Number(payload.prefillContactId || entry?.contactId || 0) || "";
+      // Firmen-Vorfilter folgt dem vorgewaehlten Kontakt — stimmt so auch im Edit-Modus.
+      const prefillFirmId = Number(payload.prefillFirmId
+        || state.enriched.contacts.find(c => String(c.id) === String(prefillContactId))?.firmId || 0) || "";
       const LH = CONFIG.lists.history;
       const title = mode === "edit" ? "Aktivitaet bearbeiten" : "Aktivitaet erfassen";
 
@@ -2326,10 +2410,16 @@
               <div class="bbz-modal-body" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;">
                 <div class="bbz-form-grid">
                   <div class="bbz-field">
+                    <label>Firma <span style="font-weight:400;color:var(--subtle);">— grenzt die Kontaktliste ein</span></label>
+                    <select class="bbz-select" data-filter="form-contact-firm" ${mode === "edit" ? "disabled" : ""}>
+                      ${helpers.contactFirmFilterHtml(prefillFirmId)}
+                    </select>
+                  </div>
+                  <div class="bbz-field">
                     <label>Kontakt *</label>
-                    <select class="bbz-select" name="kontaktLookupId" required ${mode === "edit" ? "disabled" : ""}>
+                    <select class="bbz-select" name="kontaktLookupId" data-keep="${entry?.contactId || ""}" required ${mode === "edit" ? "disabled" : ""}>
                       <option value="">— bitte waehlen —</option>
-                      ${state.enriched.contacts.filter(c => !c.archiviert || (entry && c.id === entry.contactId)).map(c => `<option value="${c.id}" ${String(prefillContactId) === String(c.id) ? "selected" : ""}>${helpers.escapeHtml(c.fullName || c.nachname)}${c.firmTitle ? " — " + helpers.escapeHtml(c.firmTitle) : ""}</option>`).join("")}
+                      ${helpers.contactOptionsHtml(prefillContactId, prefillFirmId, entry?.contactId)}
                     </select>
                     ${mode === "edit" ? `<input type="hidden" name="kontaktLookupId" value="${prefillContactId}" />` : ""}
                   </div>
@@ -2376,6 +2466,8 @@
       const itemId = Number(payload.itemId || 0) || null;
       const task = mode === "edit" ? state.enriched.tasks.find(t => t.id === itemId) || null : null;
       const prefillContactId = Number(payload.prefillContactId || task?.contactId || 0) || "";
+      const prefillFirmId = Number(payload.prefillFirmId
+        || state.enriched.contacts.find(c => String(c.id) === String(prefillContactId))?.firmId || 0) || "";
       const LT = CONFIG.lists.tasks;
       const title = mode === "edit" ? "Aufgabe bearbeiten" : "Aufgabe erfassen";
 
@@ -2394,10 +2486,16 @@
                     <input class="bbz-input" name="title" required value="${helpers.escapeHtml(task?.title || "")}" placeholder="Was ist zu tun?" />
                   </div>
                   <div class="bbz-field">
+                    <label>Firma <span style="font-weight:400;color:var(--subtle);">— grenzt die Kontaktliste ein</span></label>
+                    <select class="bbz-select" data-filter="form-contact-firm" ${mode === "edit" ? "disabled" : ""}>
+                      ${helpers.contactFirmFilterHtml(prefillFirmId)}
+                    </select>
+                  </div>
+                  <div class="bbz-field">
                     <label>Kontakt *</label>
-                    <select class="bbz-select" name="kontaktLookupId" required ${mode === "edit" ? "disabled" : ""}>
+                    <select class="bbz-select" name="kontaktLookupId" data-keep="${task?.contactId || ""}" required ${mode === "edit" ? "disabled" : ""}>
                       <option value="">— bitte waehlen —</option>
-                      ${state.enriched.contacts.filter(c => !c.archiviert || (task && c.id === task.contactId)).map(c => `<option value="${c.id}" ${String(prefillContactId) === String(c.id) ? "selected" : ""}>${helpers.escapeHtml(c.fullName || c.nachname)}${c.firmTitle ? " — " + helpers.escapeHtml(c.firmTitle) : ""}</option>`).join("")}
+                      ${helpers.contactOptionsHtml(prefillContactId, prefillFirmId, task?.contactId)}
                     </select>
                     ${mode === "edit" ? `<input type="hidden" name="kontaktLookupId" value="${prefillContactId}" />` : ""}
                   </div>

@@ -488,3 +488,39 @@ Formulare erzwingen Firma (`firmaLookupId required`) bzw. Kontakt (`kontaktLooku
 
 > **CSS-Klammerbilanz prüfen** (`{` == `}`), nicht nur `node --check`. Eine einzige
 > überzählige Klammer verschluckt den Rest des Stylesheets — und `node --check` sieht kein CSS.
+
+
+## Erfassung: Kontakt-Auswahl
+
+`helpers.contactOptionsHtml(selectedId, firmFilter, keepId)` + `helpers.contactFirmFilterHtml(sel)`
+sind die **einzige** Quelle für die Kontakt-Auswahl in `renderHistoryForm` **und** `renderTaskForm`.
+
+> **Warum das wichtig ist:** Vorher standen ~500 Kontakte **unsortiert in SharePoint-Reihenfolge**
+> im Dropdown. Man konnte einen Namen nicht finden, nur suchen. Das war die grösste
+> Erfassungsbremse der App — bei **1,2 erfassten Aktivitäten pro Woche im ganzen Team** ist
+> nicht die Pflege das Problem, sondern das Erfassen. Jetzt: **nach Firma gruppiert**
+> (`<optgroup>`) und alphabetisch, plus **Firmen-Vorfilter** darüber. Nicht auf eine flache,
+> unsortierte Liste zurückbauen.
+
+> **⚠ Der Firmen-Vorfilter (`data-filter="form-contact-firm"`) darf KEIN `controller.render()`
+> auslösen.** Ein Re-Render baut das Modal komplett neu und **verwirft getippte Notizen**.
+> Der Handler ersetzt deshalb nur das `innerHTML` des Kontakt-Selects (gleiches Muster wie der
+> bestehende `firmSelect`-Handler im Kontakt-Formular). `data-keep` am Select trägt die ID
+> eines evtl. archivierten Kontakts, damit er im Edit-Modus sichtbar bleibt.
+
+`prefillFirmId` wird in beiden Formularen **aus dem vorgewählten Kontakt abgeleitet** — so
+stimmt der Vorfilter auch im Edit-Modus, ohne dass das Payload es tragen muss.
+
+## Fehler-Absicherung im Render-Pfad
+
+`views.renderRoute()` ist ein **Wrapper mit `try/catch`** um `views.renderRouteInner()`.
+
+> Ohne ihn führt **ein** Fehler in **einer** View zur **komplett weissen App** — der Nutzer
+> sieht nichts, nicht einmal einen Hinweis. Genau das wäre bei einem `ui.afterRender()` statt
+> `this.afterRender()` passiert: syntaktisch tadellos, zur Laufzeit `TypeError`, Startseite leer.
+> `node --check` findet solche Fehler **nicht**.
+
+Der Fallback zeigt Meldung, Route, einklappbaren Stack, einen Weg zu einer anderen View und
+`data-action="reload-app"`. Nav und Modal-Schliessen bleiben funktionsfähig, weil Shell und
+Delegation ausserhalb liegen. **Nicht entfernen** — und neue Render-Pfade nicht am Wrapper
+vorbeibauen.
