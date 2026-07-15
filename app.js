@@ -481,6 +481,23 @@
       return map[kind] || (() => true);
     },
 
+    // ══ Klassifizierung: EINE Quelle, exakter Vergleich ══════════════════════════
+    // NIE ["A","B","C"] hardcoden und NIE mit startsWith()/includes() vergleichen:
+    // "Akquisition".startsWith("A") === true -> Akquisitions-Firmen liefen als A durch
+    // (falsche Zähler UND falsche Filtermengen). Werte kommen aus den SP-Choices,
+    // Fallback: distinct aus dem Datenbestand. Damit egal, ob "A" oder "A-Kunde".
+    klassValues() {
+      const c = state.meta.choices?.[CONFIG.lists.firms]?.["Klassifizierung"];
+      if (c && c.length) return c;
+      return [...new Set(state.enriched.firms.map(f => (f.klassifizierung || "").trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, "de"));
+    },
+
+    klassMatches(firm, value) {
+      if (!value) return true;
+      return String(firm?.klassifizierung || "").trim() === value;
+    },
+
     // Dot für die Firmen-Tabelle. Nutzt DIESELBEN Prädikate wie die Pflege-Chips —
     // sonst behaupten Punkt und Chip auf demselben Screen Verschiedenes.
     // Die Zustände überlappen (z.B. frischer Kontakt + überfällige Aufgabe), ein Punkt kann
@@ -954,7 +971,7 @@
         if (aktBucket) {
           const id = aktBucket.dataset.bucket;
           const AF = state.filters.aktivitaeten;
-          const defOpen = { "akt-p-sel": true, "akt-p-week": true, "akt-p-month": true, "akt-p-old": false, "akt-c-over": true, "akt-c-month": true, "akt-c-later": false, "akt-c-done": false, "akt-f-wk": true, "akt-f-mon": true, "akt-f-alt": false };
+          const defOpen = { "akt-p-sel": true, "akt-p-week": true, "akt-p-month": true, "akt-p-old": false, "akt-c-over": true, "akt-c-undated": true, "akt-c-month": true, "akt-c-later": false, "akt-c-done": false, "akt-f-wk": true, "akt-f-mon": true, "akt-f-alt": false };
           const cur = (id in AF.bucketOpen) ? AF.bucketOpen[id] : (defOpen[id] ?? true);
           AF.bucketOpen[id] = !cur;
           controller.render(); return;
@@ -1169,7 +1186,7 @@
           let rows = state.enriched.contacts.filter(c => !c.archiviert);
           if (payload.filterFirmId) rows = rows.filter(c => String(c.firmId) === String(payload.filterFirmId));
           if (payload.filterLeadbbz) rows = rows.filter(c => c.leadbbz0 === payload.filterLeadbbz);
-          if (payload.filterSegment) rows = rows.filter(c => String(firmMap.get(c.firmId)?.klassifizierung || "").toUpperCase().startsWith(payload.filterSegment));
+          if (payload.filterSegment) rows = rows.filter(c => helpers.klassMatches(firmMap.get(c.firmId), payload.filterSegment));
           if (payload.filterSearch.trim()) {
             const s = payload.filterSearch.trim().toLowerCase();
             rows = rows.filter(c => [c.fullName, c.firmTitle].some(v => helpers.textIncludes(v, s)));
@@ -2415,7 +2432,7 @@
 
         if (filterSegment) {
           const firmMap = new Map(state.enriched.firms.map(f => [f.id, f]));
-          candidates = candidates.filter(c => String(firmMap.get(c.firmId)?.klassifizierung || "").toUpperCase().startsWith(filterSegment));
+          candidates = candidates.filter(c => helpers.klassMatches(firmMap.get(c.firmId), filterSegment));
         }
         if (filterLeadbbz) candidates = candidates.filter(c => c.leadbbz0 === filterLeadbbz);
         if (filterSgf) candidates = candidates.filter(c => helpers.toArray(c.sgf).includes(filterSgf));
@@ -2473,7 +2490,7 @@
                   <input class="bbz-input" data-filter="batch-search" type="text" placeholder="Name / Firma ..." value="${helpers.escapeHtml(filterSearch)}" style="font-size:12px;" />
                   <select class="bbz-select" data-filter="batch-segment" style="font-size:12px;">
                     <option value="">— Segment —</option>
-                    ${["A","B","C"].map(v=>`<option value="${v}" ${filterSegment===v?"selected":""}>${v}</option>`).join("")}
+                    ${helpers.klassValues().map(v=>`<option value="${helpers.escapeHtml(v)}" ${filterSegment===v?"selected":""}>${helpers.escapeHtml(v)}</option>`).join("")}
                   </select>
                   <select class="bbz-select" data-filter="batch-leadbbz" style="font-size:12px;">${leadbbzOptions}</select>
                   <select class="bbz-select" data-filter="batch-sgf" style="font-size:12px;">${sgfOptions}</select>
@@ -2955,10 +2972,7 @@
       // Klassifizierungs-Werte NIE hardcoden: SP-Choices, sonst aus dem Datenbestand ableiten.
       // Frueher ["A","B","C"] + startsWith(k) -> "Akquisition".startsWith("A") === true,
       // d.h. Akquisitions-Firmen zaehlten und filterten stillschweigend als A. Jetzt exakter Match.
-      const klassValues = (state.meta.choices?.[CONFIG.lists.firms]?.["Klassifizierung"]?.length
-        ? state.meta.choices[CONFIG.lists.firms]["Klassifizierung"]
-        : [...new Set(state.enriched.firms.map(f => (f.klassifizierung || "").trim()).filter(Boolean))]
-            .sort((a, b) => a.localeCompare(b, "de")));
+      const klassValues = helpers.klassValues();
 
       // Pflege-Prädikate kommen aus helpers — EINE Quelle, geteilt mit dem
       // Aktivitäten-Cockpit. Hier nicht neu definieren.
@@ -3650,7 +3664,7 @@
         if (filters.segment) {
           const firm = t.firmId ? state.enriched.firms.find(f => f.id === t.firmId) : null;
           const kl = String(firm?.klassifizierung || "").toUpperCase();
-          if (!kl.startsWith(filters.segment.toUpperCase())) return false;
+          if (kl !== String(filters.segment || "").trim().toUpperCase()) return false;
         }
 
         // Lead BBZ-Filter
@@ -3674,7 +3688,7 @@
       const chipS = (label, val) => {
         const cnt = val === "" ? state.enriched.tasks.length : state.enriched.tasks.filter(t => {
           const firm = t.firmId ? state.enriched.firms.find(f => f.id === t.firmId) : null;
-          return String(firm?.klassifizierung || "").toUpperCase().startsWith(val);
+          return helpers.klassMatches(firm, val);
         }).length;
         const active = filters.segment === val;
         return `<button class="bbz-kpi-chip ${active ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="planning-segment" data-value="${val}">${label === "Alle" ? "Alle" : label} <span>${cnt}</span></button>`;
@@ -3782,7 +3796,7 @@
               <div class="bbz-kpi-label">Kundenklassifizierung</div>
               <div class="bbz-kpi-value">${filters.segment || "—"}</div>
               <div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
-                ${["A","B","C"].map(k => chipS(k, k)).join("")}
+                ${helpers.klassValues().map(k => chipS(k, k)).join("")}
                 <button class="bbz-kpi-chip ${!filters.segment ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="planning-segment" data-value="">Alle</button>
               </div>
             </div>
@@ -3932,6 +3946,9 @@
       const cOver  = openTasks.filter(t => t.isOverdue).length;
       const cMonth = openTasks.filter(t => { const d = dl(t); return d && !t.isOverdue && d <= mo; }).length;
       const cLater = openTasks.filter(t => { const d = dl(t); return d && d > mo; }).length;
+      // Aufgaben OHNE Termin fielen durch alle Faelligkeits-Buckets und waren in der Agenda
+      // unsichtbar. Sie sind der Zustand "Beobachten" (helpers.pflegeMeta.offen).
+      const cUndated = openTasks.filter(t => !dl(t)).length;
       const cAll   = scopeTasks.length;
       const cDone  = scopeTasks.filter(t => !t.isOpen).length;
       const oldestOverdue = openTasks.filter(t => t.isOverdue && dl(t))
@@ -4005,6 +4022,7 @@
         const d = dl(t);
         if (F.faelligkeit === "month") return t.isOpen && !t.isOverdue && d && d <= mo;
         if (F.faelligkeit === "later") return t.isOpen && d && d > mo;
+        if (F.faelligkeit === "undated") return t.isOpen && !d;
         return true;
       };
       const dispActs  = scopeActs.filter(h => !s || [h.contactName, h.firmTitle, h.typ, h.notizen].some(v => helpers.textIncludes(v, s)));
@@ -4052,7 +4070,7 @@
 
       // ── Gruppen-Helper ───────────────────────────────────────────────────────
       const defOpenMap = { "akt-p-sel": true, "akt-p-week": true, "akt-p-month": true, "akt-p-old": false,
-                           "akt-c-over": true, "akt-c-month": true, "akt-c-later": false, "akt-c-done": false,
+                           "akt-c-over": true, "akt-c-undated": true, "akt-c-month": true, "akt-c-later": false, "akt-c-done": false,
                            "akt-f-wk": true, "akt-f-mon": true, "akt-f-alt": false };
       const isOpenBucket = id => (id in F.bucketOpen) ? F.bucketOpen[id] : (defOpenMap[id] ?? true);
       const grpHead = (id, label, n, red) =>
@@ -4083,8 +4101,11 @@
       const tOver  = openDisp.filter(t => t.isOverdue).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
       const tMon   = openDisp.filter(t => { const d = dl(t); return !t.isOverdue && d && d <= mo; }).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
       const tLater = openDisp.filter(t => { const d = dl(t); return d && d > mo; }).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
+      const tUndated = openDisp.filter(t => !dl(t)).sort((a, b) => a.title.localeCompare(b.title, "de"));
       const tDone  = dispTasks.filter(t => !t.isOpen).sort((a, b) => helpers.compareDateDesc(a.deadline, b.deadline));
-      const taskGroups = [["akt-c-over", "Überfällig", tOver, true], ["akt-c-month", "Diesen Monat", tMon, false], ["akt-c-later", "Später", tLater, false], ["akt-c-done", "Erledigt", tDone, false]].filter(g => g[2].length);
+      // "Beobachten" direkt nach "Überfällig": unterminierte Aufgaben brauchen eine Handlung
+      // (Termin setzen), sonst versanden sie unsichtbar.
+      const taskGroups = [["akt-c-over", "Überfällig", tOver, true], ["akt-c-undated", "Beobachten · ohne Termin", tUndated, false], ["akt-c-month", "Diesen Monat", tMon, false], ["akt-c-later", "Später", tLater, false], ["akt-c-done", "Erledigt", tDone, false]].filter(g => g[2].length);
 
       const colHead = (label, sub, accent) =>
         `<div style="display:flex;align-items:baseline;gap:8px;padding-bottom:7px;margin-bottom:9px;border-bottom:2px solid ${accent};">
@@ -4139,7 +4160,10 @@
           : `<span style="font-size:11px;color:var(--subtle);white-space:nowrap;flex-shrink:0;">nie kontaktiert</span>`;
         const nextCol = next ? (next.isOverdue ? "color:var(--red);font-weight:600;" : (dl(next) && dl(next) <= mo ? "color:var(--amber);font-weight:600;" : "color:var(--text);")) : "";
         // Kein Platzhalter, wenn keine offene Aufgabe existiert — das war reines Rauschen.
-        const nextTxt = next ? `→ ${esc(next.title)} · ${next.isOverdue ? esc(helpers.relativeDate(next.deadline)) + " fällig" : esc(helpers.relativeDate(next.deadline))}` : "";
+        const nextTxt = next
+          ? `→ ${esc(next.title)} · ${next.isOverdue ? esc(helpers.relativeDate(next.deadline)) + " fällig"
+              : (dl(next) ? esc(helpers.relativeDate(next.deadline)) : "ohne Termin")}`
+          : "";
         const leads = [...new Set([...fa, ...ft].map(leadOf).filter(Boolean))].join(", ");
         const merged = [...fa.map(h => ({ k: "a", it: h })), ...ft.map(t => ({ k: "t", it: t }))];
         return `<div class="bbz-akt-fcard ${expanded ? "is-open" : ""}">
@@ -4239,6 +4263,7 @@
                 ${chip("Überfällig", "overdue", cOver, cOver > 0 ? "background:var(--red-soft);border-color:#f0b0b2;color:var(--red);" : "")}
                 ${chip("Diesen Monat", "month", cMonth, cMonth > 0 ? "background:#fff9eb;border-color:#f4dfab;color:var(--amber);" : "")}
                 ${chip("Später", "later", cLater)}
+                ${cUndated ? chip("Beobachten", "undated", cUndated, `background:#fff9eb;border-color:#f4dfab;color:${helpers.pflegeMeta.offen.col};`) : ""}
                 <button class="bbz-kpi-chip ${!F.faelligkeit ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="akt-faelligkeit" data-value="">Alle <span>${cAll}</span></button>
               </div>
               <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--subtle);margin:14px 0 5px;">Älteste offene Aufgabe</div>
@@ -4964,7 +4989,7 @@
       if (filterFirmId) rows = rows.filter(c => String(c.firmId) === String(filterFirmId));
       if (filterLeadbbz) rows = rows.filter(c => c.leadbbz0 === filterLeadbbz);
       if (filterSegment) {
-        rows = rows.filter(c => String(firmMap.get(c.firmId)?.klassifizierung || "").toUpperCase().startsWith(filterSegment));
+        rows = rows.filter(c => helpers.klassMatches(firmMap.get(c.firmId), filterSegment));
       }
       if (filterSearch.trim()) {
         const s = filterSearch.trim().toLowerCase();

@@ -312,7 +312,10 @@ früher unter den Chips und wurde übersehen. Untertitel zeigt die **aktive Filt
 > stillschweigend als **A**. Jetzt: Werte aus `state.meta.choices[CRMFirms].Klassifizierung`
 > (Fallback: distinct aus dem Datenbestand) + **exakter Match**. Gleicher Bug steckte in
 > `ui.detailBandClass` (`v.includes("A")`) → dort wird **Akquisition zuerst** geprüft.
-> Die Kontakt-Picker (`filterSegment`, `startsWith`) haben denselben Bug — noch offen.
+> **App-weit behoben:** `helpers.klassValues()` (SP-Choices, Fallback distinct aus den Daten)
+> und `helpers.klassMatches(firm, value)` (exakter Vergleich) sind die **einzige** Quelle.
+> Genutzt von `views.firms()`, allen Kontakt-/Batch-Pickern und der (toten) `planning()`-View.
+> **Kein `startsWith`/`includes` mehr auf `klassifizierung` im Code.** Nicht wieder einführen.
 
 **Pflege-Prädikate** — Quelle: `helpers.pflegePredicate(kind)` + `helpers.pflegeMeta`
 (bewusst überlappend — jeder Chip ist eine Frage, keine Kategorie):
@@ -385,3 +388,23 @@ in die Nav, nicht in KPI-Kacheln). An ihrer Stelle steht der **Geburtstagskalend
 
 `allOpenTasks`/`overdueTasks` in `views.contacts()` sind mit den Kacheln entfallen
 (die gleichnamigen Locals in `views.firms()` sind davon unberührt).
+
+
+## Aufgaben OHNE Termin
+
+Sie fielen durch **alle** Fälligkeits-Buckets (`Überfällig`/`Diesen Monat`/`Später` prüfen alle
+auf ein Datum) und waren in der Agenda **unsichtbar** — die Panel-Chips summierten dann auch
+nicht mehr auf „offen".
+
+- Zustand = **„Beobachten"** (`helpers.pflegePredicate("offen")`) — greift in Firmen-Screen,
+  Firmencockpit und Dots über den gemeinsamen Helper.
+- **Agenda:** eigener Bucket `akt-c-undated` „Beobachten · ohne Termin", direkt nach
+  „Überfällig" und **default offen** — sie brauchen eine Handlung (Termin setzen).
+- **Panel:** Chip „Beobachten" (`F.faelligkeit === "undated"`), nur sichtbar wenn > 0.
+  Damit gilt wieder: Überfällig + Beobachten + Diesen Monat + Später = **offen**.
+- **Cockpit:** „Nächste Aufgabe" zeigt bei fehlendem Termin „ohne Termin" statt eines leeren
+  Datums.
+
+> `helpers.isOverdue("")` liefert korrekt `false` — eine unterminierte Aufgabe ist **nicht**
+> überfällig, sondern unterminiert. Das ist der Grund, warum sie in `offen` landet und nicht
+> in `pflege`. Nicht "reparieren".
