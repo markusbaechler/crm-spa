@@ -122,6 +122,26 @@
     /* Groessere Variante fuer die Firmen-Filterzeilen */
     .bbz-chip-lg { height: 32px; padding: 0 13px; font-size: 12.5px; gap: 6px; }
     .bbz-chip-lg span { font-weight: 700; }
+    /* Mittlere Variante: Subfilter sind der Kategorie untergeordnet -> kleiner als Stufe 1 */
+    .bbz-chip-md { height: 26px; padding: 0 10px; font-size: 11.5px; gap: 5px; }
+    .bbz-chip-md span { font-weight: 700; }
+
+    /* Subfilter-Panel: eingerueckt + blaue Kante = "haengt an der Kategorie Kunden".
+       Ohne diese Klammer wirkten drei gleich schwere Chip-Reihen unaufgeraeumt. */
+    .bbz-subfilter { margin: 0 0 10px 24px; padding: 9px 12px; background: var(--blue-soft);
+      border: 1px solid var(--line); border-left: 3px solid var(--blue); border-radius: var(--r-md); }
+    .bbz-subfilter-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .bbz-subfilter-lab { font-size: 9.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+      color: var(--muted); width: 106px; flex-shrink: 0; }
+    .bbz-subfilter-note { font-size: 9.5px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--subtle); display: block; }
+    /* Trennlinie: Klassifizierung = Eigenschaft (SP-Feld), Pflege = errechneter Zustand.
+       Zwei verschiedene Ebenen, darum sichtbar getrennt. */
+    .bbz-subfilter-sep { height: 1px; background: var(--line); margin: 9px 0; }
+    @media (max-width: 700px) {
+      .bbz-subfilter { margin-left: 12px; }
+      .bbz-subfilter-row { align-items: flex-start; }
+      .bbz-subfilter-lab { width: 100%; margin-bottom: 3px; }
+    }
     .bbz-kpi-chip:hover { background: var(--blue-light); border-color: #a8c8e0; color: var(--blue); }
     .bbz-kpi-chip span  { color: var(--text); font-weight: 700; }
     .bbz-kpi-chip-active { background: var(--blue); border-color: var(--blue); color: #fff; }

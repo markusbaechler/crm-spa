@@ -3030,25 +3030,33 @@
               </div>
 
               ${isKunde ? `
-              <!-- Stufe 2+3 NUR bei Kunden: Klassifizierung/VIP/Pflege gelten nur fuer Kunden.
-                   Bei "Alle" wirkten sie deplatziert. -->
-              <div class="bbz-kpi-chips" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
-                <button class="bbz-kpi-chip bbz-chip-lg ${!filters.klassifizierung ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-klassifizierung" data-value="">Alle</button>
-                ${klassValues.map(k => {
-                  const cnt = state.enriched.firms.filter(f => f.kategorie === "Kunde" && String(f.klassifizierung || "").trim() === k).length;
-                  return `<button class="bbz-kpi-chip bbz-chip-lg ${filters.klassifizierung === k ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-klassifizierung" data-value="${helpers.escapeHtml(k)}">${helpers.escapeHtml(k)} <span>${cnt}</span></button>`;
-                }).join("")}
-                <span style="width:1px;height:22px;background:var(--line);margin:0 4px;"></span>
-                <button class="bbz-kpi-chip bbz-chip-lg ${filters.vip ? "bbz-kpi-chip-active-gold" : ""}" data-action="kpi-filter" data-scope="firms-vip" data-value="yes">♛ VIP <span>${state.enriched.firms.filter(f => f.kategorie === "Kunde" && f.vip).length}</span></button>
-              </div>
+              <!-- Stufe 2+3 als eingerücktes SUB-Panel: sie sind der Kategorie "Kunden"
+                   untergeordnet und muessen das auch zeigen (Einrueckung + blaue Kante).
+                   Innerhalb getrennt, weil es zwei Ebenen sind:
+                   Klassifizierung = Eigenschaft aus SharePoint, Pflege = errechneter Zustand. -->
+              <div class="bbz-subfilter">
+                <div class="bbz-subfilter-row">
+                  <span class="bbz-subfilter-lab">Klassifizierung<span class="bbz-subfilter-note">Stammdaten</span></span>
+                  <button class="bbz-kpi-chip bbz-chip-md ${!filters.klassifizierung ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-klassifizierung" data-value="">Alle</button>
+                  ${klassValues.map(k => {
+                    const cnt = state.enriched.firms.filter(f => f.kategorie === "Kunde" && String(f.klassifizierung || "").trim() === k).length;
+                    return `<button class="bbz-kpi-chip bbz-chip-md ${filters.klassifizierung === k ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-klassifizierung" data-value="${helpers.escapeHtml(k)}">${helpers.escapeHtml(k)} <span>${cnt}</span></button>`;
+                  }).join("")}
+                  <span style="width:1px;height:18px;background:var(--line);margin:0 3px;"></span>
+                  <button class="bbz-kpi-chip bbz-chip-md ${filters.vip ? "bbz-kpi-chip-active-gold" : ""}" data-action="kpi-filter" data-scope="firms-vip" data-value="yes">♛ VIP <span>${state.enriched.firms.filter(f => f.kategorie === "Kunde" && f.vip).length}</span></button>
+                </div>
 
-              <div class="bbz-kpi-chips" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
-                <span style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--subtle);margin-right:2px;">Pflege</span>
-                ${["aktiv","pflege","offen","ohne"].map(k => {
-                  const meta = helpers.pflegeMeta[k];
-                  return `<button class="bbz-kpi-chip bbz-chip-lg ${filters.pflege === k ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-pflege" data-value="${k}" title="${helpers.escapeHtml(meta.note)}">
-                     <span style="width:8px;height:8px;border-radius:var(--r-full);background:${meta.col};${filters.pflege === k ? "box-shadow:0 0 0 2px rgba(255,255,255,.55);" : ""}"></span>${helpers.escapeHtml(meta.lab)} <span>${pflegeCount(k)}</span></button>`;
-                }).join("")}
+                <div class="bbz-subfilter-sep"></div>
+
+                <div class="bbz-subfilter-row">
+                  <span class="bbz-subfilter-lab">Pflege-Status<span class="bbz-subfilter-note">errechnet</span></span>
+                  <button class="bbz-kpi-chip bbz-chip-md ${!filters.pflege ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-pflege" data-value="">Alle</button>
+                  ${["aktiv","pflege","offen","ohne"].map(k => {
+                    const meta = helpers.pflegeMeta[k];
+                    return `<button class="bbz-kpi-chip bbz-chip-md ${filters.pflege === k ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-pflege" data-value="${k}" title="${helpers.escapeHtml(meta.note)}">
+                       <span style="width:7px;height:7px;border-radius:var(--r-full);background:${meta.col};${filters.pflege === k ? "box-shadow:0 0 0 2px rgba(255,255,255,.55);" : ""}"></span>${helpers.escapeHtml(meta.lab)} <span>${pflegeCount(k)}</span></button>`;
+                  }).join("")}
+                </div>
               </div>` : ""}
 
               <!-- Signal-Legende (aufklappbar) -->

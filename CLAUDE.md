@@ -282,10 +282,21 @@ früher unter den Chips und wurde übersehen. Untertitel zeigt die **aktive Filt
 (`activeFilterLabel`), nicht mehr „X Firmen in dieser Ansicht". Clear-Button:
 `firms-search-clear`.
 
-**Chip-Zeilen, alle `bbz-chip-lg`:**
-1. **Kategorie** — `Alle` (**Default**, `filters.kategorie === ""`) / Kunden / Lieferanten / Übrige.
-2. **Klassifizierung + VIP** — **nur wenn `kategorie === "Kunde"`**.
-3. **Pflege** (`firms-pflege`, Toggle, **überlappend**) — **nur wenn `kategorie === "Kunde"`**.
+**Filter-Hierarchie — drei Ebenen, drei visuelle Gewichte:**
+1. **Kategorie** (`bbz-chip-lg`, 32px) — `Alle` (**Default**, `filters.kategorie === ""`) /
+   Kunden / Lieferanten / Übrige.
+2. **+3. im `.bbz-subfilter`-Panel** — **nur wenn `kategorie === "Kunde"`**: eingerückt,
+   getönt, mit **blauer Linkskante** = „hängt an Kunden". Chips dort `bbz-chip-md` (26px),
+   also **kleiner als Ebene 1**. Drei gleich schwere Chip-Reihen wirkten unaufgeräumt.
+   Innerhalb durch `.bbz-subfilter-sep` getrennt, weil es **zwei verschiedene Ebenen** sind:
+   - **Klassifizierung + VIP** — Label „Klassifizierung / Stammdaten": **Eigenschaft** aus
+     dem SP-Feld. VIP ist ein **additiver** Toggle, unabhängig von A/B/C.
+   - **Pflege-Status** — Label „Pflege-Status / errechnet": **abgeleiteter Zustand**
+     (`helpers.pflegePredicate`), nicht in SP gespeichert. Chips mit Farbpunkt.
+   Beide Zeilen haben einen `Alle`-Chip (`data-value=""`).
+
+> Die Unterscheidung Stammdaten vs. errechnet ist der Grund für die Trennlinie — nicht
+> Dekoration. Wer sie entfernt, verliert die Aussage.
 
 > Stufe 2+3 sind **doppelt abgesichert**: sie werden nur gerendert *und* nur angewendet
 > (`!isKunde || ...`), wenn Kunden aktiv ist; zusätzlich setzt der `firms-kategorie`-Handler
