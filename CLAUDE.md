@@ -290,9 +290,12 @@ früher unter den Chips und wurde übersehen. Untertitel zeigt die **aktive Filt
    also **kleiner als Ebene 1**. Drei gleich schwere Chip-Reihen wirkten unaufgeräumt.
    Innerhalb durch `.bbz-subfilter-sep` getrennt, weil es **zwei verschiedene Ebenen** sind:
    - **Klassifizierung + VIP** — Label „Klassifizierung / Stammdaten": **Eigenschaft** aus
-     dem SP-Feld. VIP ist ein **additiver** Toggle, unabhängig von A/B/C.
+     dem SP-Feld. Chips **eckig** (`.bbz-chip-sq`) = Etikett, das an der Firma klebt.
+     VIP ist ein **additiver** Toggle, unabhängig von A/B/C.
    - **Pflege-Status** — Label „Pflege-Status / errechnet": **abgeleiteter Zustand**
-     (`helpers.pflegePredicate`), nicht in SP gespeichert. Chips mit Farbpunkt.
+     (`helpers.pflegePredicate`), nicht in SP gespeichert. Chips als **Pille mit Farbpunkt**,
+     Zeile im abgesetzten Block (`.bbz-subfilter-state`).
+   Unterschieden wird über die **Form**, nicht über mehr Farbe — Farbe wäre hier Rauschen.
    Beide Zeilen haben einen `Alle`-Chip (`data-value=""`).
 
 > Die Unterscheidung Stammdaten vs. errechnet ist der Grund für die Trennlinie — nicht
@@ -348,7 +351,13 @@ stumm nicht, weil der Submit eine explizite Feldliste baut.
 
 Zustände: `aktiv` · `pflege` · `offen` · `ohne` · `kein` (nur Segment „alle").
 
-> **`firmSignal` ist NICHT abgelöst.** Es liefert weiterhin die **Dots** in der Firmen-Tabelle
-> (overdue/never/cold/ok, 12-Mt.-Grenze). Die Pflege-Prädikate sind die **Filter-Sprache**
-> (24-Mt.-Grenze). Zwei verschiedene Jobs — aber die *Wörter* gehören jetzt nur noch den
-> Prädikaten. Wer den Dot-Job ändert, muss `firmSignal` anfassen, nicht `pflegePredicate`.
+> **`firmSignal` wird nicht mehr aufgerufen.** Die **Dots** in der Firmen-Tabelle laufen jetzt
+> über `helpers.pflegeDot(firm)` — also über dieselben Prädikate wie Chips und Legende.
+> Vorher widersprachen sich Punkt (12 Mt.) und Chip (24 Mt.) bei gleicher Beschriftung.
+> `firmSignal` steht nur noch als ungenutzte Funktion im Code (nicht als toter Code löschen,
+> ohne zu prüfen, ob ein künftiges Dashboard sie braucht).
+
+**`helpers.pflegeDot(firm)`** — die Zustände überlappen, ein Punkt kann nur einen zeigen.
+Feste Rangfolge **dringend vor unauffällig**: `pflege` ▸ `offen` ▸ `ohne` ▸ `aktiv`;
+Nicht-Kunden und Randfälle → `null` (kein Punkt). Die **Legende wird aus `pflegeMeta`
+generiert** — sie kann also nicht mehr veralten. Nicht durch fixen Text ersetzen.

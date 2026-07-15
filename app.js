@@ -481,6 +481,18 @@
       return map[kind] || (() => true);
     },
 
+    // Dot für die Firmen-Tabelle. Nutzt DIESELBEN Prädikate wie die Pflege-Chips —
+    // sonst behaupten Punkt und Chip auf demselben Screen Verschiedenes.
+    // Die Zustände überlappen (z.B. frischer Kontakt + überfällige Aufgabe), ein Punkt kann
+    // aber nur einen zeigen -> feste Rangfolge: dringend vor unauffällig.
+    pflegeDot(firm) {
+      const order = ["pflege", "offen", "ohne", "aktiv"];
+      for (const k of order) {
+        if (helpers.pflegePredicate(k)(firm)) return { state: k, ...helpers.pflegeMeta[k] };
+      }
+      return null;   // Nicht-Kunden und Rand­fälle: kein Punkt
+    },
+
     firmSignal(firm) {
       if (firm.kategorie !== "Kunde") return "";
       if (firm.openTasksCount > 0 && firm.tasks.some(t => t.isOpen && t.isOverdue)) return "overdue";
@@ -3037,18 +3049,18 @@
               <div class="bbz-subfilter">
                 <div class="bbz-subfilter-row">
                   <span class="bbz-subfilter-lab">Klassifizierung<span class="bbz-subfilter-note">Stammdaten</span></span>
-                  <button class="bbz-kpi-chip bbz-chip-md ${!filters.klassifizierung ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-klassifizierung" data-value="">Alle</button>
+                  <button class="bbz-kpi-chip bbz-chip-md bbz-chip-sq ${!filters.klassifizierung ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-klassifizierung" data-value="">Alle</button>
                   ${klassValues.map(k => {
                     const cnt = state.enriched.firms.filter(f => f.kategorie === "Kunde" && String(f.klassifizierung || "").trim() === k).length;
-                    return `<button class="bbz-kpi-chip bbz-chip-md ${filters.klassifizierung === k ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-klassifizierung" data-value="${helpers.escapeHtml(k)}">${helpers.escapeHtml(k)} <span>${cnt}</span></button>`;
+                    return `<button class="bbz-kpi-chip bbz-chip-md bbz-chip-sq ${filters.klassifizierung === k ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-klassifizierung" data-value="${helpers.escapeHtml(k)}">${helpers.escapeHtml(k)} <span>${cnt}</span></button>`;
                   }).join("")}
                   <span style="width:1px;height:18px;background:var(--line);margin:0 3px;"></span>
-                  <button class="bbz-kpi-chip bbz-chip-md ${filters.vip ? "bbz-kpi-chip-active-gold" : ""}" data-action="kpi-filter" data-scope="firms-vip" data-value="yes">♛ VIP <span>${state.enriched.firms.filter(f => f.kategorie === "Kunde" && f.vip).length}</span></button>
+                  <button class="bbz-kpi-chip bbz-chip-md bbz-chip-sq ${filters.vip ? "bbz-kpi-chip-active-gold" : ""}" data-action="kpi-filter" data-scope="firms-vip" data-value="yes">♛ VIP <span>${state.enriched.firms.filter(f => f.kategorie === "Kunde" && f.vip).length}</span></button>
                 </div>
 
                 <div class="bbz-subfilter-sep"></div>
 
-                <div class="bbz-subfilter-row">
+                <div class="bbz-subfilter-row bbz-subfilter-state">
                   <span class="bbz-subfilter-lab">Pflege-Status<span class="bbz-subfilter-note">errechnet</span></span>
                   <button class="bbz-kpi-chip bbz-chip-md ${!filters.pflege ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="firms-pflege" data-value="">Alle</button>
                   ${["aktiv","pflege","offen","ohne"].map(k => {
@@ -3064,10 +3076,18 @@
                 <button style="background:none;border:none;padding:0;color:var(--blue);font-size:12px;font-weight:600;cursor:pointer;" data-action="toggle-firm-legende">${filters.legendeOffen ? "▾" : "▸"} Was bedeuten die Punkte?</button>
                 ${filters.legendeOffen ? `
                 <div style="margin-top:8px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--panel-2);font-size:13px;line-height:1.5;">
-                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span class="bbz-signal bbz-signal-green"></span><span><strong>Aktiv gepflegt</strong> — Kontakt jünger als 12 Monate, keine offene Frist</span></div>
-                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span class="bbz-signal bbz-signal-amber"></span><span><strong>Aufmerksamkeit</strong> — kein Kontakt seit über 12 Monaten</span></div>
-                  <div style="display:flex;align-items:center;gap:8px;"><span class="bbz-signal bbz-signal-red"></span><span><strong>Nicht aktiv gepflegt</strong> — überfällige Task oder nie kontaktiert</span></div>
-                  <div style="color:var(--muted);font-size:12px;margin-top:10px;">Lieferanten und Übrige tragen keinen Punkt.</div>
+                  ${["pflege","offen","ohne","aktiv"].map(k => {
+                    const meta = helpers.pflegeMeta[k];
+                    return `<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;">
+                      <span class="bbz-signal" style="background:${meta.col};margin-top:5px;"></span>
+                      <span><strong>${helpers.escapeHtml(meta.lab)}</strong> — ${helpers.escapeHtml(meta.note)}</span>
+                    </div>`;
+                  }).join("")}
+                  <div style="color:var(--muted);font-size:12px;margin-top:10px;border-top:1px solid var(--line);padding-top:8px;">
+                    Der Punkt zeigt den <strong>dringendsten</strong> Zustand: Braucht Pflege ▸ Beobachten ▸ Ohne Aktivität ▸ Aktiv gepflegt.
+                    Eine Firma kann mehrere Zustände gleichzeitig haben — die Chips oben zählen deshalb überlappend.
+                    Lieferanten und Übrige tragen keinen Punkt.
+                  </div>
                 </div>` : ""}
               </div>
               <div class="bbz-table-wrap">
@@ -3089,15 +3109,9 @@
                   </tr></thead>
                   <tbody>
                     ${rows.length ? rows.map(firm => {
-                      const signal = helpers.firmSignal(firm);
-                      const signalDot = signal === "overdue"
-                        ? `<span class="bbz-signal bbz-signal-red" title="Überfällige Task(s)"></span>`
-                        : signal === "never"
-                        ? `<span class="bbz-signal bbz-signal-red" title="Noch nie kontaktiert"></span>`
-                        : signal === "cold"
-                        ? `<span class="bbz-signal bbz-signal-amber" title="Kein Kontakt seit über 12 Monaten"></span>`
-                        : signal === "ok"
-                        ? `<span class="bbz-signal bbz-signal-green" title="Aktiv"></span>`
+                      const dot = helpers.pflegeDot(firm);
+                      const signalDot = dot
+                        ? `<span class="bbz-signal" style="background:${dot.col};" title="${helpers.escapeHtml(dot.lab)}"></span>`
                         : `<span class="bbz-signal bbz-signal-none"></span>`;
                       // Keine farbige Zeilenhinterlegung mehr — der Signal-Dot reicht.
                       // Ganze Zeilen einzufaerben erzeugte zu viel Rauschen. Nicht wieder einbauen.
@@ -3116,15 +3130,9 @@
               <!-- Mobile Card List (nur sichtbar auf kleinen Screens via CSS) -->
               <div class="bbz-card-list bbz-mobile-only">
                 ${rows.length ? rows.map(firm => {
-                  const signal = helpers.firmSignal(firm);
-                  const sigDot = signal === "overdue"
-                    ? `<span class="bbz-signal bbz-signal-red" title="Überfällige Task(s)"></span>`
-                    : signal === "never"
-                    ? `<span class="bbz-signal bbz-signal-red" title="Noch nie kontaktiert"></span>`
-                    : signal === "cold"
-                    ? `<span class="bbz-signal bbz-signal-amber" title="Kein Kontakt seit über 12 Monaten"></span>`
-                    : signal === "ok"
-                    ? `<span class="bbz-signal bbz-signal-green" title="Aktiv"></span>`
+                  const dot = helpers.pflegeDot(firm);
+                  const sigDot = dot
+                    ? `<span class="bbz-signal" style="background:${dot.col};" title="${helpers.escapeHtml(dot.lab)}"></span>`
                     : `<span style="width:8px;flex-shrink:0;display:inline-block;"></span>`;
                   const taskBadge = firm.openTasksCount > 0
                     ? overdueTasks.some(t => t.firmId === firm.id)

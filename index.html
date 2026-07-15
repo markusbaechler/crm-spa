@@ -125,6 +125,10 @@
     /* Mittlere Variante: Subfilter sind der Kategorie untergeordnet -> kleiner als Stufe 1 */
     .bbz-chip-md { height: 26px; padding: 0 10px; font-size: 11.5px; gap: 5px; }
     .bbz-chip-md span { font-weight: 700; }
+    /* FORM statt Farbe unterscheidet die zwei Ebenen (Farbe waere hier Rauschen):
+       Klassifizierung = eckiges Etikett -> Stammdatum, das an der Firma klebt.
+       Pflege-Status   = Pille mit Farbpunkt -> Zustand, der sich aendert. */
+    .bbz-chip-sq { border-radius: var(--r-sm); }
 
     /* Subfilter-Panel: eingerueckt + blaue Kante = "haengt an der Kategorie Kunden".
        Ohne diese Klammer wirkten drei gleich schwere Chip-Reihen unaufgeraeumt. */
@@ -137,6 +141,7 @@
     /* Trennlinie: Klassifizierung = Eigenschaft (SP-Feld), Pflege = errechneter Zustand.
        Zwei verschiedene Ebenen, darum sichtbar getrennt. */
     .bbz-subfilter-sep { height: 1px; background: var(--line); margin: 9px 0; }
+    .bbz-subfilter-state { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 7px 9px; margin: 0 -2px; }
     @media (max-width: 700px) {
       .bbz-subfilter { margin-left: 12px; }
       .bbz-subfilter-row { align-items: flex-start; }
