@@ -207,10 +207,13 @@ Zähler: total · 30 Tage · 365 Tage. Kontaktart-Split-Bar aus `choices[CRMHist
   Aufklappbar (`akt-firm-expand`) → gemergte Timeline (Aktivitäten+Aufgaben, neueste zuerst) +
   „+ Aktivität"/„+ Aufgabe" (reuse `open-history-form`/`open-task-form` mit `data-firm-id`).
 - `chrono`: **Zweispaltig** (`.bbz-akt-split`, eigene CSS-Klasse in index.html; stapelt <900px).
-  **Links** Aktivitäten-Verlauf (`akt-p-month` offen / `akt-p-old` zu), **rechts** offene Aufgaben
-  (`akt-c-over`, `akt-c-month` offen / `akt-c-later` zu). Keine Heute-Scheidelinie mehr — die
-  Spalten trennen Vergangenheit/Zukunft. Jede Gruppe klappbar (`akt-bucket`), **Cap 8** +
-  „+N weitere" (`akt-more`).
+  Die Spalten trennen **Objekttyp**, NICHT Zeit: **links ausschliesslich Aktivitäten**
+  (`akt-p-month` offen / `akt-p-old` zu), **rechts ausschliesslich Aufgaben**
+  (`akt-c-over`, `akt-c-month` offen / `akt-c-later` zu / `akt-c-done` „Erledigt" zu).
+  Jede Gruppe klappbar (`akt-bucket`), **Cap 8** + „+N weitere" (`akt-more`).
+  **Erledigte Aufgaben gehören NIE in den Verlauf.** Sie werden nach *Deadline* einsortiert,
+  die in der Zukunft liegen kann — im „Verlauf" ergäbe das „in 2 Tagen". Sie stehen im
+  Bucket `akt-c-done` (default eingeklappt = ausgeblendet, Zähler sichtbar).
   **Wichtig:** NICHT `.bbz-history-split` wiederverwenden — die blendet Spalte 2 mobil aus
   (altes Tab-Bar-Konzept, index.html Z. ~321).
 

@@ -845,7 +845,7 @@
         if (aktBucket) {
           const id = aktBucket.dataset.bucket;
           const AF = state.filters.aktivitaeten;
-          const defOpen = { "akt-c-over": true, "akt-c-month": true, "akt-c-later": false, "akt-p-month": true, "akt-p-old": false, "akt-f-over": true, "akt-f-month": true, "akt-f-later": false, "akt-f-none": false };
+          const defOpen = { "akt-c-over": true, "akt-c-month": true, "akt-c-later": false, "akt-c-done": false, "akt-p-month": true, "akt-p-old": false, "akt-f-over": true, "akt-f-month": true, "akt-f-later": false, "akt-f-none": false };
           const cur = (id in AF.bucketOpen) ? AF.bucketOpen[id] : (defOpen[id] ?? true);
           AF.bucketOpen[id] = !cur;
           controller.render(); return;
@@ -3952,13 +3952,15 @@
       const over  = openDisp.filter(t => t.isOverdue).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
       const month = openDisp.filter(t => { const d = dl(t); return !t.isOverdue && d && d <= mo; }).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
       const later = openDisp.filter(t => { const d = dl(t); return d && d > mo; }).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
-      const past = [
-        ...dispActs.map(h => ({ k: "a", d: helpers.toDate(h.datum), it: h })),
-        ...dispTasks.filter(t => !t.isOpen).map(t => ({ k: "t", d: helpers.toDate(t.deadline), it: t }))
-      ].sort((a, b) => (b.d || 0) - (a.d || 0));
-      const pMonth = past.filter(p => p.d && p.d >= moP);
-      const pOld   = past.filter(p => !p.d || p.d < moP);
-      const rowP = p => p.k === "a" ? evAct(p.it, true) : evTask(p.it, true);
+      // Verlauf = AUSSCHLIESSLICH Aktivitäten. Erledigte Aufgaben gehören in die
+      // Aufgaben-Spalte: die Spalten trennen Objekttyp (Aktivität | Aufgabe), nicht Zeit.
+      // (Sonst landen erledigte Tasks mit Zukunfts-Deadline im "Verlauf" -> "in 2 Tagen".)
+      const past = dispActs.slice().sort((a, b) => helpers.compareDateDesc(a.datum, b.datum));
+      const pMonth = past.filter(h => { const d = helpers.toDate(h.datum); return d && d >= moP; });
+      const pOld   = past.filter(h => { const d = helpers.toDate(h.datum); return !d || d < moP; });
+      const rowP = h => evAct(h, true);
+      // Erledigte Aufgaben: neueste Deadline zuerst, eigener Bucket (default eingeklappt).
+      const doneTasks = dispTasks.filter(t => !t.isOpen).sort((a, b) => helpers.compareDateDesc(a.deadline, b.deadline));
 
       // Zweispaltig: links Aktivitäten-Verlauf, rechts offene Aufgaben (Desktop),
       // gestapelt <900px. Ersetzt die vertikale Zukunft/Heute/Verlauf-Stapelung.
@@ -3968,18 +3970,18 @@
            <span style="font-size:11px;color:var(--subtle);">${count}</span>
          </div>`;
 
-      const taskCol = [["akt-c-over", "Überfällig", over, true, true], ["akt-c-month", "Diesen Monat", month, true, false], ["akt-c-later", "Später", later, false, false]].filter(x => x[2].length);
+      const taskCol = [["akt-c-over", "Überfällig", over, true, true], ["akt-c-month", "Diesen Monat", month, true, false], ["akt-c-later", "Später", later, false, false], ["akt-c-done", "Erledigt", doneTasks, false, false]].filter(x => x[2].length);
       const actCol  = [["akt-p-month", "Dieser Monat", pMonth, true], ["akt-p-old", "Älter", pOld, false]].filter(x => x[2].length);
 
       const chronoHtml = `
         <div class="bbz-akt-split">
           <section>
             ${colHead("Aktivitäten · Verlauf", past.length, "#c3d3e3")}
-            ${actCol.length ? actCol.map(([id, l, it, o]) => bucket(id, l, it, rowP, o, false)).join("") : `<div style="font-size:12px;color:var(--subtle);padding:4px 2px;">Kein Verlauf im Filter.</div>`}
+            ${actCol.length ? actCol.map(([id, l, it, o]) => bucket(id, l, it, rowP, o, false)).join("") : `<div style="font-size:12px;color:var(--subtle);padding:4px 2px;">Keine Aktivitäten im Filter.</div>`}
           </section>
           <section>
-            ${colHead("Offene Aufgaben", openDisp.length, "var(--blue-mid)")}
-            ${taskCol.length ? taskCol.map(([id, l, it, o, r]) => bucket(id, l, it, t => evTask(t, true), o, r)).join("") : `<div style="font-size:12px;color:var(--subtle);padding:4px 2px;">Keine offenen Aufgaben im Filter.</div>`}
+            ${colHead("Aufgaben", `${openDisp.length} offen`, "var(--blue-mid)")}
+            ${taskCol.length ? taskCol.map(([id, l, it, o, r]) => bucket(id, l, it, t => evTask(t, true), o, r)).join("") : `<div style="font-size:12px;color:var(--subtle);padding:4px 2px;">Keine Aufgaben im Filter.</div>`}
           </section>
         </div>`;
 
