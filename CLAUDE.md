@@ -445,6 +445,15 @@ Priorisierung blind ist) + Gesamt.
 > **Nur der abgedeckte Anteil wird gefüllt, „ohne" ist die leere Spur.** Vorher war „ohne"
 > sattes Rot = 70% jeder Zeile: lauteste Farbe für die nutzloseste Aussage. Nicht zurückbauen.
 
+> **Jedes Element der Matrix-Zeile ist ein eigenes Klickziel** (`covSets(key, lab, base)` legt
+> pro Klassifizierung fünf Mengen an): Label/n → `cov-<k>` **alle** · grünes Segment →
+> `__m6` · amber → `__m12` · **leere Spur** → `__none` (die Arbeitsliste) · **Prozentzahl** →
+> `__cov` (die abgedeckten). Man klickt, was man sieht.
+> Das frühere Label „`<k>` · Abdeckung" war **zweideutig** — es versprach die Abgedeckten und
+> lieferte alle; der Zähler stimmte, die Beschriftung log. Labels müssen sagen, was sie zeigen
+> („Alle B-Kunde" vs. „B-Kunde · abgedeckt"). Verschachtelte `data-action`s sind hier
+> unproblematisch: `closest()` greift immer das innerste Element.
+
 **Donut** nur bei Stammdaten (echtes Teil-vom-Ganzen). **Weisse Trennlücken** (`GAP`), weil
 `--amber`/`--red`/`--green` in der Helligkeit zu nah liegen und sonst verschmelzen. Das Loch
 ist ein **Anzeigeplatz**: Hover tauscht die Zahl darin — deshalb überhaupt ein Donut.

@@ -3996,8 +3996,19 @@
         "int-contacts":    { lab: "Kontakte ohne Firma", kind: "contact", set: () => contactsAll.filter(c => !c.firm), warn: "Aktivität erreicht keine Firma" },
         "int-orphan":      { lab: "Verwaiste Aktivitäten", kind: "act", set: () => acts.filter(h => !h.firmId), warn: "Kontakt nicht auflösbar" }
       };
-      klassVals.forEach(k => { M["cov-" + k] = { lab: `${k} · Abdeckung`, kind: "firm", set: () => kunden.filter(f => klassOf(f) === k) }; });
-      M["cov-__nk"] = { lab: "Kunden ohne Klassifizierung", kind: "firm", set: () => kunden.filter(f => !klassOf(f)) };
+      // Pro Klassifizierung FUENF Mengen. Das frühere `${k} · Abdeckung` war zweideutig:
+      // es versprach die Abgedeckten und lieferte alle. Jetzt sagt jedes Label, was es zeigt —
+      // und jedes Element der Matrix-Zeile ist der Klickpfad zu genau seiner Menge.
+      const covSets = (key, lab, base) => {
+        M[key]            = { lab: `Alle ${lab}`, kind: "firm", set: base };
+        M[key + "__cov"]  = { lab: `${lab} · abgedeckt (Aktivität in 12 Mt.)`, kind: "firm", set: () => base().filter(f => coverBand(f) !== "none") };
+        M[key + "__m6"]   = { lab: `${lab} · Aktivität ≤ 6 Monate`, kind: "firm", set: () => base().filter(f => coverBand(f) === "m6") };
+        M[key + "__m12"]  = { lab: `${lab} · Aktivität 6–12 Monate`, kind: "firm", set: () => base().filter(f => coverBand(f) === "m12") };
+        M[key + "__none"] = { lab: `${lab} · ohne Aktivität`, kind: "firm", set: () => base().filter(f => coverBand(f) === "none") };
+      };
+      klassVals.forEach(k => covSets("cov-" + k, k, () => kunden.filter(f => klassOf(f) === k)));
+      covSets("cov-__nk", "Kunden ohne Klassifizierung", () => kunden.filter(f => !klassOf(f)));
+      covSets("cov-__all", "Banken (Kunden)", () => kunden);
       const sel = M[F.sel] ? F.sel : "";
       const cnt = k => M[k].set().length;
 
@@ -4059,10 +4070,19 @@
       const T = mxRows.reduce((o, r) => ({ a: o.a + r.a, b: o.b + r.b, c: o.c + r.c, n: o.n + r.n }), { a: 0, b: 0, c: 0, n: 0 });
       const pcol = p => p >= 40 ? "var(--green)" : p >= 20 ? "var(--amber)" : "var(--red)";
       // Nur der abgedeckte Anteil wird gefüllt — die leere Spur IST "ohne Aktivität".
-      const mxBar = r => `<div class="bbz-mxb">${r.a ? `<i style="width:${r.a / r.n * 100}%;background:var(--green);"></i>` : ""}${r.b ? `<i style="width:${r.b / r.n * 100}%;background:var(--amber);opacity:.75;"></i>` : ""}</div>`;
-      const mxRow = (r, tot) => `<div class="bbz-mxr ${tot ? "is-tot" : ""} ${sel === r.key ? "is-on" : ""}" ${tot ? "" : `data-action="dash-select" data-value="${r.key}"`} title="${esc(r.lab)}: ${r.a} ≤6 Mt. · ${r.b} 6–12 Mt. · ${r.c} ohne">
-          <span class="k">${esc(r.lab)}</span><span class="c">${r.n}</span>${mxBar(r)}
-          <span class="p" style="color:${pcol(pct(r.a + r.b, r.n))}">${pct(r.a + r.b, r.n)}%</span>
+      // Man klickt, was man sieht: grünes Segment -> die frischen, leere Spur -> die Lücke,
+      // Prozentzahl -> die Abgedeckten, Label -> alle. Verschachtelte data-actions sind hier
+      // unproblematisch: closest() greift immer das innerste Element.
+      const mxBar = r => `<div class="bbz-mxb">
+        ${r.a ? `<i data-action="dash-select" data-value="${r.key}__m6" title="${esc(r.lab)}: ${r.a} mit Aktivität ≤ 6 Monate" style="width:${r.a / r.n * 100}%;background:var(--green);cursor:pointer;"></i>` : ""}
+        ${r.b ? `<i data-action="dash-select" data-value="${r.key}__m12" title="${esc(r.lab)}: ${r.b} mit Aktivität 6–12 Monate" style="width:${r.b / r.n * 100}%;background:var(--amber);opacity:.75;cursor:pointer;"></i>` : ""}
+        ${r.c ? `<i data-action="dash-select" data-value="${r.key}__none" title="${esc(r.lab)}: ${r.c} ohne Aktivität" style="width:${r.c / r.n * 100}%;background:transparent;cursor:pointer;"></i>` : ""}
+      </div>`;
+      const mxRow = r => `<div class="bbz-mxr ${r.tot ? "is-tot" : ""} ${sel === r.key ? "is-on" : ""}">
+          <span class="k" data-action="dash-select" data-value="${r.key}" style="cursor:pointer;" title="Alle ${esc(r.lab)} anzeigen (${r.n})">${esc(r.lab)}</span>
+          <span class="c" data-action="dash-select" data-value="${r.key}" style="cursor:pointer;">${r.n}</span>
+          ${mxBar(r)}
+          <span class="p" data-action="dash-select" data-value="${r.key}__cov" style="color:${pcol(pct(r.a + r.b, r.n))};cursor:pointer;" title="Die ${r.a + r.b} abgedeckten ${esc(r.lab)} anzeigen">${pct(r.a + r.b, r.n)}%</span>
           <span class="warn">${r.warn ? `<span title="Für diese Kunden ist die Priorisierung blind.">⚠</span>` : ""}</span></div>`;
 
       // ── Bausteine ───────────────────────────────────────────────────────────
@@ -4295,8 +4315,8 @@
               </div>
               <div class="bbz-mx">
                 <div class="bbz-mxh"><span style="width:96px;">Klassifizierung</span><span style="width:26px;text-align:right;">n</span><span style="flex:1;">Abdeckung</span><span style="width:38px;text-align:right;">%</span><span style="width:12px;"></span></div>
-                ${mxRows.map(r => mxRow(r, false)).join("")}
-                ${mxRow({ key: "", lab: "Gesamt", ...T }, true)}
+                ${mxRows.map(r => mxRow(r)).join("")}
+                ${mxRow({ key: "cov-__all", lab: "Gesamt", tot: true, ...T })}
                 <div class="bbz-mxleg">
                   <span><i style="background:var(--green);"></i>Aktivität ≤ 6 Monate</span>
                   <span><i style="background:var(--amber);opacity:.75;"></i>6–12 Monate</span>
