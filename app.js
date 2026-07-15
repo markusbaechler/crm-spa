@@ -4088,12 +4088,43 @@
       // ── Drill-Down-Liste ────────────────────────────────────────────────────
       const listHtml = (() => {
         if (!sel) return `<div style="padding:24px;text-align:center;color:var(--subtle);font-size:13px;">Klicke auf eine Zahl, ein Donut-Segment oder eine Matrix-Zeile — die Liste erscheint hier.</div>`;
-        const kind = M[sel].kind, set = M[sel].set(), cap = 50, shown = set.slice(0, cap);
+        const kind = M[sel].kind;
+        let set = M[sel].set();
+        const cap = 50;
         const dash = v => (v || "").trim() ? esc(v) : `<span style="color:var(--red);font-weight:600;">—</span>`;
+        // Firmen: längster Kontaktabstand zuerst, nie kontaktierte ganz oben.
+        // Die Lücke ist die Nachricht — sie gehört an den Anfang, nicht ins Alphabet.
+        if (kind === "firm") set = set.slice().sort((a, b) => {
+          const da = helpers.toDate(a.latestActivity), db = helpers.toDate(b.latestActivity);
+          if (!da && !db) return a.title.localeCompare(b.title, "de");
+          if (!da) return -1; if (!db) return 1;
+          return (da - db) || a.title.localeCompare(b.title, "de");
+        });
+        const shown = set.slice(0, cap);
         let cols = [], rows = [];
-        if (kind === "firm") { cols = ["Firma", "Kategorie", "Klassifizierung", "Letzte Aktivität", "Kontakte"];
-          rows = shown.map(f => [`<a class="bbz-link" data-action="open-firm" data-id="${f.id}">${esc(f.title)}</a>`, esc(f.kategorie || "—"), dash(f.klassifizierung),
-            f.latestActivity ? esc(helpers.relativeDate(f.latestActivity)) : `<span style="color:var(--red);font-weight:600;">nie</span>`, String(f.contactsCount)]); }
+        if (kind === "firm") {
+          // Spalten, die über die ganze Menge konstant sind, wiederholen nur den Filter
+          // ("Klassifizierung: B-Kunde" in jeder Zeile, wenn man auf B-Kunde gefiltert hat).
+          // Sie fliegen raus; stattdessen kommt die Dimension rein, die hier zählt: das Band.
+          const constant = fn => new Set(set.map(fn)).size <= 1;
+          const showKat = set.length > 0 && !constant(f => f.kategorie || "");
+          const showKl  = set.length > 0 && !constant(f => (f.klassifizierung || "").trim());
+          const anyKunde = set.some(f => f.kategorie === "Kunde");
+          const BAND = { m6: ["≤ 6 Monate", "var(--green)"], m12: ["6–12 Monate", "var(--amber)"], none: ["ohne Aktivität", "var(--red)"] };
+          cols = ["Firma", ...(showKat ? ["Kategorie"] : []), ...(showKl ? ["Klassifizierung"] : []),
+                  ...(anyKunde ? ["Zustand"] : []), "Letzte Aktivität", "Kontakte"];
+          rows = shown.map(f => {
+            const [bl, bc] = BAND[coverBand(f)];
+            return [`<a class="bbz-link" data-action="open-firm" data-id="${f.id}">${esc(f.title)}</a>`,
+              ...(showKat ? [esc(f.kategorie || "—")] : []),
+              ...(showKl ? [dash(f.klassifizierung)] : []),
+              ...(anyKunde ? [f.kategorie === "Kunde"
+                    ? `<span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;border-radius:var(--r-full);background:${bc};"></span>${bl}</span>`
+                    : `<span style="color:var(--subtle);">—</span>`] : []),
+              f.latestActivity ? esc(helpers.relativeDate(f.latestActivity)) : `<span style="color:var(--red);font-weight:600;">nie</span>`,
+              String(f.contactsCount)];
+          });
+        }
         else if (kind === "contact" || kind === "bday") { cols = ["Name", "Firma", "Funktion / Rolle", "E-Mail", "Telefon", "Lead bbz"];
           rows = shown.map(c => [`<a class="bbz-link" data-action="open-contact" data-id="${c.id}">${esc(c.fullName)}</a>`, esc(c.firmTitle || "—"),
             dash(helpers.joinNonEmpty([c.funktion, c.rolle], " · ")), dash(c.email1 || c.email2), dash(c.direktwahl || c.mobile), dash(c.leadbbz0)]); }
@@ -4108,11 +4139,13 @@
         const mcards = shown.map(x => {
           if (kind === "firm") {
             const dot = helpers.pflegeDot(x);
+            const BANDM = { m6: ["≤ 6 Mt.", "var(--green)"], m12: ["6–12 Mt.", "var(--amber)"], none: ["ohne Aktivität", "var(--red)"] };
+            const [mbl, mbc] = BANDM[coverBand(x)];
             return `<div class="bbz-list-card" data-action="open-firm" data-id="${x.id}">
               ${dot ? `<span class="bbz-signal" style="background:${dot.col};" title="${esc(dot.lab)}"></span>` : `<span style="width:8px;flex-shrink:0;display:inline-block;"></span>`}
               <div class="bbz-list-card-body">
                 <div class="bbz-list-card-title">${esc(x.title)}</div>
-                <div class="bbz-list-card-sub">${esc(helpers.joinNonEmpty([x.plz, x.ort], " ") || x.kategorie || "")}${x.latestActivity ? " · " + esc(helpers.relativeDate(x.latestActivity)) : " · nie kontaktiert"}</div>
+                <div class="bbz-list-card-sub">${x.kategorie === "Kunde" ? `<span style="color:${mbc};font-weight:600;">${mbl}</span> · ` : ""}${x.latestActivity ? esc(helpers.relativeDate(x.latestActivity)) : "nie kontaktiert"}${x.ort ? " · " + esc(x.ort) : ""}</div>
               </div>
               <div class="bbz-list-card-right">
                 ${x.klassifizierung ? `<span class="${helpers.firmBadgeClass(x.klassifizierung)}">${esc(x.klassifizierung)}</span>` : ""}

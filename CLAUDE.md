@@ -454,6 +454,14 @@ ist ein **Anzeigeplatz**: Hover tauscht die Zahl darin — deshalb überhaupt ei
 Formulare erzwingen Firma (`firmaLookupId required`) bzw. Kontakt (`kontaktLookupId required`)
 — diese Fälle entstehen nur über SharePoint direkt, IO-Import oder eine frisch angelegte Firma.
 
+> **Drill-Down-Liste ist KONTEXTBEWUSST.** Spalten, die über die ganze Menge **konstant**
+> sind, fliegen raus — sie wiederholen nur den gesetzten Filter („Klassifizierung: B-Kunde"
+> in jeder Zeile, wenn man auf B-Kunde gefiltert hat). Stattdessen trägt die Firmen-Liste eine
+> **Zustands-Spalte** (Abdeckungsband ≤6 Mt. / 6–12 Mt. / ohne, farbig) — sonst wirken die
+> „nie"-Zeilen wie ein Bug, obwohl die Menge stimmt. Sortierung: **längster Kontaktabstand
+> zuerst, nie kontaktierte ganz oben** — die Lücke ist die Nachricht und gehört an den Anfang,
+> nicht ins Alphabet. Nicht auf eine feste Spaltenliste zurückbauen.
+
 > **⚠ Mobile: die App blendet JEDE `.bbz-table-wrap` bei ≤640px aus** (index.html). Jede Liste
 > braucht deshalb ein Pendant `<div class="bbz-card-list bbz-mobile-only">` mit
 > `.bbz-list-card` — sonst ist sie auf dem Handy **unsichtbar**. Die Drill-Down-Liste des
