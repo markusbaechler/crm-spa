@@ -456,6 +456,7 @@
        (--kan-n). So greifen Media-Queries; inline grid-template-columns wuerde sie aushebeln. */
     .bbz-akt-kan  { display: grid; grid-template-columns: 78px 30px 1fr 40px; gap: 7px; align-items: center; }
     .bbz-akt-kanc { display: grid; grid-template-columns: 78px repeat(var(--kan-n, 4), minmax(0,1fr)); gap: 7px; align-items: center; }
+    .bbz-akt-kan > *, .bbz-akt-kanc > * { min-width: 0; }
     @media (max-width: 620px) {
       .bbz-akt-kan  { grid-template-columns: 58px 22px 1fr 30px; gap: 5px; }
       .bbz-akt-kanc { grid-template-columns: 58px repeat(var(--kan-n, 4), minmax(0,1fr)); gap: 4px; }
@@ -464,8 +465,13 @@
     .bbz-modal-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
     .bbz-ev-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
     @media (max-width: 420px) { .bbz-ev-stats { grid-template-columns: 1fr; } }
+    /* Grid-Items haben per Default min-width:auto = MIN-CONTENT. Die Notiz-Zeile trägt
+       white-space:nowrap -> min-content = volle Textlänge. Gemessen: das Raster wurde
+       38286px breit, die Seite scrollte seitwärts. minmax(0,..) am Track UND min-width:0
+       am Item sind beide nötig; overflow:hidden am Kind hilft NICHT. */
     .bbz-akt-split { display: grid; grid-template-columns: minmax(0,1.5fr) minmax(300px,1fr); gap: 18px; align-items: start; }
-    @media (max-width: 900px) { .bbz-akt-split { grid-template-columns: 1fr; } }
+    .bbz-akt-split > section { min-width: 0; }
+    @media (max-width: 900px) { .bbz-akt-split { grid-template-columns: minmax(0,1fr); } }
 
     /* Aktivitaet = Timeline (keine Karte). Aufgabe = Karte mit Checkbox.
        Bewusst UNTERSCHIEDLICHE FORMEN, nicht nur Farben -> keine Verwechslung. */
@@ -487,13 +493,15 @@
     .bbz-akt-tk-ov .bbz-akt-cb:hover { background: var(--red-soft); color: var(--red); }
 
     /* Firmencockpit: auto-fill -> 3 Spalten breit, 2 mittel, 1 mobil. Offene Karte spannt voll. */
-    .bbz-akt-fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 7px; align-items: start; margin-bottom: 4px; }
-    .bbz-akt-fcard { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+    /* min() deckelt die Mindestbreite auf die Containerbreite -> kein Overflow bei 320px. */
+    .bbz-akt-fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(330px, 100%), 1fr)); gap: 7px; align-items: start; margin-bottom: 4px; }
+    .bbz-akt-fcard { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; min-width: 0; }
     .bbz-akt-fcard.is-open { grid-column: 1 / -1; }
     .bbz-akt-fhead { display: block; padding: 6px 9px; cursor: pointer; }
     .bbz-akt-fhead:hover { background: var(--blue-soft); }
     .bbz-akt-fsplit { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(0,1fr); gap: 16px; }
-    @media (max-width: 760px) { .bbz-akt-fsplit { grid-template-columns: 1fr; } }
+    .bbz-akt-fsplit > div { min-width: 0; }
+    @media (max-width: 760px) { .bbz-akt-fsplit { grid-template-columns: minmax(0,1fr); } }
     .bbz-akt-bar:hover i { background: var(--blue-mid) !important; }
 
     /* LAYOUT */

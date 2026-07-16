@@ -377,6 +377,19 @@ Eine Quelle für Desktop-Tabelle und Mobile-Karte. Precedence Task > Aktivität.
 - **CSS-Klammerbilanz prüfen** (`{` == `}` im `<style>`), **nicht nur `node --check`** — das
   sieht kein CSS. **Eine** überzählige Klammer verschluckt den Rest des Stylesheets: schwarze
   Gauges *und* zerlaufene Listen aus einer einzigen Ursache.
+- **Grid-Items brauchen `min-width: 0` UND der Track `minmax(0, 1fr)`.** `grid-template-columns: 1fr`
+  heisst `minmax(**auto**, 1fr)` — das `auto`-Minimum ist die **min-content**-Breite. Die Notiz-Zeile
+  in `.bbz-akt-ev` trägt `white-space: nowrap`, damit ist ihr min-content die **volle Textlänge**.
+  Gemessen in Chromium bei 360px: `.bbz-akt-split` wurde **38 286 px** breit, die ganze Seite
+  scrollte seitwärts — bei jeder Breite unter 900px, weil genau dort die Media-Query auf `1fr`
+  schaltete. **`overflow: hidden` am Kind hilft NICHT**, es geht um das Item, nicht den Inhalt.
+  Beides setzen: `minmax(0,1fr)` am Track, `min-width: 0` am Item.
+- **`repeat(auto-fill, minmax(330px, 1fr))` läuft unter 330px über.** Mit `min(330px, 100%)`
+  deckeln, sonst scrollt die Seite auf einem iPhone SE (320px).
+- **Nur messen beweist es.** Grep findet inline-Raster, aber nicht `min-width: auto`. Der
+  Mobile-Test rendert die Route in Chromium bei 320/360/390/430/768/1024px und meldet jedes
+  Element, dessen `getBoundingClientRect().right` über den Viewport ragt — plus dessen
+  Elternraster und `min-width`. 48 Messungen pro Lauf.
 - **Raster NUR über Klassen** (`.bbz-dash-g2/g3/g4`, `.bbz-akt-split`, `.bbz-akt-kan(c)`,
   `.bbz-modal-filters`, `.bbz-ev-stats`, `.bbz-subfilter`).
   Gegen inline `grid-template-columns` kommt **keine Media-Query** an (ausser mit
