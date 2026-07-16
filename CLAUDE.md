@@ -24,7 +24,7 @@ https://markusbaechler.github.io/crm-spa/
 | Datei | Inhalt |
 |---|---|
 | `index.html` | App-Shell + **gesamtes CSS** (`:root`-Tokens oben) + Desktop-Nav + Bottom-Nav |
-| `app.js` | Gesamte Logik (~6600 Z.): CONFIG, SCHEMA, state, helpers, dataModel, views, controller |
+| `app.js` | Gesamte Logik (~5900 Z.): CONFIG, SCHEMA, state, helpers, dataModel, views, controller |
 | `io.js` | Import/Export via SheetJS (`window.bbzIO`) |
 | `service-worker.js` | Network-first für Navigationen, cacht nur Offline-URL |
 | `manifest.json` | PWA-Manifest, scope `/crm-spa/` |
@@ -112,6 +112,8 @@ Nav (Desktop + Bottom): **Dashboard · Firmen · Kontakte · Aktivitäten · Eve
 Nicht in der Nav: `birthdays` (hängt an **einem** Link in der Geburtstagskarte — wer ihn
 entfernt, macht die View unerreichbar), `admin`.
 Redirect: `planning` und `history` → `aktivitaeten` (alte Bookmarks überleben).
+Die alten Views sind **gelöscht** — es gibt nur noch den Redirect und die Einträge in
+`knownRoutes`. **Beide müssen bleiben**, sonst landen alte Links auf der Default-Route.
 
 ## `dashboard` — Startseite (`views.dashboard()`)
 
@@ -203,7 +205,8 @@ Navigation als Kachel getarnt.
 
 ## `aktivitaeten` — Agenda + Firmencockpit (`views.aktivitaeten()`)
 
-Ersetzt `planning` + `history`. State: `{ segment, axis, search, lead, faelligkeit, sig,
+Nachfolger der gelöschten Routen `planning` + `history` (Redirect s.o.).
+State: `{ segment, axis, search, lead, faelligkeit, sig,
 monat, expandedFirms, bucketOpen, moreOpen, legendeOffen }`.
 
 **Visuelle Grammatik (Kern gegen Verwechslung):** Aktivität und Aufgabe haben
@@ -236,7 +239,7 @@ monat, expandedFirms, bucketOpen, moreOpen, legendeOffen }`.
 
 **Löschen NUR im Bearbeiten-Modus** (gegen versehentliches Löschen): kein ✕ in Zeilen, kein
 Löschen im read-only Detail-Modal. `renderTaskForm` wurde dafür um einen Löschen-Button im
-`mode === "edit"` ergänzt (wirkt auch in firmDetail/planning). **Nicht wieder ✕ in Zeilen bauen.**
+`mode === "edit"` ergänzt (wirkt auch in firmDetail). **Nicht wieder ✕ in Zeilen bauen.**
 
 **Aktivitäts-Detail-Modal** (`history-detail`, `views.renderHistoryDetail`,
 `controller.openHistoryDetail`): read-only, **ungekürzte Notizen**, Footer Schliessen /
@@ -269,8 +272,8 @@ gleichzeitig `aktiv` und `pflege` sein (frischer Kontakt + überfällige Aufgabe
 **`helpers.pflegeDot(firm)`** — Zustände überlappen, ein Punkt kann nur einen zeigen. Feste
 Rangfolge **dringend vor unauffällig**: `pflege` ▸ `offen` ▸ `ohne` ▸ `aktiv`; sonst `null`.
 
-> **`helpers.firmSignal` wird nirgends mehr aufgerufen** (0 Aufrufe). Es steht nur noch als
-> Funktion im Code. Wer es reaktiviert, baut das alte Doppel-Vokabular wieder auf.
+> **`helpers.firmSignal` ist gelöscht** (hatte 0 Aufrufe). Wer es neu baut, baut das alte
+> Doppel-Vokabular wieder auf. `pflegeDot` ist die einzige Quelle für den Punkt.
 
 ## Klassifizierung — `helpers.klassValues()` + `helpers.klassMatches(firm, value)`
 
@@ -280,7 +283,7 @@ Datenbestand. Vergleich **exakt**.
 > **⚠ NIE `["A","B","C"]` hardcoden und NIE `startsWith`/`includes` auf `klassifizierung`.**
 > `"Akquisition".startsWith("A") === true` — Akquisitions-Firmen zählten und filterten
 > **stillschweigend als A**: falsche Zähler UND falsche Mengen. Der Bug steckte an **sechs**
-> Stellen (Firmen-Filter, `detailBandClass`, drei Kontakt-Picker, `planning`).
+> Stellen (Firmen-Filter, `detailBandClass`, drei Kontakt-Picker, der alten `planning`-View).
 > Im Code gibt es **kein** `startsWith`/`includes` auf `klassifizierung` mehr.
 > `ui.detailBandClass` prüft **Akquisition zuerst**, sonst greift `includes("A")`.
 
@@ -371,11 +374,21 @@ Eine Quelle für Desktop-Tabelle und Mobile-Karte. Precedence Task > Aktivität.
 
 # Tote Zonen / Backlog
 
-- **`views.planning()` (~1080 Z.) und `views.historyView()` (~330 Z.) sind tot** — die Route
-  wird vor dem `switch` auf `aktivitaeten` umgelenkt, die `case`-Zweige sind unerreichbar.
-  **~1400 Zeilen = ein Fünftel von app.js.** Löschen, sobald die neue Route lange genug stabil
-  ist. Ihre State-Slices (`filters.planning`, `filters.history`) hängen mit dran.
-- **`helpers.firmSignal`** — 0 Aufrufe.
+- **Erledigt:** `views.planning()`, `views.historyView()` und ihr Anhang sind **gelöscht**
+  (725 Zeilen, 6638 → 5913). Mit weg: `filters.planning`, `filters.history`,
+  `CONFIG.defaults.planningShowOnlyOpen`, `helpers.firmSignal`, `firmMatchesLens`,
+  `sparklineHtml`, `momentumHeatmapHtml`, `periodKey`, `periodLabel`, `ui.miniItem` und die
+  Handler `navigate-planning(-filtered)`, `history-firma-filter`, `history-view-mode`,
+  `filter-lens/-periode/-granularitaet`, `toggle-expand`, `task-status-change`.
+  Geblieben sind **Redirect und `knownRoutes`** — bewusst.
+- **Totes CSS in `index.html`** (nur die gelöschten Views nutzten es, noch nicht entfernt):
+  `.bbz-actbar`, `.bbz-actbar-fill`, `.bbz-on`, `.bbz-planning-filters`, `.bbz-filters-3/-4`,
+  `.bbz-history-group*`, `.bbz-history-split`, `.bbz-mini-list`, `.bbz-timeline-clamp`,
+  `.bbz-timeline-item`/`.bbz-expanded`. Bewusst separat: das Stylesheet wird beim nächsten
+  Schritt (Design-Angleichung Aktivitäten ↔ Dashboard) ohnehin angefasst.
+- **Handler ohne Renderer** (Altlast, nicht aus dieser Löschung): `akt-legende` — der
+  Legenden-Toggle der Aktivitäten-View wird nirgends gerendert,
+  `filters.aktivitaeten.legendeOffen` ist damit wirkungslos.
 - **`deploy.yml`** — Node-20-Deprecation der Actions (`actions/*@v4` behebt es).
 - **Route `birthdays`** hängt an einem einzigen Link — Nav-Eintrag wäre ehrlicher.
 - **`admin.userStats`** (Erfassungen pro Person) ist gebaut, aber nirgends im Dashboard —
