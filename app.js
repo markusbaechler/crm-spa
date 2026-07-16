@@ -2452,7 +2452,7 @@
 
                 ${!categoryMissing ? `
                 <!-- Filterzeile -->
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;">
+                <div class="bbz-modal-filters" style="margin-bottom:12px;">
                   <input class="bbz-input" data-filter="batch-search" type="text" placeholder="Name / Firma ..." value="${helpers.escapeHtml(filterSearch)}" style="font-size:12px;" />
                   <select class="bbz-select" data-filter="batch-segment" style="font-size:12px;">
                     <option value="">— Segment —</option>
@@ -4213,7 +4213,10 @@
         cutKeyOf = h => leadOf(h) || "__none";
       }
       const cutLab = c => c === "__none" ? "ohne" : c.replace(/^SGF /, "");
-      const cutGrid = cut === "verlauf" ? "78px 30px 1fr 40px" : `78px repeat(${cutCols.length}, minmax(0,1fr))`;
+      // Raster NUR ueber Klassen (s. CLAUDE.md/Fallen) — gegen inline grid-template-columns
+      // kommt keine Media-Query an. Variabel ist nur die SPALTENZAHL, als Custom Property.
+      const kanCls = cut === "verlauf" ? "bbz-akt-kan" : "bbz-akt-kanc";
+      const kanVar = cut === "verlauf" ? "" : ` style="--kan-n:${cutCols.length};"`;
 
       const kanRows = artAll.map(k => {
         const cells = cut === "verlauf"
@@ -4229,7 +4232,7 @@
               return cutCols.map(c => { const n = sub.get(c) || 0;
                 return `<span style="font-size:12px;font-weight:700;text-align:right;${n === 0 ? "color:var(--subtle);" : ""}">${n}</span>`; }).join("");
             })();
-        return `<div style="display:grid;grid-template-columns:${cutGrid};gap:7px;align-items:center;padding:4px 0;border-top:1px solid var(--line-2);">
+        return `<div class="${kanCls}"${kanVar ? ` style="--kan-n:${cutCols.length};padding:4px 0;border-top:1px solid var(--line-2);"` : ` style="padding:4px 0;border-top:1px solid var(--line-2);"`}>
           <span style="font-size:11.5px;display:inline-flex;align-items:center;gap:6px;min-width:0;"><i style="width:7px;height:7px;border-radius:2px;background:${artColor(k)};flex-shrink:0;"></i><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(k)}</span></span>
           ${cells}</div>`;
       }).join("");
@@ -4255,7 +4258,7 @@
               <span style="font-size:11px;color:var(--subtle);">${monSel !== null ? `${esc(monSelLab)} · ${pulsActs.length}` : `12 Monate · ${acts12.length}`} Aktivitäten</span>
               <div style="margin-left:auto;display:flex;border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden;">${cutBtn("verlauf", "Verlauf")}${cutBtn("klass", "Klassifizierung")}${cutBtn("lead", "Lead bbz")}</div>
             </div>
-            ${artAll.length ? `<div style="display:grid;grid-template-columns:${cutGrid};gap:7px;font-size:9px;color:var(--subtle);padding-bottom:5px;">${kanHead}</div>${kanRows}`
+            ${artAll.length ? `<div class="${kanCls}"${kanVar ? ` style="--kan-n:${cutCols.length};font-size:9px;color:var(--subtle);padding-bottom:5px;"` : ` style="font-size:9px;color:var(--subtle);padding-bottom:5px;"`}>${kanHead}</div>${kanRows}`
               : `<div style="font-size:11.5px;color:var(--subtle);">Keine Aktivitäten im Scope.</div>`}
             ${cut !== "verlauf" && monSel === null ? `<div style="font-size:10px;color:var(--subtle);margin-top:8px;">Schnitt über 12 Monate.</div>` : ""}
             ${monSel !== null && pulsActs.length > 0 && pulsActs.length < 10 ? `<div style="font-size:10px;color:var(--amber);margin-top:8px;">Nur ${pulsActs.length} Aktivitäten im ${esc(monSelLab)} — Anteile sind Einzelfälle.</div>` : ""}
@@ -4573,7 +4576,7 @@
               <div style="font-size:15px;font-weight:700;letter-spacing:-0.02em;">${helpers.escapeHtml(group.name)}</div>
               ${typeBadge}
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+            <div class="bbz-ev-stats">
               <div class="bbz-event-stat">
                 <div class="bbz-event-stat-label">Firmen</div>
                 <div class="bbz-event-stat-value">${cntFirmen}</div>
@@ -5050,7 +5053,7 @@
             </div>
 
             <!-- Filter-Zeile -->
-            <div style="display:grid;grid-template-columns:1.5fr 1.2fr 1fr 0.7fr;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line-2);flex-shrink:0;align-items:center;">
+            <div class="bbz-modal-filters" style="padding:10px 16px;border-bottom:1px solid var(--line-2);flex-shrink:0;align-items:center;">
               <input class="bbz-input" style="height:30px;" data-filter="matrix-search"
                 type="text" placeholder="Name oder Firma suchen …" value="${helpers.escapeHtml(filterSearch)}" />
               <select class="bbz-select" style="height:30px;" data-filter="matrix-firm">${firmOptions}</select>

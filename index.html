@@ -452,6 +452,18 @@
     .bbz-akt-sigbar { gap: 7px; padding: 7px 10px; margin-bottom: 11px; }
     @media (max-width: 900px) { .bbz-akt-fokgrid { grid-template-columns: repeat(3, minmax(0,1fr)); } }
     @media (max-width: 560px) { .bbz-akt-fokgrid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+    /* Zone 3 — Kanaltabelle. Raster in der KLASSE, nur die Spaltenzahl als Custom Property
+       (--kan-n). So greifen Media-Queries; inline grid-template-columns wuerde sie aushebeln. */
+    .bbz-akt-kan  { display: grid; grid-template-columns: 78px 30px 1fr 40px; gap: 7px; align-items: center; }
+    .bbz-akt-kanc { display: grid; grid-template-columns: 78px repeat(var(--kan-n, 4), minmax(0,1fr)); gap: 7px; align-items: center; }
+    @media (max-width: 620px) {
+      .bbz-akt-kan  { grid-template-columns: 58px 22px 1fr 30px; gap: 5px; }
+      .bbz-akt-kanc { grid-template-columns: 58px repeat(var(--kan-n, 4), minmax(0,1fr)); gap: 4px; }
+    }
+    /* Filterzeilen in Modals: auto-fit bricht von selbst um, ohne Media-Query. */
+    .bbz-modal-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+    .bbz-ev-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+    @media (max-width: 420px) { .bbz-ev-stats { grid-template-columns: 1fr; } }
     .bbz-akt-split { display: grid; grid-template-columns: minmax(0,1.5fr) minmax(300px,1fr); gap: 18px; align-items: start; }
     @media (max-width: 900px) { .bbz-akt-split { grid-template-columns: 1fr; } }
 

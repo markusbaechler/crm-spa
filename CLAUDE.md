@@ -283,6 +283,10 @@ nicht auf Aufgaben oder Cockpit (dort würde er „letzter Touch" verfälschen).
 | `klass` | aus `helpers.klassValues()` + `ohne` | Landen Besuche bei A-Kunden? |
 | `lead` | Lead-bbz-Werte + `ohne` | Wer arbeitet wie? |
 
+**Raster der Kanaltabelle**: Klassen `.bbz-akt-kan` (Verlauf) und `.bbz-akt-kanc` (Schnitte).
+Variabel ist **nur die Spaltenzahl**, als Custom Property `--kan-n` inline. Das Raster selbst
+gehört in die Klasse — sonst greift die Media-Query bei 620px nicht.
+
 > **Menge und Mix bleiben getrennt.** Gestapelte Balken (Kanal als Segment im Monatsbalken)
 > waren bei ~9 Aktivitäten/Monat unlesbar — fünf Farben auf zwölf schmalen Balken. Deshalb:
 > Balken zeigen **wie viel**, Tabelle zeigt **womit**.
@@ -373,9 +377,17 @@ Eine Quelle für Desktop-Tabelle und Mobile-Karte. Precedence Task > Aktivität.
 - **CSS-Klammerbilanz prüfen** (`{` == `}` im `<style>`), **nicht nur `node --check`** — das
   sieht kein CSS. **Eine** überzählige Klammer verschluckt den Rest des Stylesheets: schwarze
   Gauges *und* zerlaufene Listen aus einer einzigen Ursache.
-- **Raster NUR über Klassen** (`.bbz-dash-g2/g3/g4`, `.bbz-akt-split`, `.bbz-subfilter`).
+- **Raster NUR über Klassen** (`.bbz-dash-g2/g3/g4`, `.bbz-akt-split`, `.bbz-akt-kan(c)`,
+  `.bbz-modal-filters`, `.bbz-ev-stats`, `.bbz-subfilter`).
   Gegen inline `grid-template-columns` kommt **keine Media-Query** an (ausser mit
-  `!important`-Hacks). Daran scheiterte die erste Dashboard-Fassung.
+  `!important`-Hacks). Daran scheiterte die erste Dashboard-Fassung — **und die erste Fassung
+  der Zonen-Umstellung**: die Kanaltabelle in Zone 3 hatte bis zu 6 inline-Spalten, die
+  Filterzeilen in `renderBatchEventForm` und `renderEventMatrixModal` je 4. Auf dem Handy
+  überlief die Kanaltabelle die Seite; ein überlaufendes Element macht das ganze Dokument
+  breiter und verschiebt damit auch `position:fixed`-Modals.
+  **Braucht ein Raster eine variable Spaltenzahl, gehört sie als Custom Property inline
+  (`--kan-n`), nicht das Raster.**
+  Prüfen mit: kein `style="…grid-template-columns:…"` ausser `1fr` / `auto-fit` / `auto-fill`.
 - `--amber` (#8a5c00), `--red` (#a4161a), `--green` (#186935) liegen in der **Helligkeit zu nah**
   beieinander. In Donuts **weisse Trennlücken** statt neuer Farben.
 - **NICHT `.bbz-history-split` für neue Layouts** — die blendet Spalte 2 mobil aus (altes
