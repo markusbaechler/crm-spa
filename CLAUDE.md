@@ -24,7 +24,7 @@ https://markusbaechler.github.io/crm-spa/
 | Datei | Inhalt |
 |---|---|
 | `index.html` | App-Shell + **gesamtes CSS** (`:root`-Tokens oben) + Desktop-Nav + Bottom-Nav |
-| `app.js` | Gesamte Logik (~5900 Z.): CONFIG, SCHEMA, state, helpers, dataModel, views, controller |
+| `app.js` | Gesamte Logik (~6000 Z.): CONFIG, SCHEMA, state, helpers, dataModel, views, controller |
 | `io.js` | Import/Export via SheetJS (`window.bbzIO`) |
 | `service-worker.js` | Network-first für Navigationen, cacht nur Offline-URL |
 | `manifest.json` | PWA-Manifest, scope `/crm-spa/` |
@@ -143,6 +143,10 @@ sich links→rechts — **die Animation IST die Zeitachse**.
 
 **Abdeckungs-Matrix** statt Donut: „30%" beantwortet nicht, **welche** 30%. Zeilen =
 Klassifizierung (aus `helpers.klassValues()`) + „ohne Klassifizierung" (⚠) + Gesamt.
+> **Das ⚠ hier ist strittig** — in `aktivitaeten` ist `Ohne` eine gleichwertige Kategorie
+> (passiv betreute Kunden), kein Mangel. Solange das Dashboard davor warnt und die
+> Aktivitäten-Route nicht, sind es zwei Aussagen zum selben Zustand. Offen, bewusst nicht
+> im selben Commit geändert.
 - **Nur der abgedeckte Anteil wird gefüllt, „ohne" ist die leere Spur.** Vorher war „ohne"
   sattes Rot = 70% jeder Zeile: lauteste Farbe für die nutzloseste Aussage.
 - **Jedes Element ist ein eigenes Klickziel** (`covSets(key, lab, base)` legt fünf Mengen an):
@@ -203,47 +207,97 @@ sind klickbar). „alle anzeigen →" führt auf `birthdays`.
 Die früheren Kacheln „Offene Tasks" und „Firmen-Cockpit" sind **entfernt** — das war
 Navigation als Kachel getarnt.
 
-## `aktivitaeten` — Agenda + Firmencockpit (`views.aktivitaeten()`)
+## `aktivitaeten` — drei Zonen (`views.aktivitaeten()`)
 
 Nachfolger der gelöschten Routen `planning` + `history` (Redirect s.o.).
-State: `{ segment, axis, search, lead, faelligkeit, sig,
-monat, expandedFirms, bucketOpen, moreOpen, legendeOffen }`.
+State: `{ segment, axis, search, lead, klass, cut, faelligkeit, sig, monat, expandedFirms,
+bucketOpen, moreOpen, legendeOffen }`.
+
+**Drei Zonen nach ARBEITSSCHRITT**, mit dem Zonenkopf-Muster des Dashboards
+(`bbz-zone`: Nummer · Titel · Leitfrage · Linie · Meta):
+
+1. **Fokus setzen** — „Wo schaue ich hin?" Klassifizierungs-Karten + Lead-Chips.
+2. **Markt bearbeiten** — „Was lief, was steht an?" Agenda oder Firmencockpit.
+3. **Auswerten & Steuern** — „Wohin entwickelt sich die Betreuung?" 12 Monate + Kanaltabelle.
+
+**Zone 1 filtert Zone 2. Zone 3 misst, was Zone 2 zeigt** — Segment, Lead und Fokus wirken
+durch alle drei. Das ist die einzige Richtung; es gibt keinen Rückkanal.
+
+### Zone 1 — Fokus setzen
+
+Karten aus **`helpers.klassValues()`** erzeugt, plus `Alle` (Default) und `Ohne`.
+Kommt ein neuer Choice-Wert in SharePoint dazu, erscheint die Karte von selbst.
+
+> **`Ohne` ist eine Kategorie, kein Mangel.** Rund die Hälfte der Kunden wird bewusst passiv
+> betreut — leer heisst „nicht klassifiziert", nicht „vergessen". Kein ⚠, keine Warnfarbe.
+> `F.klass`: `""` = alle, `"__none"` = ohne Klassifizierung, sonst exakter Choice-Wert
+> (Vergleich über `helpers.klassMatches` — **nie** `startsWith`, s. Klassifizierung).
+
+Jede Karte zeigt **Aktivitäten der letzten 30 Tage** und **überfällig · offen**. Beim
+Segmentwechsel wird `klass` zurückgesetzt (sonst Geisterfilter, gleiche Falle wie bei `firms`).
+
+**Lead-Chips zählen Aktivitäten und Aufgaben GETRENNT** (`AD 22 · 12`). Ein gemeinsamer
+Zähler mischte zwei Objekttypen, die die View sonst konsequent durch die Form trennt — und
+liess die Chip-Summe (87) über der Zahl der Aktivitäten (64) liegen.
+
+### Zone 2 — Markt bearbeiten
 
 **Visuelle Grammatik (Kern gegen Verwechslung):** Aktivität und Aufgabe haben
 **unterschiedliche FORMEN**, nicht nur Farben.
 - **Aktivität = Timeline** (`.bbz-akt-tl`, **kein Rahmen**) → „lesen". Punktfarbe = **Kanal**,
-  identisch mit der Mix-Bar im Panel. Klick = Detail-Modal, ✎ bei Hover.
+  identisch mit der Kanaltabelle in Zone 3. Klick = Detail-Modal, ✎ bei Hover.
 - **Aufgabe = Karte** (Rahmen, Schatten, linker Akzent) mit **Checkbox** → „handeln".
-- Firma ist in beiden Zeilen **prominent** (13px fett), Kontaktart/Titel sekundär.
+- Firma ist in beiden Zeilen **prominent** (13px fett), dahinter der Klassifizierungs-Badge.
 
-**Zwei Achsen** (`akt-axis`), **Default `chrono`**:
-- `chrono` „Agenda" = Hauptansicht. Zweispaltig (`.bbz-akt-split`). Die Spalten trennen
-  **Objekttyp**, nicht Zeit: links nur Aktivitäten (`akt-p-week`/`akt-p-month` offen,
-  `akt-p-old` zu), rechts nur Aufgaben (`akt-c-over`, `akt-c-undated`, `akt-c-month` offen;
-  `akt-c-later`, `akt-c-done` zu).
+Spaltenüberschriften sind die Frage, die die Spalte beantwortet: **„Was lief wann bei wem"**
+links, **„Was steht wann wo an"** rechts. Die Trennung ist **Objekttyp**, nicht Zeit.
+
+**Zwei Achsen** (`akt-axis`, im Zonenkopf), **Default `chrono`**:
+- `chrono` „Agenda" = Hauptansicht. Zweispaltig (`.bbz-akt-split`). Links `akt-p-week`/
+  `akt-p-month` offen, `akt-p-old` zu; rechts `akt-c-over`, `akt-c-undated`, `akt-c-month`
+  offen, `akt-c-later`, `akt-c-done` zu.
 - `firm` „Firmencockpit": **Signal-Filter statt Rubriken** (`akt-sig`, Default `aktiv`) —
-  **immer genau EINE Kategorie sichtbar**, damit keine die andere erschlägt. Darin Gliederung
-  nach letztem Kontakt (`akt-f-wk`/`akt-f-mon` offen, `akt-f-alt` zu) — **gleiche Richtung wie
-  die Agenda (neu→alt)**. Kacheln im `.bbz-akt-fgrid` (auto-fill), offene Kachel spannt voll.
-  **Der Signal-Punkt entfällt in der Kachel** — im gefilterten Cockpit trägt er nichts.
-  `firmRows` umfasst **alle** Segment-Firmen, auch nie kontaktierte.
+  **immer genau EINE Kategorie sichtbar**. Gliederung nach letztem Kontakt, **gleiche Richtung
+  wie die Agenda (neu→alt)**. `firmRows` umfasst **alle** Firmen im Fokus, auch nie kontaktierte.
 
-**Panels** (links Aktivitäten, rechts Aufgaben — spiegelt die Agenda):
-- **Aktivitäten:** Anzahl im laufenden Monat + Delta + **6-Monats-Balken** + Ø/Monat +
-  **Kanalmix in %**. Bewusst **kein „total"**. Balken/Mix reagieren auf Segment/Lead-Filter.
-  **Die Balken sind ein Filter** (`akt-monat`, Toggle) — wirkt **nur** auf die
-  Agenda-Aktivitäten, nicht aufs Cockpit (dort würde er „Letzter Touch" verfälschen).
-  Bei aktivem Filter zeigt die Spalte **eine** Gruppe `akt-p-sel`.
-- **Aufgaben:** offen + Chips + älteste überfällige. `cDone` ist ein **Gesamtzähler**:
-  CRMTasks hat **kein Erledigt-Datum**.
+> **`Nächste 30 Tage`, NICHT `Diesen Monat`.** Die Grenze ist `today + 30`, nicht das
+> Monatsende. Am 16.07.2026 standen unter „Diesen Monat" drei **August**termine (04./06./14.08.)
+> — das Label log über die Mechanik. Wer auf Kalendermonat umstellen will, ändert die Logik,
+> nicht nur den Text.
+
+### Zone 3 — Auswerten & Steuern
+
+**Rollierende 12 Monate**, einfarbige Balken: **Höhe = Menge**. Bestwert grün.
+Die Balken sind ein **Filter** (`akt-monat`, Toggle) — wirkt **nur** auf die Agenda-Aktivitäten,
+nicht auf Aufgaben oder Cockpit (dort würde er „letzter Touch" verfälschen).
+
+> **Der Ø läuft ab dem ersten Monat MIT Erfassung**, nicht über volle 12 Monate. Die App ging
+> **Februar 2026** produktiv; ein 12-Monats-Schnitt mittelt gegen eine Zeit, in der es sie nicht
+> gab, und ist strukturell unerreichbar. Aus `Ø 5,3/Mt.` wurde so `Ø 9,5/Mt. seit Feb`.
+
+**Kanaltabelle: der Kanal ist die ZEILE, der Schnitt wechselt die Spalten** (`akt-cut`):
+
+| Schnitt | Spalten | Frage |
+|---|---|---|
+| `verlauf` | n · Sparkline 12 Mt. · % | Verschiebt sich der Kanalmix? |
+| `klass` | aus `helpers.klassValues()` + `ohne` | Landen Besuche bei A-Kunden? |
+| `lead` | Lead-bbz-Werte + `ohne` | Wer arbeitet wie? |
+
+> **Menge und Mix bleiben getrennt.** Gestapelte Balken (Kanal als Segment im Monatsbalken)
+> waren bei ~9 Aktivitäten/Monat unlesbar — fünf Farben auf zwölf schmalen Balken. Deshalb:
+> Balken zeigen **wie viel**, Tabelle zeigt **womit**.
+> **Kein Kanalmix-Prozentbalken im Kopf** — „Telefon 38%" beantwortet keine Handlungsfrage.
+> Erst der Lead-Schnitt macht daraus eine Aussage (AD: 0 Online in 9 Monaten).
+
+Unter 10 Aktivitäten im gewählten Monat erscheint ein Hinweis, dass Anteile Einzelfälle sind.
 
 **Löschen NUR im Bearbeiten-Modus** (gegen versehentliches Löschen): kein ✕ in Zeilen, kein
-Löschen im read-only Detail-Modal. `renderTaskForm` wurde dafür um einen Löschen-Button im
-`mode === "edit"` ergänzt (wirkt auch in firmDetail). **Nicht wieder ✕ in Zeilen bauen.**
+Löschen im read-only Detail-Modal. **Nicht wieder ✕ in Zeilen bauen.**
 
 **Aktivitäts-Detail-Modal** (`history-detail`, `views.renderHistoryDetail`,
 `controller.openHistoryDetail`): read-only, **ungekürzte Notizen**, Footer Schliessen /
 Bearbeiten.
+
 
 ---
 
@@ -393,6 +447,16 @@ Eine Quelle für Desktop-Tabelle und Mobile-Karte. Precedence Task > Aktivität.
 - **Route `birthdays`** hängt an einem einzigen Link — Nav-Eintrag wäre ehrlicher.
 - **`admin.userStats`** (Erfassungen pro Person) ist gebaut, aber nirgends im Dashboard —
   bewusst offen gelassen (sichtbare Leistungsmessung pro Person braucht eine Entscheidung).
+- **Der Zustand `offen` / „Beobachten" feuert aktuell bei NULL Firmen.** Er ist als „offene
+  Aufgabe ohne Datum" definiert (`pflegePredicate("offen")`), und in CRMTasks hat **jede**
+  der 28 Aufgaben eine Deadline. Chip, Punkt, Signal-Filter und Bucket `akt-c-undated`
+  existieren für einen Fall, den es im Datenbestand nicht gibt. Nicht löschen ohne
+  Entscheidung — er ist billig und fängt den Fall ab, sobald er auftritt.
+- **Totes CSS in `index.html`** (nur die gelöschten planning/history-Views nutzten es):
+  `.bbz-actbar*`, `.bbz-on`, `.bbz-planning-filters`, `.bbz-filters-3/-4`,
+  `.bbz-history-group*`, `.bbz-history-split`, `.bbz-mini-*`, `.bbz-timeline-clamp`.
+  Sie hängen in Selektorlisten und Media-Query-Blöcken — Entfernen berührt fünf Stellen im
+  `<style>`-Block. Eigener Commit, sonst Klammerbilanz-Risiko ohne Funktionsgewinn.
 - **KPI-Aggregations-Helper** sind weiter vorgehalten.
 
 ## Datenbefunde (Stand letzte Sichtung)
@@ -401,7 +465,12 @@ Keine Code-Themen — aber sie erklären, warum Kennzahlen so aussehen, wie sie 
 
 - **87 von 125 Banken (70%) ohne Aktivität in 12 Monaten.** Kein Datenartefakt: es gibt
   **keine** Firmen ohne Kontakte. Echte Pflegelücke.
-- **1,2 erfasste Aktivitäten pro Woche im ganzen Team** (64/Jahr auf 125 Banken) — das
-  Erfassen ist der Engpass, nicht die Pflege.
-- **51 von 125 Kunden (41%) ohne Klassifizierung** — für sie ist die Priorisierung blind.
+- **Die App ging Februar 2026 produktiv.** Vorher liegen fast keine Datensätze (Okt 25: 1,
+  Jan 26: 2). Jede Kennzahl über „12 Monate" mittelt gegen diese Leere und ist zu tief.
+  Stand Juli 2026: **68 Aktivitäten**, davon 61 ab Februar → **9,5/Mt.**, nicht 5,3.
+  Der alte Befund „1,2 pro Woche" beruhte auf dem 12-Monats-Schnitt und ist damit erledigt;
+  aktuell sind es rund **2,3/Woche**. Ob das Erfassen der Engpass bleibt, misst Zone 3.
+- **Rund 41% der Kunden ohne Klassifizierung — das ist ABSICHT**, nicht Datenmangel: sie
+  werden passiv betreut. In Zone 1 ist das die Karte `Ohne`, gleichwertig neben A/B/C.
+  Kein ⚠ dafür. Wer das als Lücke darstellt, warnt vor einer Entscheidung des Users.
 - **32% der Kontakte ohne Geburtstag** — der Kalender ist strukturell unvollständig.

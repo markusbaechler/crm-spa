@@ -142,7 +142,9 @@
       firms: { kategorie: "", klassifizierung: "", vip: false, pflege: "", search: "", legendeOffen: false, sortBy: "title", sortDir: "asc" },
       contacts: { search: "", archiviertAusblenden: CONFIG.defaults.contactArchiveDefaultHidden, sortBy: "fullName", sortDir: "asc" },
       // Zusammengeführte Aktivitäten+Aufgaben-Route (ersetzt planning + history)
-      aktivitaeten: { segment: "kunden", axis: "chrono", search: "", lead: "", faelligkeit: "", sig: "aktiv", monat: "", expandedFirms: [], bucketOpen: {}, moreOpen: {}, legendeOffen: false },
+      // klass = Fokus-Achse (Zone 1): "" alle, "__none" ohne Klassifizierung, sonst exakter
+      // Choice-Wert. cut = Spaltenschnitt der Kanaltabelle (Zone 3).
+      aktivitaeten: { segment: "kunden", axis: "chrono", search: "", lead: "", klass: "", cut: "verlauf", faelligkeit: "", sig: "aktiv", monat: "", expandedFirms: [], bucketOpen: {}, moreOpen: {}, legendeOffen: false },
       events: { search: "", onlyWithOpenTasks: false, sortBy: "contactName", sortDir: "asc", segment: "", selectedEvent: "" },
       admin: { zeitfenster: "30" }
     },
@@ -676,9 +678,10 @@
             state.modal = null;
           } else if (scope === "akt-segment") {
             state.filters.aktivitaeten.segment = value;
-            // Lead-/Fälligkeitsfilter gelten pro Segment -> beim Wechsel zurücksetzen.
+            // Lead-/Fälligkeits-/Fokusfilter gelten pro Segment -> beim Wechsel zurücksetzen.
             // Signal ebenso: "kein" (Nicht-Kunden) existiert nur im Segment "alle".
             state.filters.aktivitaeten.lead = "";
+            state.filters.aktivitaeten.klass = "";
             state.filters.aktivitaeten.faelligkeit = "";
             state.filters.aktivitaeten.sig = "aktiv";
             state.filters.aktivitaeten.monat = "";
@@ -912,6 +915,19 @@
         // Chrono-Gruppe: gedeckelte Liste vollständig zeigen
         const aktMore = event.target.closest("[data-action='akt-more']");
         if (aktMore) { state.filters.aktivitaeten.moreOpen[aktMore.dataset.bucket] = true; controller.render(); return; }
+
+        // Fokus-Karte (Zone 1): Klassifizierung waehlen. Toggle auf "" = Alle.
+        const aktKlass = event.target.closest("[data-action='akt-klass']");
+        if (aktKlass) {
+          const v = aktKlass.dataset.value || "";
+          state.filters.aktivitaeten.klass = state.filters.aktivitaeten.klass === v ? "" : v;
+          controller.render();
+          return;
+        }
+
+        // Kanaltabelle (Zone 3): Spaltenschnitt wechseln.
+        const aktCut = event.target.closest("[data-action='akt-cut']");
+        if (aktCut) { state.filters.aktivitaeten.cut = aktCut.dataset.value || "verlauf"; controller.render(); return; }
 
         // Signal-Legende auf-/zuklappen
         const aktLegende = event.target.closest("[data-action='akt-legende']");
@@ -4074,9 +4090,9 @@
     },
 
     // ══ Zusammengeführte Route: Aktivitäten + Aufgaben in einem Screen ══════════
-    // Zwei Achsen (Firma / Agenda),
-    // Segment-Gate (Kunden = Banken/Versicherungen), Monats-Raster,
-    // Lead = Record-Lead (history.leadbbz / task.leadbbz), KEIN Kontakt-Fallback.
+    // Drei Zonen nach Arbeitsschritt — Fokus setzen -> Markt bearbeiten -> Auswerten & Steuern.
+    // Zone 1 filtert Zone 2. Zone 3 misst, was Zone 2 zeigt (Segment/Lead/Klasse wirken durch).
+    // Klassifizierungs-Werte kommen aus helpers.klassValues() — NIE hardcoden (s. CLAUDE.md).
     aktivitaeten() {
       const F = state.filters.aktivitaeten;
       const esc = helpers.escapeHtml;
@@ -4092,82 +4108,191 @@
       const leadOf = r => (r.leadbbz || "").trim();
       const leadPass = r => !F.lead || leadOf(r).toLowerCase() === F.lead.toLowerCase();
 
+      // Klassifizierungs-Fokus: "" = alle, "__none" = ohne Klassifizierung, sonst exakter Wert.
+      const firmById = new Map(segFirms.map(f => [f.id, f]));
+      const klassOf = r => { const f = firmById.get(r.firmId); return f ? (f.klassifizierung || "") : ""; };
+      const klassPass = r => {
+        if (!F.klass) return true;
+        const f = firmById.get(r.firmId); if (!f) return false;
+        if (F.klass === "__none") return !f.klassifizierung;
+        return helpers.klassMatches(f, F.klass);
+      };
+      const firmKlassPass = f => {
+        if (!F.klass) return true;
+        if (F.klass === "__none") return !f.klassifizierung;
+        return helpers.klassMatches(f, F.klass);
+      };
+
       const segActsAll  = state.enriched.history.filter(inSeg);
       const segTasksAll = state.enriched.tasks.filter(inSeg);
-      const scopeActs  = segActsAll.filter(leadPass);
-      const scopeTasks = segTasksAll.filter(leadPass);
+      const scopeActs  = segActsAll.filter(r => leadPass(r) && klassPass(r));
+      const scopeTasks = segTasksAll.filter(r => leadPass(r) && klassPass(r));
+      const scopeFirms = segFirms.filter(firmKlassPass);
 
-      // ── Panel Aufgaben ───────────────────────────────────────────────────────
+      // ── Aufgaben-Zaehler ─────────────────────────────────────────────────────
       const openTasks = scopeTasks.filter(t => t.isOpen);
       const cOver  = openTasks.filter(t => t.isOverdue).length;
       const cMonth = openTasks.filter(t => { const d = dl(t); return d && !t.isOverdue && d <= mo; }).length;
       const cLater = openTasks.filter(t => { const d = dl(t); return d && d > mo; }).length;
-      // Aufgaben OHNE Termin fielen durch alle Faelligkeits-Buckets und waren in der Agenda
-      // unsichtbar. Sie sind der Zustand "Beobachten" (helpers.pflegeMeta.offen).
+      // Aufgaben OHNE Termin: Zustand "Beobachten" (helpers.pflegeMeta.offen).
       const cUndated = openTasks.filter(t => !dl(t)).length;
       const cAll   = scopeTasks.length;
       const cDone  = scopeTasks.filter(t => !t.isOpen).length;
       const oldestOverdue = openTasks.filter(t => t.isOverdue && dl(t))
         .sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline))[0] || null;
 
-      // ── Panel Aktivitäten: 6-Monats-Vergleich + Kanalmix in % ────────────────
-      // Reagiert bewusst auf Segment/Lead — misst also die gefilterte Bearbeitung.
-      const mKey = d => d.getFullYear() * 12 + d.getMonth();
-      const months = [];
-      for (let i = 5; i >= 0; i--) {
-        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-        months.push({ k: mKey(d), lab: d.toLocaleDateString("de-CH", { month: "short" }), n: 0 });
-      }
-      const acts12 = [];
-      scopeActs.forEach(h => {
-        const d = helpers.toDate(h.datum); if (!d) return;
-        if (dayDiff(d) <= 365) acts12.push(h);
-        const m = months.find(x => x.k === mKey(d)); if (m) m.n++;
-      });
-      const nowN = months[5].n, prevN = months[4].n, deltaN = nowN - prevN;
-      const maxN = Math.max(1, ...months.map(m => m.n));
-      const avg = (acts12.length / 12).toFixed(1).replace(".", ",");
-      // Balken sind Filter: Klick waehlt den Monat, erneuter Klick hebt auf.
-      const monSel = F.monat ? Number(F.monat) : null;
-      const barsHtml = months.map(m => {
-        const on = monSel === m.k;
-        const dim = monSel !== null && !on;
-        const col = on ? "var(--blue)" : (m === months[5] && monSel === null ? "var(--blue)" : "var(--blue-light)");
-        return `<div class="bbz-akt-bar" data-action="akt-monat" data-value="${m.k}" role="button" tabindex="0"
-          title="${esc(m.lab)}: ${m.n} Aktivitäten — klicken zum Filtern"
-          style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:3px;cursor:pointer;opacity:${dim ? ".45" : "1"};">
-          <b style="font-size:9px;font-weight:700;color:${on ? "var(--blue)" : "var(--subtle)"};">${m.n}</b>
-          <i style="display:block;width:100%;height:${Math.round(m.n / maxN * 40) + 4}px;background:${col};border-radius:3px 3px 0 0;${on ? "box-shadow:0 0 0 2px var(--blue-light);" : ""}"></i>
-        </div>`;
-      }).join("");
-      const barLabHtml = months.map(m => {
-        const on = monSel === m.k;
-        const hi = on || (m === months[5] && monSel === null);
-        return `<span style="flex:1;text-align:center;font-size:9.5px;text-transform:uppercase;color:${hi ? "var(--blue)" : "var(--subtle)"};font-weight:${hi ? 700 : 400};opacity:${monSel !== null && !on ? ".45" : "1"};">${esc(m.lab)}</span>`;
-      }).join("");
-      const monSelLab = monSel !== null ? (months.find(m => m.k === monSel)?.lab || "") : "";
-
+      // ── Kanalfarben — eine Quelle fuer Timeline-Punkt, Firmenkachel und Zone 3 ─
       const artOrder = state.meta.choices?.[CONFIG.lists.history]?.["Kontaktart"] || [];
-      const artCounts = new Map();
-      acts12.forEach(h => { const k = h.typ || "—"; artCounts.set(k, (artCounts.get(k) || 0) + 1); });
-      const artKeys = [...artCounts.keys()].sort((a, b) => {
+      const artPalette = ["#004078", "#0a6b4f", "#2e8bce", "#8a5c00", "#8fa3b8", "#6b4f9e", "#b9d4ea"];
+      const artAll = [...new Set(segActsAll.map(h => h.typ || "—"))].sort((a, b) => {
         const ia = artOrder.indexOf(a), ib = artOrder.indexOf(b);
         if (ia !== -1 || ib !== -1) return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
         return a.localeCompare(b, "de");
       });
-      // Kanalfarbe = Anker: identisch in Mix-Bar, Timeline-Punkt und Firmenkachel.
-      const artPalette = ["#004078", "#0a6b4f", "#2e8bce", "#8a5c00", "#8fa3b8", "#6b4f9e", "#b9d4ea"];
-      const artColor = k => artPalette[Math.max(0, artKeys.indexOf(k)) % artPalette.length];
-      const mixTot = acts12.length || 1;
-      const mixBar = artKeys.map(k => `<i style="height:100%;width:${artCounts.get(k) / mixTot * 100}%;background:${artColor(k)};" title="${esc(k)}: ${artCounts.get(k)}"></i>`).join("");
-      const mixLeg = artKeys.map(k => `<span style="font-size:11px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;border-radius:2px;background:${artColor(k)};"></span>${esc(k)} <b style="font-weight:700;color:var(--text);">${Math.round(artCounts.get(k) / mixTot * 100)}%</b></span>`).join("");
+      const artColor = k => artPalette[Math.max(0, artAll.indexOf(k)) % artPalette.length];
 
-      // ── Lead-Chips ───────────────────────────────────────────────────────────
-      const leadAgg = new Map();
-      [...segActsAll, ...segTasksAll].forEach(r => { const l = leadOf(r); if (!l) return; leadAgg.set(l, (leadAgg.get(l) || 0) + 1); });
-      const leadChips = [...leadAgg.entries()].sort((a, b) => b[1] - a[1]).map(([name, c]) => {
-        const on = F.lead && name.toLowerCase() === F.lead.toLowerCase();
-        return `<button class="bbz-kpi-chip ${on ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="akt-lead" data-value="${esc(name)}" title="Nach Lead ${esc(name)} filtern">${esc(name)} <span>${c}</span></button>`;
+      // ── ZONE 3: rollierende 12 Monate ────────────────────────────────────────
+      const mKey = d => d.getFullYear() * 12 + d.getMonth();
+      const months = [];
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+        months.push({ k: mKey(d), lab: d.toLocaleDateString("de-CH", { month: "short" }), n: 0 });
+      }
+      const mIndex = new Map(months.map((m, i) => [m.k, i]));
+      const acts12 = [];
+      scopeActs.forEach(h => {
+        const d = helpers.toDate(h.datum); if (!d) return;
+        const i = mIndex.get(mKey(d));
+        if (i !== undefined) { months[i].n++; acts12.push(h); }
+      });
+      const maxN = Math.max(1, ...months.map(m => m.n));
+      const bestI = months.reduce((b, m, i) => m.n > months[b].n ? i : b, 0);
+      // Ø nur ueber Monate MIT Erfassung — ein Schnitt ueber Monate vor der Einfuehrung
+      // misst gegen eine Zeit, in der es die App nicht gab, und ist strukturell unerreichbar.
+      const liveMonths = months.filter(m => m.n > 0);
+      const firstLive = months.findIndex(m => m.n > 0);
+      const avgSpan = firstLive === -1 ? 0 : months.length - firstLive;
+      const avg = avgSpan ? (acts12.length / avgSpan).toFixed(1).replace(".", ",") : "0";
+      const avgFrom = firstLive === -1 ? "" : months[firstLive].lab;
+
+      const monSel = F.monat ? Number(F.monat) : null;
+      const monSelLab = monSel !== null ? (months.find(m => m.k === monSel)?.lab || "") : "";
+      const pulsBars = months.map((m, i) => {
+        const on = monSel === m.k;
+        const col = on ? "var(--blue)" : (i === bestI && m.n > 0 ? "var(--green)" : "var(--blue-light)");
+        return `<div class="bbz-akt-bar" data-action="akt-monat" data-value="${m.k}" role="button" tabindex="0"
+          title="${esc(m.lab)}: ${m.n} Aktivitäten — klicken filtert die Agenda"
+          style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:3px;cursor:pointer;">
+          <b style="font-size:9px;font-weight:700;color:${on ? "var(--blue)" : "var(--subtle)"};">${m.n || ""}</b>
+          <i style="display:block;width:100%;height:${m.n === 0 ? 2 : Math.round(m.n / maxN * 40) + 4}px;background:${col};border-radius:3px 3px 0 0;"></i>
+        </div>`;
+      }).join("");
+      const pulsLabs = months.map((m, i) => {
+        const on = monSel === m.k;
+        const col = on ? "var(--blue)" : (i === bestI && m.n > 0 ? "var(--green)" : "var(--subtle)");
+        return `<span style="flex:1;text-align:center;font-size:9px;text-transform:uppercase;color:${col};font-weight:${on || i === bestI ? 700 : 400};">${esc(m.lab)}</span>`;
+      }).join("");
+
+      // Kanaltabelle: Kanal ist die ZEILE, der Schnitt wechselt die Spalten.
+      // Menge (Balken oben) und Mix (Tabelle) sind getrennt — kein Stapel.
+      const cut = ["verlauf", "klass", "lead"].includes(F.cut) ? F.cut : "verlauf";
+      const pulsActs = monSel !== null ? acts12.filter(h => { const d = helpers.toDate(h.datum); return d && mKey(d) === monSel; }) : acts12;
+      const cntBy = (arr, keyFn) => { const m = new Map(); arr.forEach(x => { const k = keyFn(x); m.set(k, (m.get(k) || 0) + 1); }); return m; };
+      const artTot = cntBy(pulsActs, h => h.typ || "—");
+      const pulsTot = pulsActs.length || 1;
+      const serOf = k => months.map(m => acts12.filter(h => {
+        const d = helpers.toDate(h.datum); return d && mKey(d) === m.k && (h.typ || "—") === k;
+      }).length);
+
+      let cutCols = [], cutKeyOf = null;
+      if (cut === "klass") {
+        cutCols = [...helpers.klassValues(), "__none"];
+        cutKeyOf = h => klassOf(h) || "__none";
+      } else if (cut === "lead") {
+        cutCols = [...new Set(segActsAll.map(leadOf).filter(Boolean))].sort((a, b) => a.localeCompare(b, "de")).concat("__none");
+        cutKeyOf = h => leadOf(h) || "__none";
+      }
+      const cutLab = c => c === "__none" ? "ohne" : c.replace(/^SGF /, "");
+      const cutGrid = cut === "verlauf" ? "78px 30px 1fr 40px" : `78px repeat(${cutCols.length}, minmax(0,1fr))`;
+
+      const kanRows = artAll.map(k => {
+        const cells = cut === "verlauf"
+          ? (() => {
+              const n = artTot.get(k) || 0, ser = serOf(k), smax = Math.max(1, ...ser);
+              const spark = ser.map((v, i) => `<i style="width:4px;height:${v === 0 ? 1 : Math.max(2, Math.round(v / smax * 14))}px;background:${monSel === months[i].k ? "var(--blue)" : (v === 0 ? "var(--line-2)" : "#c9d6e4")};border-radius:1px;"></i>`).join("");
+              return `<span style="font-size:12px;font-weight:700;text-align:right;${n === 0 ? "color:var(--subtle);" : ""}">${n}</span>
+                      <span style="display:inline-flex;gap:1.5px;align-items:flex-end;height:14px;">${spark}</span>
+                      <span style="font-size:10.5px;color:var(--subtle);text-align:right;">${n ? Math.round(n / pulsTot * 100) + "%" : "—"}</span>`;
+            })()
+          : (() => {
+              const sub = cntBy(pulsActs.filter(h => (h.typ || "—") === k), cutKeyOf);
+              return cutCols.map(c => { const n = sub.get(c) || 0;
+                return `<span style="font-size:12px;font-weight:700;text-align:right;${n === 0 ? "color:var(--subtle);" : ""}">${n}</span>`; }).join("");
+            })();
+        return `<div style="display:grid;grid-template-columns:${cutGrid};gap:7px;align-items:center;padding:4px 0;border-top:1px solid var(--line-2);">
+          <span style="font-size:11.5px;display:inline-flex;align-items:center;gap:6px;min-width:0;"><i style="width:7px;height:7px;border-radius:2px;background:${artColor(k)};flex-shrink:0;"></i><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(k)}</span></span>
+          ${cells}</div>`;
+      }).join("");
+      const kanHead = cut === "verlauf"
+        ? `<span></span><span style="text-align:right;">n</span><span>Verlauf 12 Mt.</span><span style="text-align:right;">%</span>`
+        : `<span></span>${cutCols.map(c => `<span style="text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(cutLab(c))}</span>`).join("")}`;
+      const cutBtn = (v, l) => `<button data-action="akt-cut" data-value="${v}" style="height:23px;padding:0 9px;border:none;font-family:inherit;font-size:10.5px;cursor:pointer;background:${cut === v ? "var(--blue)" : "var(--panel)"};color:${cut === v ? "#fff" : "var(--muted)"};">${l}</button>`;
+
+      const pulsHtml = `
+        <div class="bbz-kpi bbz-dash-static">
+          <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;">
+            <span class="bbz-kpi-value">${monSel !== null ? (months.find(m => m.k === monSel)?.n ?? 0) : acts12.length}</span>
+            <span style="font-size:12px;color:var(--muted);">${monSel !== null ? `Aktivitäten im ${esc(monSelLab)}` : `Aktivitäten${avgFrom ? ` · Ø ${avg}/Mt. seit ${esc(avgFrom)}` : ""}`}</span>
+            ${monSel !== null
+              ? `<button class="bbz-kpi-chip" data-action="akt-monat" data-value="${monSel}" style="margin-left:auto;color:var(--red);border-color:var(--red-light);" title="Monatsfilter aufheben">✕ Filter: ${esc(monSelLab)}</button>`
+              : (months[bestI].n > 0 ? `<span style="font-size:11px;color:var(--green);margin-left:auto;">Bestwert ${esc(months[bestI].lab)} · ${months[bestI].n}</span>` : "")}
+          </div>
+          <div style="display:flex;align-items:flex-end;gap:4px;height:52px;margin:11px 0 3px;">${pulsBars}</div>
+          <div style="display:flex;gap:4px;">${pulsLabs}</div>
+          <div style="border-top:1px solid var(--line-2);margin-top:13px;padding-top:11px;">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:9px;">
+              <span style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--subtle);">Betreuungskanal</span>
+              <span style="font-size:11px;color:var(--subtle);">${monSel !== null ? `${esc(monSelLab)} · ${pulsActs.length}` : `12 Monate · ${acts12.length}`} Aktivitäten</span>
+              <div style="margin-left:auto;display:flex;border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden;">${cutBtn("verlauf", "Verlauf")}${cutBtn("klass", "Klassifizierung")}${cutBtn("lead", "Lead bbz")}</div>
+            </div>
+            ${artAll.length ? `<div style="display:grid;grid-template-columns:${cutGrid};gap:7px;font-size:9px;color:var(--subtle);padding-bottom:5px;">${kanHead}</div>${kanRows}`
+              : `<div style="font-size:11.5px;color:var(--subtle);">Keine Aktivitäten im Scope.</div>`}
+            ${cut !== "verlauf" && monSel === null ? `<div style="font-size:10px;color:var(--subtle);margin-top:8px;">Schnitt über 12 Monate.</div>` : ""}
+            ${monSel !== null && pulsActs.length > 0 && pulsActs.length < 10 ? `<div style="font-size:10px;color:var(--amber);margin-top:8px;">Nur ${pulsActs.length} Aktivitäten im ${esc(monSelLab)} — Anteile sind Einzelfälle.</div>` : ""}
+          </div>
+        </div>`;
+
+      // ── ZONE 1: Fokus-Karten ─────────────────────────────────────────────────
+      const kVals = helpers.klassValues();
+      const fokusCards = [{ k: "", lab: "Alle" }, ...kVals.map(v => ({ k: v, lab: v })), { k: "__none", lab: "Ohne" }].map(c => {
+        const fs = segFirms.filter(f => c.k === "" ? true : (c.k === "__none" ? !f.klassifizierung : helpers.klassMatches(f, c.k)));
+        const ids = new Set(fs.map(f => f.id));
+        const pass = r => ids.has(r.firmId) && leadPass(r);
+        const a30 = segActsAll.filter(h => { if (!pass(h)) return false; const d = helpers.toDate(h.datum); return d && dayDiff(d) <= 30; }).length;
+        const ot = segTasksAll.filter(t => pass(t) && t.isOpen);
+        const ov = ot.filter(t => t.isOverdue).length;
+        const on = F.klass === c.k;
+        return `<div class="bbz-akt-fok ${on ? "is-on" : ""}" data-action="akt-klass" data-value="${esc(c.k)}" role="button" tabindex="0"
+            title="${esc(c.lab)} — ${fs.length} Firmen">
+          <div style="display:flex;align-items:baseline;gap:5px;margin-bottom:6px;">
+            <span style="font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(c.lab)}</span>
+            <span style="font-size:9.5px;color:var(--subtle);flex-shrink:0;">${fs.length}</span>
+          </div>
+          <div style="font-size:10px;color:var(--subtle);"><b style="font-size:13px;color:var(--text);">${a30}</b> Aktivitäten 30 T.</div>
+          <div style="font-size:10px;color:${ov ? "var(--red)" : "var(--subtle)"};margin-top:1px;"><b style="font-size:13px;color:${ov ? "var(--red)" : "var(--subtle)"};">${ov}</b> überfällig · ${ot.length} offen</div>
+        </div>`;
+      }).join("");
+
+      // Lead-Chips: Aktivitaeten und Aufgaben GETRENNT zaehlen. Ein gemeinsamer Zaehler
+      // mischte zwei Objekttypen, die die ganze View sonst durch die Form trennt.
+      const leadNames = [...new Set(segActsAll.concat(segTasksAll).map(leadOf).filter(Boolean))];
+      const leadChips = leadNames.map(n => {
+        const kp = r => klassPass(r) && leadOf(r).toLowerCase() === n.toLowerCase();
+        return { n, a: segActsAll.filter(kp).length, t: segTasksAll.filter(kp).length };
+      }).sort((x, y) => (y.a + y.t) - (x.a + x.t)).map(({ n, a, t }) => {
+        const on = F.lead && n.toLowerCase() === F.lead.toLowerCase();
+        return `<button class="bbz-kpi-chip ${on ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="akt-lead" data-value="${esc(n)}" title="${esc(n)}: ${a} Aktivitäten, ${t} Aufgaben">
+          ${esc(n)} <span>${a}</span><i style="font-style:normal;color:var(--line);">·</i><span style="${t ? "" : "opacity:.45;"}">${t}</span></button>`;
       }).join("") || `<span style="font-size:12px;color:var(--muted);">Keine Lead-Zuordnung im Segment.</span>`;
 
       // ── Anzeige-Filter ───────────────────────────────────────────────────────
@@ -4185,13 +4310,15 @@
       const dispTasks = scopeTasks.filter(t => taskWindowPass(t) && (!s || [t.title, t.contactName, t.firmTitle, t.status].some(v => helpers.textIncludes(v, s))));
 
       // ── Zeilen ───────────────────────────────────────────────────────────────
+      const klBadge = r => { const k = klassOf(r); return k ? `<span style="font-size:8.5px;font-weight:700;padding:0 4px;border-radius:var(--r-full);background:var(--blue-light);color:var(--blue);flex-shrink:0;">${esc(k)}</span>` : ""; };
       // Aktivität = Timeline-Eintrag (kein Rahmen) -> "lesen"
       const evAct = (h, showFirm) => {
         const col = artColor(h.typ || "—");
         return `<div class="bbz-akt-ev" data-action="open-history-detail" data-id="${h.id}">
           <span class="bbz-akt-dot" style="background:${col};"></span>
-          <div style="display:flex;align-items:baseline;gap:8px;">
+          <div style="display:flex;align-items:baseline;gap:7px;">
             <span style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(showFirm ? (h.firmTitle || h.contactName || "—") : (h.contactName || "—"))}</span>
+            ${showFirm ? klBadge(h) : ""}
             <span style="font-size:10.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;flex-shrink:0;color:${col};">${esc(h.typ || "Aktivität")}</span>
             <span style="margin-left:auto;font-size:11px;color:var(--subtle);white-space:nowrap;flex-shrink:0;">${esc(helpers.relativeDate(h.datum))}</span>
           </div>
@@ -4214,8 +4341,8 @@
             ? `<button class="bbz-akt-cb" data-action="complete-task" data-id="${t.id}" title="Als erledigt markieren">✓</button>`
             : `<span style="width:19px;height:19px;flex-shrink:0;border:2px solid var(--subtle);border-radius:5px;background:var(--line-2);color:var(--muted);display:flex;align-items:center;justify-content:center;font-size:12px;">✓</span>`}
           <div style="flex:1;min-width:0;">
-            <div style="display:flex;align-items:baseline;gap:8px;">
-              ${showFirm ? `<span style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(t.firmTitle || t.contactName || "—")}</span>` : ""}
+            <div style="display:flex;align-items:baseline;gap:7px;">
+              ${showFirm ? `<span style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(t.firmTitle || t.contactName || "—")}</span>${klBadge(t)}` : ""}
               <span style="margin-left:auto;flex-shrink:0;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:var(--r-full);white-space:nowrap;${pill}">${when}</span>
             </div>
             <div style="font-size:12px;color:${done ? "var(--muted)" : "var(--text)"};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;${done ? "text-decoration:line-through;" : ""}">${esc(t.title)}</div>
@@ -4239,18 +4366,16 @@
           ? `<button data-action="akt-more" data-bucket="${id}" style="width:100%;height:28px;border:1px dashed var(--line);background:transparent;border-radius:var(--r-sm);color:var(--muted);font-family:inherit;font-size:11px;cursor:pointer;margin-top:7px;">+ ${rest} weitere anzeigen</button>` : ""}`;
       };
 
-      // ── AGENDA (Hauptansicht) ────────────────────────────────────────────────
-      // Monatsfilter wirkt nur hier (Agenda-Aktivitaeten), nicht auf Aufgaben/Firmencockpit.
+      // ── ZONE 2: AGENDA ───────────────────────────────────────────────────────
+      // Monatsfilter aus Zone 3 wirkt nur hier, nicht auf Aufgaben/Firmencockpit.
       const monPass = h => { if (monSel === null) return true; const d = helpers.toDate(h.datum); return d && mKey(d) === monSel; };
       const agendaActs = dispActs.filter(monPass);
       const actsSorted = agendaActs.slice().sort((a, b) => helpers.compareDateDesc(a.datum, b.datum));
       const ageOf = h => { const d = helpers.toDate(h.datum); return d ? dayDiff(d) : Infinity; };
-      // Bei aktivem Monatsfilter waere Woche/Monat/Früher sinnlos (alles landet in "Früher")
-      // -> eine einzige, offene Gruppe mit dem Monatsnamen.
       const actGroups = monSel !== null
         ? [["akt-p-sel", `${monSelLab} — gefiltert`, actsSorted]].filter(g => g[2].length)
         : [["akt-p-week", "Diese Woche", actsSorted.filter(h => ageOf(h) <= 7)],
-           ["akt-p-month", "Diesen Monat", actsSorted.filter(h => { const a = ageOf(h); return a > 7 && a <= 30; })],
+           ["akt-p-month", "Letzte 30 Tage", actsSorted.filter(h => { const a = ageOf(h); return a > 7 && a <= 30; })],
            ["akt-p-old", "Früher", actsSorted.filter(h => ageOf(h) > 30)]].filter(g => g[2].length);
 
       const openDisp = dispTasks.filter(t => t.isOpen);
@@ -4259,52 +4384,59 @@
       const tLater = openDisp.filter(t => { const d = dl(t); return d && d > mo; }).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
       const tUndated = openDisp.filter(t => !dl(t)).sort((a, b) => a.title.localeCompare(b.title, "de"));
       const tDone  = dispTasks.filter(t => !t.isOpen).sort((a, b) => helpers.compareDateDesc(a.deadline, b.deadline));
-      // "Beobachten" direkt nach "Überfällig": unterminierte Aufgaben brauchen eine Handlung
-      // (Termin setzen), sonst versanden sie unsichtbar.
-      const taskGroups = [["akt-c-over", "Überfällig", tOver, true], ["akt-c-undated", "Beobachten · ohne Termin", tUndated, false], ["akt-c-month", "Diesen Monat", tMon, false], ["akt-c-later", "Später", tLater, false], ["akt-c-done", "Erledigt", tDone, false]].filter(g => g[2].length);
+      // "Nächste 30 Tage" statt "Diesen Monat": die Grenze ist today+30, NICHT das Monatsende.
+      // Am 16.07. standen unter "Diesen Monat" drei Augusttermine — das Label log.
+      const taskGroups = [["akt-c-over", "Überfällig", tOver, true], ["akt-c-undated", "Beobachten · ohne Termin", tUndated, false], ["akt-c-month", "Nächste 30 Tage", tMon, false], ["akt-c-later", "Später", tLater, false], ["akt-c-done", "Erledigt", tDone, false]].filter(g => g[2].length);
 
-      const colHead = (label, sub, accent) =>
-        `<div style="display:flex;align-items:baseline;gap:8px;padding-bottom:7px;margin-bottom:9px;border-bottom:2px solid ${accent};">
-           <h3 style="margin:0;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;">${esc(label)}</h3>
-           <em style="font-style:normal;font-size:11px;color:var(--subtle);">${esc(sub)}</em>
-         </div>`;
+      const chip = (l, v, cnt, style = "") => `<button class="bbz-kpi-chip ${F.faelligkeit === v ? "bbz-kpi-chip-active" : ""}" style="${style}" data-action="kpi-filter" data-scope="akt-faelligkeit" data-value="${v}">${l} <span>${cnt}</span></button>`;
 
       const agendaHtml = `
         <div class="bbz-akt-split">
           <section>
-            ${colHead("Aktivitäten", monSel !== null ? `${monSelLab} · ${agendaActs.length}` : `Verlauf · ${agendaActs.length}`, "#c3d3e3")}
+            <div style="display:flex;align-items:baseline;gap:8px;padding-bottom:7px;margin-bottom:2px;border-bottom:2px solid #c3d3e3;">
+              <h3 style="margin:0;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;">Was lief wann bei wem</h3>
+              <em style="font-style:normal;font-size:11px;color:var(--subtle);">${monSel !== null ? `${esc(monSelLab)} · ${agendaActs.length}` : `Verlauf · ${agendaActs.length}`}</em>
+            </div>
             ${actGroups.length ? actGroups.map(([id, lab, items]) =>
               grpHead(id, lab, items.length, false) + (isOpenBucket(id) ? capped(id, items, h => evAct(h, true), `<div class="bbz-akt-tl">`, `</div>`) : "")
-            ).join("") : `<div style="font-size:12px;color:var(--subtle);padding:4px 2px;">Keine Aktivitäten im Filter.</div>`}
+            ).join("") : `<div style="font-size:12px;color:var(--subtle);padding:12px 2px;">Keine Aktivitäten im Filter.</div>`}
           </section>
           <section>
-            ${colHead("Aufgaben", `${openDisp.length} offen`, "var(--blue-mid)")}
+            <div style="display:flex;align-items:baseline;gap:8px;padding-bottom:7px;margin-bottom:9px;border-bottom:2px solid var(--blue-mid);">
+              <h3 style="margin:0;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;">Was steht wann wo an</h3>
+              <em style="font-style:normal;font-size:11px;color:var(--subtle);">${openDisp.length} offen</em>
+              ${oldestOverdue ? `<em style="font-style:normal;font-size:11px;color:var(--red);margin-left:auto;text-align:right;">älteste: ${esc(helpers.relativeDate(oldestOverdue.deadline))}</em>` : ""}
+            </div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:2px;">
+              ${chip("Überfällig", "overdue", cOver, cOver > 0 ? "background:var(--red-soft);border-color:#f0b0b2;color:var(--red);" : "")}
+              ${chip("Nächste 30 Tage", "month", cMonth, cMonth > 0 ? "background:#fff9eb;border-color:#f4dfab;color:var(--amber);" : "")}
+              ${chip("Später", "later", cLater)}
+              ${cUndated ? chip("Beobachten", "undated", cUndated, `background:#fff9eb;border-color:#f4dfab;color:${helpers.pflegeMeta.offen.col};`) : ""}
+              <button class="bbz-kpi-chip ${!F.faelligkeit ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="akt-faelligkeit" data-value="">Alle <span>${cAll}</span></button>
+              ${cDone ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:var(--r-full);background:#e7f2ea;color:var(--green);align-self:center;">✓ ${cDone} erledigt</span>` : ""}
+            </div>
             ${taskGroups.length ? taskGroups.map(([id, lab, items, red]) =>
               grpHead(id, lab, items.length, red) + (isOpenBucket(id) ? capped(id, items, t => evTask(t, true), `<div style="display:flex;flex-direction:column;gap:7px;">`, `</div>`) : "")
-            ).join("") : `<div style="font-size:12px;color:var(--subtle);padding:4px 2px;">Keine Aufgaben im Filter.</div>`}
+            ).join("") : `<div style="font-size:12px;color:var(--subtle);padding:12px 2px;">Keine Aufgaben im Filter.</div>`}
           </section>
         </div>`;
 
-      // ── FIRMENCOCKPIT ────────────────────────────────────────────────────────
+      // ── ZONE 2: FIRMENCOCKPIT ────────────────────────────────────────────────
       // Signal-FILTER statt Rubriken: genau eine Kategorie sichtbar, keine dominiert.
-      // Pflege-Status aus helpers — IDENTISCH mit dem Firmen-Screen. Nicht neu definieren
-      // und nicht auf firmSignal zurückbauen: dieselben Wörter hatten früher hier und dort
-      // verschiedene Bedeutungen ("Beobachten" = >12 Mt. vs. Aufgabe ohne Termin).
+      // Pflege-Status aus helpers — IDENTISCH mit dem Firmen-Screen. Nicht neu definieren.
       const sigMeta = { aktiv: helpers.pflegeMeta.aktiv, pflege: helpers.pflegeMeta.pflege,
                         offen: helpers.pflegeMeta.offen, ohne: helpers.pflegeMeta.ohne };
       if (F.segment === "alle") sigMeta.kein = helpers.pflegeMeta.kein;
       const sigPred = Object.fromEntries(Object.keys(sigMeta).map(k => [k, helpers.pflegePredicate(k)]));
       const sigSel = sigMeta[F.sig] ? F.sig : "aktiv";
 
-      // Alle Segment-Firmen — auch nie kontaktierte (die sind gerade die dringendsten).
-      const firmRows = segFirms.map(f => {
+      const firmRows = scopeFirms.map(f => {
         const fa = dispActs.filter(h => h.firmId === f.id).sort((a, b) => helpers.compareDateDesc(a.datum, b.datum));
         const ft = dispTasks.filter(t => t.firmId === f.id);
         const openT = ft.filter(t => t.isOpen).sort((a, b) => helpers.compareDateAsc(a.deadline, b.deadline));
         const ld = fa[0] ? helpers.toDate(fa[0].datum) : null;
         return { f, fa, ft, openT, age: ld ? dayDiff(ld) : Infinity };
       });
-      // Zustände überlappen -> zählen per Prädikat, nicht per fester Kategorie.
       const sigCount = k => firmRows.filter(x => sigPred[k](x.f)).length;
 
       const firmCard = ({ f, fa, ft, openT, age }) => {
@@ -4315,13 +4447,11 @@
           ? `<span style="font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0;">${esc(helpers.relativeDate(last.datum))}</span>`
           : `<span style="font-size:11px;color:var(--subtle);white-space:nowrap;flex-shrink:0;">nie kontaktiert</span>`;
         const nextCol = next ? (next.isOverdue ? "color:var(--red);font-weight:600;" : (dl(next) && dl(next) <= mo ? "color:var(--amber);font-weight:600;" : "color:var(--text);")) : "";
-        // Kein Platzhalter, wenn keine offene Aufgabe existiert — das war reines Rauschen.
         const nextTxt = next
           ? `→ ${esc(next.title)} · ${next.isOverdue ? esc(helpers.relativeDate(next.deadline)) + " fällig"
               : (dl(next) ? esc(helpers.relativeDate(next.deadline)) : "ohne Termin")}`
           : "";
         const leads = [...new Set([...fa, ...ft].map(leadOf).filter(Boolean))].join(", ");
-        const merged = [...fa.map(h => ({ k: "a", it: h })), ...ft.map(t => ({ k: "t", it: t }))];
         return `<div class="bbz-akt-fcard ${expanded ? "is-open" : ""}">
           <div class="bbz-akt-fhead" data-action="akt-firm-expand" data-firm-id="${f.id}">
             <div style="display:flex;align-items:baseline;gap:6px;">
@@ -4355,14 +4485,14 @@
 
       const sigRows = firmRows.filter(x => sigPred[sigSel](x.f));
       const fGroups = [
-        ["akt-f-wk",  "Diese Woche",  sigRows.filter(x => x.age <= 7)],
-        ["akt-f-mon", "Diesen Monat", sigRows.filter(x => x.age > 7 && x.age <= 30)],
-        ["akt-f-alt", "Übrige",       sigRows.filter(x => x.age > 30)],
+        ["akt-f-wk",  "Diese Woche",    sigRows.filter(x => x.age <= 7)],
+        ["akt-f-mon", "Letzte 30 Tage", sigRows.filter(x => x.age > 7 && x.age <= 30)],
+        ["akt-f-alt", "Übrige",         sigRows.filter(x => x.age > 30)],
       ].filter(g => g[2].length);
       fGroups.forEach(g => g[2].sort((a, b) => a.age - b.age || a.f.title.localeCompare(b.f.title, "de")));
 
       const firmHtml = `
-        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:7px 10px;margin-bottom:11px;">
+        <div class="bbz-akt-sigbar">
           <span style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--subtle);">Signal</span>
           ${Object.entries(sigMeta).map(([k, v]) => `
             <button data-action="akt-sig" data-value="${k}" style="height:29px;padding:0 11px;border:1px solid ${sigSel === k ? "var(--blue)" : "var(--line)"};border-radius:var(--r-full);background:${sigSel === k ? "var(--blue)" : "var(--panel-2)"};color:${sigSel === k ? "#fff" : "var(--muted)"};font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px;">
@@ -4375,72 +4505,41 @@
           grpHead(id, lab, items.length, false) + (isOpenBucket(id) ? capped(id, items, firmCard, `<div class="bbz-akt-fgrid">`, `</div>`) : "")
         ).join("") : ui.emptyBlock("Keine Firmen in dieser Signal-Kategorie.")}`;
 
-      // ── Steuerung ────────────────────────────────────────────────────────────
-      const segBtn = (v, l) => `<button class="bbz-button ${F.segment === v ? "bbz-button-primary" : "bbz-button-secondary"}" style="border-radius:0;height:34px;font-size:12px;" data-action="kpi-filter" data-scope="akt-segment" data-value="${v}">${l}</button>`;
-      const axisBtn = (v, l) => `<button class="bbz-button ${F.axis === v ? "bbz-button-primary" : "bbz-button-secondary"}" style="border-radius:0;height:34px;font-size:12px;" data-action="akt-axis" data-value="${v}">${l}</button>`;
-      const chip = (l, v, cnt, style = "") => `<button class="bbz-kpi-chip ${F.faelligkeit === v ? "bbz-kpi-chip-active" : ""}" style="${style}" data-action="kpi-filter" data-scope="akt-faelligkeit" data-value="${v}">${l} <span>${cnt}</span></button>`;
+      // ── Zusammenbau ──────────────────────────────────────────────────────────
+      const segBtn = (v, l) => `<button class="bbz-button ${F.segment === v ? "bbz-button-primary" : "bbz-button-secondary"}" style="border-radius:0;height:32px;font-size:12px;" data-action="kpi-filter" data-scope="akt-segment" data-value="${v}">${l}</button>`;
+      const axisBtn = (v, l) => `<button class="bbz-button ${F.axis === v ? "bbz-button-primary" : "bbz-button-secondary"}" style="border-radius:0;height:24px;font-size:10.5px;padding:0 9px;" data-action="akt-axis" data-value="${v}">${l}</button>`;
+      // Zonenkopf — dasselbe Muster wie im Dashboard (views.dashboard/zone).
+      const zone = (no, h2, q, right, muted) => `<div class="bbz-zone"><span class="no" ${muted ? 'style="background:var(--muted);"' : ""}>${no}</span><h2>${esc(h2)}</h2><span class="q">${esc(q)}</span><span class="ln"></span>${right}</div>`;
+      const fokusLab = !F.klass ? "Alle Kunden" : (F.klass === "__none" ? "Ohne Klassifizierung" : F.klass);
 
       return `
         <div>
-          <div style="display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
             <div style="display:flex;border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden;flex-shrink:0;">${segBtn("kunden", "Kunden")}${segBtn("alle", "Alle")}</div>
-            <input class="bbz-input" style="flex:1;min-width:170px;" data-filter="akt-search" type="text" placeholder="🔍 Firma, Kontakt oder Aktivität suchen …" value="${esc(F.search)}" />
-            <button class="bbz-button bbz-button-primary" style="height:34px;" data-action="open-history-form">+ Aktivität</button>
-            <button class="bbz-button bbz-button-primary" style="height:34px;background:var(--blue-mid);border-color:var(--blue-mid);" data-action="open-task-form">+ Aufgabe</button>
+            <input class="bbz-input" style="flex:1;min-width:170px;height:32px;" data-filter="akt-search" type="text" placeholder="🔍 Firma, Kontakt oder Aktivität suchen …" value="${esc(F.search)}" />
+            <button class="bbz-button bbz-button-primary" style="height:32px;" data-action="open-history-form">+ Aktivität</button>
+            <button class="bbz-button bbz-button-primary" style="height:32px;background:var(--blue-mid);border-color:var(--blue-mid);" data-action="open-task-form">+ Aufgabe</button>
           </div>
 
-          <div class="bbz-kpis" style="grid-template-columns:1.55fr 1fr;margin-bottom:12px;">
-            <div class="bbz-kpi bbz-kpi-blue">
-              <div class="bbz-kpi-label">Aktivitäten</div>
-              <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-top:4px;">
-                <span class="bbz-kpi-value">${nowN}</span>
-                <span style="font-size:12px;color:var(--muted);">im ${esc(months[5].lab)}</span>
-                ${deltaN !== 0 ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:var(--r-full);${deltaN > 0 ? "background:#e7f2ea;color:var(--green);" : "background:var(--red-soft);color:var(--red);"}">${deltaN > 0 ? "▲ +" : "▼ "}${deltaN} vs. ${esc(months[4].lab)}</span>`
-                             : `<span style="font-size:11px;color:var(--subtle);">unverändert vs. ${esc(months[4].lab)}</span>`}
-                ${monSel !== null
-                  ? `<button class="bbz-kpi-chip" data-action="akt-monat" data-value="${monSel}" style="margin-left:auto;color:var(--red);border-color:var(--red-light);" title="Monatsfilter aufheben">✕ Filter: ${esc(monSelLab)}</button>`
-                  : `<span style="font-size:12px;color:var(--muted);margin-left:auto;">Ø ${avg}/Mt. · ${acts12.length} in 12 Mt.</span>`}
-              </div>
-              <div style="display:flex;align-items:flex-end;gap:7px;height:52px;margin:11px 0 3px;">${barsHtml}</div>
-              <div style="display:flex;gap:7px;">${barLabHtml}</div>
-              <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--subtle);margin:11px 0 5px;">Kanalmix · ${acts12.length} Aktivitäten (12 Mt.)</div>
-              <div style="display:flex;height:9px;border-radius:5px;overflow:hidden;background:var(--line-2);">${mixBar}</div>
-              <div style="display:flex;gap:11px;flex-wrap:wrap;margin-top:6px;">${mixLeg || '<span style="font-size:11px;color:var(--muted);">keine Aktivitäten</span>'}</div>
-            </div>
-
-            <div class="bbz-kpi bbz-kpi-red">
-              <div class="bbz-kpi-label">Aufgaben</div>
-              <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-top:4px;">
-                <span class="bbz-kpi-value">${openTasks.length}</span>
-                <span style="font-size:12px;color:var(--muted);">offen</span>
-                ${cDone ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:var(--r-full);background:#e7f2ea;color:var(--green);">✓ ${cDone} erledigt</span>` : ""}
-              </div>
-              <div style="margin-top:10px;display:flex;gap:5px;flex-wrap:wrap;">
-                ${chip("Überfällig", "overdue", cOver, cOver > 0 ? "background:var(--red-soft);border-color:#f0b0b2;color:var(--red);" : "")}
-                ${chip("Diesen Monat", "month", cMonth, cMonth > 0 ? "background:#fff9eb;border-color:#f4dfab;color:var(--amber);" : "")}
-                ${chip("Später", "later", cLater)}
-                ${cUndated ? chip("Beobachten", "undated", cUndated, `background:#fff9eb;border-color:#f4dfab;color:${helpers.pflegeMeta.offen.col};`) : ""}
-                <button class="bbz-kpi-chip ${!F.faelligkeit ? "bbz-kpi-chip-active" : ""}" data-action="kpi-filter" data-scope="akt-faelligkeit" data-value="">Alle <span>${cAll}</span></button>
-              </div>
-              <div style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--subtle);margin:14px 0 5px;">Älteste offene Aufgabe</div>
-              ${oldestOverdue
-                ? `<div style="font-size:12px;color:var(--muted);">${esc(oldestOverdue.firmTitle || oldestOverdue.contactName || "—")} · <b style="color:var(--red);">${esc(helpers.relativeDate(oldestOverdue.deadline))} fällig</b></div>`
-                : `<div style="font-size:12px;color:var(--muted);">Keine überfällige Aufgabe.</div>`}
-            </div>
-          </div>
-
-          <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:6px 10px;margin-bottom:12px;">
-            <span style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--subtle);">Filter · Lead bbz</span>
+          ${zone(1, "Fokus setzen", "Wo schaue ich hin?", `<span style="font-size:11px;color:var(--subtle);">${scopeFirms.length} Firmen</span>`)}
+          <div class="bbz-akt-fokgrid">${fokusCards}</div>
+          <div class="bbz-akt-leadbar">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--subtle);flex-shrink:0;">Lead bbz</span>
             ${leadChips}
-            ${F.lead ? `<button class="bbz-kpi-chip" data-action="kpi-filter" data-scope="akt-lead" data-value="${esc(F.lead)}" style="margin-left:auto;color:var(--red);border-color:var(--red-light);">✕ Filter aufheben</button>` : ""}
+            <span style="font-size:9.5px;color:var(--subtle);flex-shrink:0;">Aktivitäten · Aufgaben</span>
+            ${F.lead ? `<button class="bbz-kpi-chip" data-action="kpi-filter" data-scope="akt-lead" data-value="${esc(F.lead)}" style="color:var(--red);border-color:var(--red-light);">✕</button>` : ""}
           </div>
 
-          <div style="display:flex;gap:9px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
-            <div style="display:flex;border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden;flex-shrink:0;">${axisBtn("chrono", "Agenda (chronologisch)")}${axisBtn("firm", "Firmencockpit")}</div>
-            <span style="font-size:11px;color:var(--subtle);">${F.axis === "chrono" ? "Hauptansicht · links Verlauf, rechts offene Aufgaben" : "Beziehungssicht · eine Signal-Kategorie zur Zeit · Kachel aufklappen"}</span>
-          </div>
-
+          ${zone(2, "Markt bearbeiten", "Was lief, was steht an?",
+            `<span style="font-size:11px;color:var(--subtle);">${esc(fokusLab)}${F.lead ? " · " + esc(F.lead) : ""}</span>
+             <div style="display:flex;border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden;flex-shrink:0;">${axisBtn("chrono", "Agenda")}${axisBtn("firm", "Firmencockpit")}</div>`)}
           ${F.axis === "chrono" ? agendaHtml : firmHtml}
+
+          <div style="margin-top:18px;">
+            ${zone(3, "Auswerten & Steuern", "Wohin entwickelt sich die Betreuung?",
+              `<span style="font-size:11px;color:var(--subtle);">rollierend 12 Mt.</span>`, true)}
+            ${pulsHtml}
+          </div>
         </div>
       `;
     },

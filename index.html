@@ -443,6 +443,15 @@
 
     /* Aktivitaeten-Route: Agenda zweispaltig (links Aktivitaeten, rechts Aufgaben).
        Eigene Klasse statt bbz-history-split: letztere blendet Spalte 2 mobil aus. */
+    /* Zone 1 — Fokus-Karten. Raster als KLASSE, damit Media-Queries greifen. */
+    .bbz-akt-fokgrid { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 6px; margin-bottom: 8px; }
+    .bbz-akt-fok { background: var(--panel); border: 1px solid var(--line); border-radius: 11px; padding: 8px 9px; cursor: pointer; transition: border-color .14s, background .14s; }
+    .bbz-akt-fok:hover { border-color: var(--blue-mid); background: var(--blue-soft); }
+    .bbz-akt-fok.is-on { border: 2px solid var(--blue); padding: 7px 8px; }
+    .bbz-akt-leadbar, .bbz-akt-sigbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md); padding: 6px 9px; margin-bottom: 14px; }
+    .bbz-akt-sigbar { gap: 7px; padding: 7px 10px; margin-bottom: 11px; }
+    @media (max-width: 900px) { .bbz-akt-fokgrid { grid-template-columns: repeat(3, minmax(0,1fr)); } }
+    @media (max-width: 560px) { .bbz-akt-fokgrid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
     .bbz-akt-split { display: grid; grid-template-columns: minmax(0,1.5fr) minmax(300px,1fr); gap: 18px; align-items: start; }
     @media (max-width: 900px) { .bbz-akt-split { grid-template-columns: 1fr; } }
 
